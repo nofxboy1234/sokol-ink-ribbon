@@ -9,8 +9,8 @@ typedef enum {
 void player_init(int cell_x, int cell_y);
 
 // walk to the given cell along an A* path at the walk or run speed.
-// turn-based: ignored while the player is still moving, or if the cell is
-// unreachable.
+// a new click while moving re-targets (and may switch between walk and run).
+// ignored if the cell is unreachable.
 void player_move_to(int cell_x, int cell_y, player_move_t mode);
 
 void player_update(float dt);

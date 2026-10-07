@@ -52,7 +52,8 @@ bool item_in_reach(int item) {
     player_cell(&px, &py);
     const int dx = px - items[item].cell_x;
     const int dy = py - items[item].cell_y;
-    return (abs(dx) + abs(dy)) == 1;
+    // Grace can pick it up when she stands on it or in a neighbouring cell
+    return (abs(dx) + abs(dy)) <= 1;
 }
 
 int item_any_in_reach(void) {
