@@ -69,11 +69,19 @@ copies it into `web/public/wasm`):
 npm run build
 ```
 
-For local development, build the wasm once first (there is no `predev`):
+For local development, build the wasm first (there is no `predev`):
 
 ```sh
-npm run build                    # or: cd .. && npm run build:wasm && npm run copy:wasm
+npm run build                    # full web build (rebuilds the wasm too)
 npm run dev                      # http://localhost:5173
+```
+
+The dev server does not rebuild the wasm, so after changing native code refresh it
+from the repo root and hard-reload the tab (Ctrl+Shift+R) to bypass the browser's
+wasm cache:
+
+```sh
+npm run wasm                     # fibs build main (emscripten) + copy into web/public/wasm
 ```
 
 Other web scripts: `npm test` (vitest), `npm run lint` (oxlint),

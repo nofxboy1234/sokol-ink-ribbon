@@ -3,7 +3,9 @@
 #include "pathfind.h"
 #include <math.h>
 
-#define PLAYER_SPEED (CELL * 4.0f)
+// Grace walks at half her running speed (map units per second)
+#define PLAYER_WALK_SPEED (CELL * 2.0f)
+#define PLAYER_RUN_SPEED (CELL * 4.0f)
 
 static struct {
     float x, y;
@@ -11,7 +13,12 @@ static struct {
     path_t path;
     int path_idx;
     bool moving;
+    float speed;
 } p;
+
+static float speed_for(player_move_t mode) {
+    return (mode == PLAYER_MOVE_RUN) ? PLAYER_RUN_SPEED : PLAYER_WALK_SPEED;
+}
 
 void player_init(int cell_x, int cell_y) {
     p.cell_x = cell_x;
@@ -22,7 +29,7 @@ void player_init(int cell_x, int cell_y) {
     p.moving = false;
 }
 
-void player_move_to(int cell_x, int cell_y) {
+void player_move_to(int cell_x, int cell_y, player_move_t mode) {
     // turn-based: ignore new targets until the current move has finished
     if (p.moving) {
         return;
@@ -36,6 +43,7 @@ void player_move_to(int cell_x, int cell_y) {
     if (!pathfind_find(p.cell_x, p.cell_y, cell_x, cell_y, &p.path)) {
         return;
     }
+    p.speed = speed_for(mode);
     p.path_idx = (p.path.len > 1) ? 1 : 0;
     p.moving = (p.path.len > 1);
 }
@@ -62,7 +70,7 @@ void player_update(float dt) {
     const float dx = center.x - p.x;
     const float dy = center.y - p.y;
     const float dist = sqrtf(dx * dx + dy * dy);
-    const float step = PLAYER_SPEED * dt;
+    const float step = p.speed * dt;
     if (dist <= step) {
         advance_to(center, tx, ty);
     } else {

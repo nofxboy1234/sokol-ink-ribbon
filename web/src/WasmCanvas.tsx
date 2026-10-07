@@ -40,5 +40,12 @@ export function WasmCanvas() {
     document.body.appendChild(script);
   }, []);
 
-  return <canvas ref={canvasRef} id="canvas" className="wasm-canvas" />;
+  return (
+    <canvas
+      ref={canvasRef}
+      id="canvas"
+      className="wasm-canvas"
+      onContextMenu={(event) => event.preventDefault()}
+    />
+  );
 }

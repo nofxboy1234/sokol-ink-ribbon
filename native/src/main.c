@@ -44,10 +44,15 @@ static void update_hover(void) {
     }
 }
 
-static void handle_click(float screen_x, float screen_y) {
+static void handle_click(vec2_t screen_pos, player_move_t mode) {
     int cx, cy;
-    camera_cell_at((vec2_t){ screen_x, screen_y }, &cx, &cy);
-    player_move_to(cx, cy);
+    camera_cell_at(screen_pos, &cx, &cy);
+    player_move_to(cx, cy, mode);
+}
+
+// left-click walks, right-click runs
+static player_move_t move_mode_for(sapp_mousebutton button) {
+    return (button == SAPP_MOUSEBUTTON_RIGHT) ? PLAYER_MOVE_RUN : PLAYER_MOVE_WALK;
 }
 
 static void init(void) {
@@ -101,14 +106,21 @@ static void event(const sapp_event* e) {
         app.mouse_x = e->mouse_x;
         app.mouse_y = e->mouse_y;
         app.ui_captured = captured;
-    } else if (e->type == SAPP_EVENTTYPE_MOUSE_DOWN && e->mouse_button == SAPP_MOUSEBUTTON_LEFT) {
-        app.mouse_x = e->mouse_x;
-        app.mouse_y = e->mouse_y;
-        app.ui_captured = captured;
-        if (!captured) {
-            handle_click(e->mouse_x, e->mouse_y);
-        }
+        return;
     }
+    if (e->type != SAPP_EVENTTYPE_MOUSE_DOWN) {
+        return;
+    }
+    app.mouse_x = e->mouse_x;
+    app.mouse_y = e->mouse_y;
+    app.ui_captured = captured;
+    if (captured) {
+        return;
+    }
+    if (e->mouse_button != SAPP_MOUSEBUTTON_LEFT && e->mouse_button != SAPP_MOUSEBUTTON_RIGHT) {
+        return;
+    }
+    handle_click((vec2_t){ e->mouse_x, e->mouse_y }, move_mode_for(e->mouse_button));
 }
 
 sapp_desc sokol_main(int argc, char* argv[]) {
