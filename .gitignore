@@ -18,3 +18,4 @@ native/deno.lock
 # misc
 .DS_Store
 *.swp
+ref/
