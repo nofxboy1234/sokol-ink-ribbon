@@ -54,6 +54,9 @@ body {
   flex: 0 0 var(--inv-pane-w);
   display: flex;
   align-items: flex-start;
+  /* separates the panel from the map, in the frame's cool white */
+  border-left: 1px solid rgba(234, 252, 254, 0.55);
+  box-shadow: -6px 0 18px rgba(157, 207, 229, 0.1);
 }
 
 /* Taken out of flow so the canvas cannot influence the pane's size: its
@@ -171,6 +174,10 @@ body {
     /* the grid spans the full width when stacked, so it needs no reserved
        pane width and the cells can always match the map cells */
     flex: 0 0 auto;
+    /* the border belongs to the side, not above the map, when stacked */
+    border-left: 0;
+    box-shadow: none;
+    border-top: 1px solid rgba(234, 252, 254, 0.55);
     /* the grid is left-aligned like the map above it, rather than centred in
        the full width */
     align-items: flex-start;

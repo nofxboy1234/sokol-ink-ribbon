@@ -4,6 +4,7 @@
 #include "camera.h"
 #include "player.h"
 #include "item.h"
+#include "enemy.h"
 
 #include "sokol_app.h"
 #include "sokol_gfx.h"
@@ -107,6 +108,19 @@ static void render_popup_bg(vec2_t min, vec2_t max) {
     draw_rect_frame(a, b, c, d, 1.6f, 0.620f, 0.812f, 0.898f, 0.90f);
 }
 
+// The enemy is the one saturated non-blue in the scene, so it reads as a threat
+// at a glance against the map's blue-on-navy. Warm pink, cool white core, to sit
+// in the same vocabulary as the Herb's cyan.
+static void render_enemies(void) {
+    for (int i = 0; i < enemy_count(); i++) {
+        const vec2_t s = camera_to_screen(enemy_position(i));
+        const bool aggro = enemy_mode(i) != ENEMY_PATROL;
+        draw_filled_circle(s, 20.0f, 0.98f, 0.29f, 0.62f, aggro ? 0.26f : 0.13f);
+        draw_filled_circle(s, 10.0f, 1.00f, 0.44f, 0.66f, aggro ? 0.98f : 0.90f);
+        draw_filled_circle(s, 4.5f, 1.00f, 0.93f, 0.97f, aggro ? 1.00f : 0.92f);
+    }
+}
+
 static void render_items(void) {
     for (int i = 0; i < item_count(); i++) {
         if (!item_present(i)) {
@@ -191,6 +205,7 @@ void render_scene(int hover_x, int hover_y) {
     sgl_begin_triangles();
     draw_glow_dot(camera_to_screen(player_position()));
     render_items();
+    render_enemies();
     sgl_end();
 }
 

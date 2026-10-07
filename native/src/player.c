@@ -20,20 +20,46 @@ static struct {
     path_t path;
     int path_idx;
     bool moving;
+    // set by player_stop: halt on reaching the next cell rather than mid-edge
+    bool stop_at_next_cell;
     float speed;
+    int steps;
 } p;
+
+static int start_x, start_y;
 
 static float speed_for(player_move_t mode) {
     return (mode == PLAYER_MOVE_RUN) ? PLAYER_RUN_SPEED : PLAYER_WALK_SPEED;
 }
 
 void player_init(int cell_x, int cell_y) {
+    start_x = cell_x;
+    start_y = cell_y;
     p.cell_x = cell_x;
     p.cell_y = cell_y;
     const vec2_t center = grid_cell_center(cell_x, cell_y);
     p.x = center.x;
     p.y = center.y;
     p.moving = false;
+    p.stop_at_next_cell = false;
+    p.steps = 0;
+}
+
+void player_reset(void) {
+    const vec2_t center = grid_cell_center(start_x, start_y);
+    p.cell_x = start_x;
+    p.cell_y = start_y;
+    p.x = center.x;
+    p.y = center.y;
+    p.moving = false;
+    p.stop_at_next_cell = false;
+    p.path_idx = 1;
+}
+
+void player_stop(void) {
+    // Halting mid-edge would leave Grace between cells, which breaks the
+    // grid-aligned look, so she walks out the rest of the edge first.
+    p.stop_at_next_cell = p.moving;
 }
 
 // the cell Grace is currently heading to: the next waypoint while moving,
@@ -66,6 +92,8 @@ void player_move_to(int cell_x, int cell_y, player_move_t mode) {
     p.speed = speed_for(mode);
     p.path_idx = p.moving ? 0 : 1;
     p.moving = (p.path.len > 1);
+    // a fresh order supersedes any pending stop
+    p.stop_at_next_cell = false;
 }
 
 static void advance_to(const vec2_t center, int cell_x, int cell_y) {
@@ -73,6 +101,8 @@ static void advance_to(const vec2_t center, int cell_x, int cell_y) {
     p.y = center.y;
     p.cell_x = cell_x;
     p.cell_y = cell_y;
+    // one turn for the enemies each time Grace reaches a new cell
+    p.steps++;
     p.path_idx++;
     if (p.path_idx >= p.path.len) {
         p.moving = false;
@@ -92,6 +122,10 @@ static bool step_towards(float dt) {
     // snap onto the cell centre once it is within one step
     if ((fabsf(dx) <= step) && (fabsf(dy) <= step)) {
         advance_to(center, tx, ty);
+        if (p.stop_at_next_cell) {
+            p.moving = false;
+            p.stop_at_next_cell = false;
+        }
         return p.moving;
     }
     // advance along a single axis (the larger remaining delta) so Grace never
@@ -128,4 +162,24 @@ vec2_t player_position(void) {
 void player_cell(int* cx, int* cy) {
     *cx = p.cell_x;
     *cy = p.cell_y;
+}
+
+int player_steps_taken(void) {
+    return p.steps;
+}
+
+int player_cell_x(void) {
+    return p.cell_x;
+}
+
+int player_cell_y(void) {
+    return p.cell_y;
+}
+
+float player_pos_x(void) {
+    return p.x;
+}
+
+float player_pos_y(void) {
+    return p.y;
 }

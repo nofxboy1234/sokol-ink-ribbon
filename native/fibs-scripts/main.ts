@@ -9,6 +9,7 @@ const sources = [
     'player.c',
     'item.c',
     'inventory.c',
+    'enemy.c',
     'render.c',
 ];
 
