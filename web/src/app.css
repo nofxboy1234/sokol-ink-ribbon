@@ -13,6 +13,21 @@ body {
 /* Two panes side by side: the map on the left, the inventory at the top of the
    right pane. The map keeps the larger share. No outer padding: the map fills
    the page, and the camera's own margin keeps the grid off the edges. */
+/* The camera's margin, mirrored from native/src/camera.c so the reserved
+   inventory width below matches what the camera actually uses. */
+:root {
+  --map-margin: min(48px, 5vmin);
+  /* Reserve the inventory pane up front, from the viewport alone.
+     The grid is four cells wide and a cell is CELL * scale, so if the pane
+     width were derived from the camera the two would depend on each other:
+     the grid appearing would narrow the map pane, which would change the cell
+     size, which would resize the grid - a loop that settled over ~120ms of
+     visible reflow on every load. Reserving the width before any script runs
+     means the map pane is final at first paint, so the camera measures once.
+     The factor of 1.25 is slack so the grid never has to clamp. */
+  --inv-pane-w: min(30%, max(200px, calc((100dvh - 2 * var(--map-margin)) / 3 * 1.25)));
+}
+
 .shell {
   display: flex;
   flex-direction: row;
@@ -36,7 +51,7 @@ body {
 }
 
 .pane-side {
-  flex: 0 0 auto;
+  flex: 0 0 var(--inv-pane-w);
   display: flex;
   align-items: flex-start;
 }
@@ -153,6 +168,8 @@ body {
   }
 
   .pane-side {
+    /* the grid spans the full width when stacked, so it needs no reserved
+       pane width and the cells can always match the map cells */
     flex: 0 0 auto;
     /* the grid is left-aligned like the map above it, rather than centred in
        the full width */

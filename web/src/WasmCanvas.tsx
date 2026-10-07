@@ -23,8 +23,7 @@ export function WasmCanvas() {
     }
 
     // sokol measures the canvas CSS box at startup and again only on window
-    // resize, but the shell settles after that (the inventory pane appears and
-    // narrows the map pane), so the drawing buffer would keep the startup size
+    // resize, so without this the drawing buffer would keep the startup size
     // and the map would be stretched. Re-measure when the pane resizes.
     //
     // Observe the pane, not the canvas: sokol's own resize path writes inline
@@ -32,16 +31,11 @@ export function WasmCanvas() {
     // writes straight back into another resize and collapse the layout to zero.
     // The pane's box is never written to, so this settles.
     //
-    // Only fires on an actual resize, so a steady layout costs nothing.
-    //
-    // The change is compared with a tolerance rather than for equality: the
-    // side pane is exactly four cells wide and the cell size comes from the
-    // camera, which fits the map to the map pane, so the two depend on each
-    // other. A fractional cell size makes them settle into a sub-pixel
-    // oscillation (the pane alternating between e.g. 778 and 778.67px), and
-    // each pass would otherwise resize sokol's buffer and start it again.
-    // Rounding would make that worse, not better. Ignoring sub-pixel drift
-    // breaks the loop and leaves the map at most a pixel off its ideal fit.
+    // The tolerance ignores sub-pixel drift, which the browser can report when
+    // a fractional layout rounds differently between frames; it avoids
+    // reallocating the buffer for nothing. It is not what fixes the load-time
+    // reflow - that came from the inventory grid sizing the pane it sits in,
+    // which is now prevented by reserving the pane width in CSS.
     const pane = canvas.parentElement;
     const TOLERANCE_PX = 1;
     let lastWidth = -1;

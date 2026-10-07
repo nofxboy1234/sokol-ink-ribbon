@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   EMPTY_SLOT,
   INVENTORY_COLS,
@@ -67,7 +67,22 @@ function sameSlots(a: ItemId[], b: ItemId[]): boolean {
 
 const EMPTY_SLOTS: ItemId[] = Array.from({ length: INVENTORY_SLOTS }, () => EMPTY_SLOT);
 
-export function Inventory() {
+/**
+ * Size of one cell in CSS px: the map's cell size, clamped so the grid still
+ * fits the pane it sits in.
+ *
+ * The pane's width is reserved in CSS from the viewport alone, so it never
+ * depends on this value and there is no feedback loop into the camera. The
+ * clamp is only a guard for an unusually narrow pane; the reserved width
+ * carries slack so normally the map's cell size is used unchanged and the grid
+ * matches the map cells exactly.
+ */
+function fitCellPx(mapCell: number, paneWidth: number): number {
+  const fits = paneWidth > 0 ? paneWidth / INVENTORY_COLS : mapCell;
+  return Math.min(mapCell, fits);
+}
+
+export function Inventory({ paneRef }: { paneRef: RefObject<HTMLElement | null> }) {
   const [slots, setSlots] = useState<ItemId[]>(EMPTY_SLOTS);
   const [cellPx, setCellPx] = useState(0);
 
@@ -86,7 +101,8 @@ export function Inventory() {
         slotsRef.current = nextSlots;
         setSlots(nextSlots);
       }
-      const nextCellPx = mapCellPx();
+      const pane = paneRef.current;
+      const nextCellPx = fitCellPx(mapCellPx(), pane ? pane.clientWidth : 0);
       if (nextCellPx !== cellPxRef.current) {
         cellPxRef.current = nextCellPx;
         setCellPx(nextCellPx);
