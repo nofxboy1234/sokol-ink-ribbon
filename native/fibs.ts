@@ -11,12 +11,14 @@ import { addEmscriptenSamples } from './fibs-scripts/emscripten.ts';
 import { addMain } from './fibs-scripts/main.ts';
 import { addMap } from './fibs-scripts/map.ts';
 import { addBox3d, addBox3dImport } from './fibs-scripts/box3d.ts';
+import { addCompdbCommand } from './fibs-scripts/compdb.ts';
 
 export function configure(c: Configurer) {
     addConfigs(c);
     addImports(c);
     addWebPageCommand(c);
     addBox3dImport(c);
+    addCompdbCommand(c);
 }
 
 export function build(b: Builder) {
@@ -25,6 +27,8 @@ export function build(b: Builder) {
             '/wd4324', // structure was padded due to alignment specifier
         ]);
     }
+    // emit compile_commands.json into the build dir for clangd / tooling
+    b.addCmakeVariable('CMAKE_EXPORT_COMPILE_COMMANDS', true);
     addLibs(b);
     addBox3d(b);
     addMain(b);

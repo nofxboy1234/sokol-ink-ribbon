@@ -138,6 +138,22 @@ List runnable targets and run any sample:
 Every sample also has a `-ui` variant (debug UI). Use `./fibs build <target>`
 to build a single target, and `./fibs run <target>` to run it.
 
+## Editor support (clangd / go-to-definition)
+
+The build exports a `compile_commands.json` (via `CMAKE_EXPORT_COMPILE_COMMANDS`)
+so clangd can resolve the sokol headers. Link it into the project root for the
+active config:
+
+```sh
+cd native
+./fibs compdb
+```
+
+This creates `native/compile_commands.json` as a symlink into
+`native/.fibs/build/<config>/`. Re-run `./fibs compdb` after switching build
+configs. clangd then finds it automatically for any file under `native/`, so
+go-to-definition works on `sokol_gfx.h`, `sokol_app.h`, `sokol_gl.h`, etc.
+
 ## fibs tab-completion
 
 Source the completion script (bash):

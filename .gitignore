@@ -13,6 +13,7 @@ web/*.tsbuildinfo
 native/.fibs/
 native/CMakeLists.txt
 native/CMakePresets.json
+native/compile_commands.json
 native/deno.lock
 
 # misc
