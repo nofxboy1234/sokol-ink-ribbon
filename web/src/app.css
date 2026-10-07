@@ -122,20 +122,27 @@ body {
 @media (max-width: 900px) {
   .shell {
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 24px;
+    align-items: stretch;
+    /* no centring: the map pane starts at the top so sokol's debug menu bar
+       is at the top of the page, and the grid sits at the bottom */
+    justify-content: flex-start;
+    gap: 0;
   }
 
   .pane-map {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     width: 100%;
-    /* matches the map grid, so the camera's own fit lines up with the box */
-    aspect-ratio: 18 / 12;
+    /* grow past the map's own 3:2 share so the map fills the height and pans
+       rather than shrinking to fit */
+    aspect-ratio: auto;
   }
 
   .pane-side {
     flex: 0 0 auto;
-    align-items: center;
+    /* the grid is left-aligned like the map above it, rather than centred in
+       the full width */
+    align-items: flex-start;
+    /* keeps the grid clear of browser UI at the bottom of the screen */
+    padding-bottom: 16px;
   }
 }

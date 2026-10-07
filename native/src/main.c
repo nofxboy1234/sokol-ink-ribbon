@@ -18,15 +18,25 @@
 #include "render.h"
 
 #include <stdbool.h>
+#include <math.h>
 
 #define PLAYER_START_X 9
 #define PLAYER_START_Y 2
+
+// A press that moves less than this counts as a click (move Grace) rather than
+// a drag (pan the map).
+#define DRAG_THRESHOLD 6.0f
 
 static struct {
     sg_pass_action pass_action;
     float mouse_x, mouse_y;
     int hover_x, hover_y;
     bool ui_captured;
+    // drag-to-pan state
+    bool dragging;
+    bool dragged;
+    player_move_t drag_mode;
+    float press_x, press_y;
 } app;
 
 static void update_hover(void) {
@@ -82,6 +92,9 @@ static void init(void) {
     app.hover_x = -1;
     app.hover_y = -1;
     app.ui_captured = false;
+    app.dragging = false;
+    app.dragged = false;
+    app.drag_mode = PLAYER_MOVE_WALK;
     app.pass_action = (sg_pass_action){
         .colors[0] = {
             .load_action = SG_LOADACTION_CLEAR,
@@ -115,12 +128,68 @@ static void cleanup(void) {
     sg_shutdown();
 }
 
+static void begin_drag(const sapp_event* e) {
+    app.dragging = true;
+    app.dragged = false;
+    app.press_x = e->mouse_x;
+    app.press_y = e->mouse_y;
+    app.drag_mode = move_mode_for(e->mouse_button);
+}
+
+// Dragging pans the map; a press that never moved past the threshold is a
+// click, so Grace still moves to the cell that was pressed.
+static void update_drag(const sapp_event* e) {
+    if (!app.dragging) {
+        return;
+    }
+    const float dx = e->mouse_x - app.press_x;
+    const float dy = e->mouse_y - app.press_y;
+    if (!app.dragged && ((fabsf(dx) > DRAG_THRESHOLD) || (fabsf(dy) > DRAG_THRESHOLD))) {
+        app.dragged = true;
+    }
+    if (app.dragged) {
+        camera_pan(dx, dy);
+        app.press_x = e->mouse_x;
+        app.press_y = e->mouse_y;
+    }
+}
+
+static void end_drag(void) {
+    const bool was_click = app.dragging && !app.dragged;
+    app.dragging = false;
+    app.dragged = false;
+    if (was_click) {
+        handle_click((vec2_t){ app.mouse_x, app.mouse_y }, app.drag_mode);
+    }
+}
+
 static void event(const sapp_event* e) {
     const bool captured = _dbgui_event_with_retval(e);
     if (e->type == SAPP_EVENTTYPE_MOUSE_MOVE) {
         app.mouse_x = e->mouse_x;
         app.mouse_y = e->mouse_y;
         app.ui_captured = captured;
+        update_drag(e);
+        return;
+    }
+    if (e->type == SAPP_EVENTTYPE_MOUSE_SCROLL) {
+        if (!captured) {
+            // one notch scrolls a third of a cell, so a trackpad still moves
+            const float cells = (e->scroll_y != 0.0f) ? 0.3333f : 0.0f;
+            camera_pan_cells(0.0f, cells * e->scroll_y);
+        }
+        return;
+    }
+    if (e->type == SAPP_EVENTTYPE_MOUSE_UP) {
+        app.mouse_x = e->mouse_x;
+        app.mouse_y = e->mouse_y;
+        app.ui_captured = captured;
+        if (!captured) {
+            end_drag();
+        } else {
+            app.dragging = false;
+            app.dragged = false;
+        }
         return;
     }
     if (e->type != SAPP_EVENTTYPE_MOUSE_DOWN) {
@@ -135,7 +204,7 @@ static void event(const sapp_event* e) {
     if (e->mouse_button != SAPP_MOUSEBUTTON_LEFT && e->mouse_button != SAPP_MOUSEBUTTON_RIGHT) {
         return;
     }
-    handle_click((vec2_t){ e->mouse_x, e->mouse_y }, move_mode_for(e->mouse_button));
+    begin_drag(e);
 }
 
 sapp_desc sokol_main(int argc, char* argv[]) {

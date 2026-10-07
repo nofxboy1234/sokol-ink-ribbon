@@ -2,27 +2,91 @@
 #include "grid.h"
 #include "sokol_app.h"
 #include <math.h>
+#include <stdbool.h>
 
 // The map keeps a margin inside whatever box sokol gives it. On a phone a
 // fixed margin would eat a quarter of the width, so it shrinks with the frame.
 #define MARGIN_MAX 48.0f
 #define MARGIN_SCALE 0.05f
 
+// The map is 3:2 landscape, so fitting it to a viewport of a different shape
+// leaves empty bands on one axis. Fitting is kept when those bands are small
+// (desktop, where the viewport is close to the map's shape), but past this
+// fraction of an axis the map is scaled to cover instead and the overflow is
+// panned, which keeps the cells readable and the space used.
+//
+// This is a measure of the resulting map rather than of the viewport's aspect:
+// the shell stacks the inventory under the map on narrow windows, which makes
+// the viewport taller than the window is wide even when the window itself is
+// not portrait.
+#define COVER_VOID 0.15f
+
 static float scale;
 static float origin_x;
 static float origin_y;
+// Pan is kept as a separate offset rather than folded into the origin, because
+// camera_update() runs every frame and would otherwise recompute the origin
+// from scratch and throw the pan away.
+static float pan_x;
+static float pan_y;
+static float map_screen_w;
+static float map_screen_h;
+static float view_w;
+static float view_h;
+
+// Keep the viewport inside the map: the origin may not go past the far edge, and
+// may not leave a gap on the near edge unless the map is smaller than the view,
+// in which case it is centred instead.
+static void clamp_origin(void) {
+    const float max_x = view_w - map_screen_w;
+    const float max_y = view_h - map_screen_h;
+    if (max_x >= 0.0f) {
+        origin_x = (view_w - map_screen_w) * 0.5f;
+    } else {
+        origin_x = fmaxf(max_x, fminf(0.0f, origin_x));
+    }
+    if (max_y >= 0.0f) {
+        origin_y = (view_h - map_screen_h) * 0.5f;
+    } else {
+        origin_y = fmaxf(max_y, fminf(0.0f, origin_y));
+    }
+}
 
 void camera_update(void) {
-    const float win_w = sapp_widthf();
-    const float win_h = sapp_heightf();
+    view_w = sapp_widthf();
+    view_h = sapp_heightf();
     const float map_w = GRID_W * CELL;
     const float map_h = GRID_H * CELL;
-    const float margin = fminf(MARGIN_MAX, fminf(win_w, win_h) * MARGIN_SCALE);
-    const float fit_x = (win_w - 2.0f * margin) / map_w;
-    const float fit_y = (win_h - 2.0f * margin) / map_h;
-    scale = fminf(fit_x, fit_y);
-    origin_x = (win_w - map_w * scale) * 0.5f;
-    origin_y = (win_h - map_h * scale) * 0.5f;
+    const float margin = fminf(MARGIN_MAX, fminf(view_w, view_h) * MARGIN_SCALE);
+
+    const float fit_x = (view_w - 2.0f * margin) / map_w;
+    const float fit_y = (view_h - 2.0f * margin) / map_h;
+    const float fit = fminf(fit_x, fit_y);
+
+    // fitting leaves this fraction of each axis empty
+    const float void_x = 1.0f - (map_w * fit) / view_w;
+    const float void_y = 1.0f - (map_h * fit) / view_h;
+    if ((void_x > COVER_VOID) || (void_y > COVER_VOID)) {
+        // Cover exactly, with no margin: any margin would leave a void strip.
+        scale = fmaxf(view_w / map_w, view_h / map_h);
+    } else {
+        scale = fit;
+    }
+
+    map_screen_w = map_w * scale;
+    map_screen_h = map_h * scale;
+
+    // Start from the fitted centre and re-apply the pan on top. The pan is
+    // deliberately not reset when the scale changes: resizing the window
+    // should keep whatever the viewport was looking at, clamped to the new
+    // map size.
+    origin_x = (view_w - map_screen_w) * 0.5f + pan_x;
+    origin_y = (view_h - map_screen_h) * 0.5f + pan_y;
+    clamp_origin();
+
+    // remember the clamped result so panning accumulates from where we are
+    pan_x = origin_x - (view_w - map_screen_w) * 0.5f;
+    pan_y = origin_y - (view_h - map_screen_h) * 0.5f;
 }
 
 vec2_t camera_to_screen(vec2_t map_pos) {
@@ -41,4 +105,28 @@ void camera_cell_at(vec2_t screen_pos, int* cx, int* cy) {
 
 float camera_cell_px(void) {
     return CELL * scale;
+}
+
+void camera_pan(float dx_px, float dy_px) {
+    origin_x += dx_px;
+    origin_y += dy_px;
+    clamp_origin();
+    pan_x = origin_x - (view_w - map_screen_w) * 0.5f;
+    pan_y = origin_y - (view_h - map_screen_h) * 0.5f;
+}
+
+void camera_pan_cells(float dx_cells, float dy_cells) {
+    camera_pan(-dx_cells * CELL * scale, -dy_cells * CELL * scale);
+}
+
+bool camera_pannable(void) {
+    return (map_screen_w > view_w) || (map_screen_h > view_h);
+}
+
+float camera_origin_x(void) {
+    return origin_x;
+}
+
+float camera_origin_y(void) {
+    return origin_y;
 }
