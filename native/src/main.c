@@ -9,6 +9,7 @@
 #include "sokol_glue.h"
 #define SOKOL_GL_IMPL
 #include "sokol_gl.h"
+#include "dbgui/dbgui.h"
 
 #include <math.h>
 #include <stdbool.h>
@@ -45,6 +46,7 @@ static struct {
     float scale, ox, oy;
     float mouse_x, mouse_y;
     int hover_x, hover_y;
+    bool ui_captured;
     float px, py;
     int pcell_x, pcell_y;
     int path[GRID_W * GRID_H];
@@ -294,6 +296,11 @@ static void update_movement(float dt) {
 }
 
 static void update_hover(void) {
+    if (state.ui_captured) {
+        state.hover_x = -1;
+        state.hover_y = -1;
+        return;
+    }
     const float mx = (state.mouse_x - state.ox) / state.scale;
     const float my = (state.mouse_y - state.oy) / state.scale;
     const int cx = (int)floorf(mx / CELL);
@@ -331,6 +338,7 @@ static void init(void) {
             .compare = SG_COMPAREFUNC_ALWAYS,
         },
     });
+    _dbgui_setup();
 
     // a divider inside the right room (open at its bottom row)
     wall_right[15][2] = true;
@@ -378,30 +386,38 @@ static void frame(void) {
     glow_dot(to_screen((vec2_t){ state.px, state.py }));
     sgl_end();
 
+    _dbgui_update();
     sg_begin_pass(&(sg_pass){
         .action = state.pass_action,
         .swapchain = sglue_swapchain(),
     });
     sgl_draw();
+    _dbgui_draw();
     sg_end_pass();
     sg_commit();
 }
 
 static void cleanup(void) {
+    _dbgui_shutdown();
     sgl_shutdown();
     sg_shutdown();
 }
 
 static void event(const sapp_event* e) {
+    const bool captured = _dbgui_event_with_retval(e);
     if (e->type == SAPP_EVENTTYPE_MOUSE_MOVE) {
         state.mouse_x = e->mouse_x;
         state.mouse_y = e->mouse_y;
+        state.ui_captured = captured;
     } else if (e->type == SAPP_EVENTTYPE_MOUSE_DOWN && e->mouse_button == SAPP_MOUSEBUTTON_LEFT) {
         state.mouse_x = e->mouse_x;
         state.mouse_y = e->mouse_y;
-        const float mx = (state.mouse_x - state.ox) / state.scale;
-        const float my = (state.mouse_y - state.oy) / state.scale;
-        start_move_to((int)floorf(mx / CELL), (int)floorf(my / CELL));
+        state.ui_captured = captured;
+        if (!captured) {
+            const float mx = (state.mouse_x - state.ox) / state.scale;
+            const float my = (state.mouse_y - state.oy) / state.scale;
+            start_move_to((int)floorf(mx / CELL), (int)floorf(my / CELL));
+        }
     }
 }
 
