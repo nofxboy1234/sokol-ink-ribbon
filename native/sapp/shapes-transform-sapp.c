@@ -1,0 +1,194 @@
+//------------------------------------------------------------------------------
+//  shapes-transform-sapp.c
+//
+//  Demonstrates merging multiple transformed shapes into a single draw-shape
+//  with sokol_shape.h
+//------------------------------------------------------------------------------
+#include "sokol_app.h"
+#include "sokol_gfx.h"
+#include "sokol_log.h"
+#include "sokol_glue.h"
+#define SOKOL_SHAPE_IMPL
+#include "sokol_shape.h"
+#define SOKOL_DEBUGTEXT_IMPL
+#include "sokol_debugtext.h"
+#define VECMATH_GENERICS
+#include "vecmath/vecmath.h"
+#include "dbgui/dbgui.h"
+#include "shapes-transform-sapp.glsl.h"
+
+struct {
+    sg_pass_action pass_action;
+    sg_pipeline pip;
+    sg_bindings bind;
+    sshape_element_range_t elms;
+    vs_params_t vs_params;
+    float rx, ry;
+} state;
+
+static void init(void) {
+    sg_setup(&(sg_desc){
+        .environment = sglue_environment(),
+        .logger.func = slog_func,
+    });
+    sdtx_setup(&(sdtx_desc_t){
+        .fonts[0] = sdtx_font_oric(),
+        .logger.func = slog_func,
+    });
+    _dbgui_setup();
+
+    // clear to black
+    state.pass_action = (sg_pass_action) {
+        .colors[0] = { .load_action = SG_LOADACTION_CLEAR, .clear_value = { 0.0f, 0.0f, 0.0f, 1.0f } }
+    };
+
+    // generate merged shape geometries
+    uint8_t vertices[SSHAPE_MAX_VERTEX_SIZE * 6 * 1024];
+    uint16_t indices[16 * 1024];
+    sshape_state_t shp = {
+        .vertices.buffer = SSHAPE_RANGE(vertices),
+        .indices.buffer  = SSHAPE_RANGE(indices),
+    };
+
+    // transform matrices for the shapes
+    const mat44_t box_transform = mat44_translation(-1.0f, 0.0f, +1.0f);
+    const mat44_t sphere_transform = mat44_translation(+1.0f, 0.0f, +1.0f);
+    const mat44_t cylinder_transform = mat44_translation(-1.0f, 0.0f, -1.0f);
+    const mat44_t torus_transform = mat44_translation(+1.0f, 0.0f, -1.0f);
+
+    // build the shapes...
+    sshape_build_box(&shp, &(sshape_box_t){
+        .width  = 1.0f,
+        .height = 1.0f,
+        .depth  = 1.0f,
+        .tiles  = 10,
+        .random_colors = true,
+        .transform = sshape_mat4((const float*)&box_transform)
+    });
+    sshape_build_sphere(&shp, &(sshape_sphere_t){
+        .merge = true,
+        .radius = 0.75f,
+        .slices = 36,
+        .stacks = 20,
+        .random_colors = true,
+        .transform = sshape_mat4((const float*)&sphere_transform)
+    });
+    sshape_build_cylinder(&shp, &(sshape_cylinder_t) {
+        .merge = true,
+        .radius = 0.5f,
+        .height = 1.0f,
+        .slices = 36,
+        .stacks = 10,
+        .random_colors = true,
+        .transform = sshape_mat4((const float*)&cylinder_transform)
+    });
+    sshape_build_torus(&shp, &(sshape_torus_t) {
+        .merge = true,
+        .radius = 0.5f,
+        .ring_radius = 0.3f,
+        .rings = 36,
+        .sides = 18,
+        .random_colors = true,
+        .transform = sshape_mat4((const float*)&torus_transform)
+    });
+    assert(shp.valid);
+
+    // extract element range for sg_draw()
+    state.elms = sshape_element_range(&shp);
+
+    // and finally create the vertex- and index-buffer
+    const sg_buffer_desc vbuf_desc = sshape_vertex_buffer_desc(&shp);
+    const sg_buffer_desc ibuf_desc = sshape_index_buffer_desc(&shp);
+    state.bind.vertex_buffers[0] = sg_make_buffer(&vbuf_desc);
+    state.bind.index_buffer = sg_make_buffer(&ibuf_desc);
+
+    // shader and pipeline object
+    state.pip = sg_make_pipeline(&(sg_pipeline_desc){
+        .shader = sg_make_shader(shapes_shader_desc(sg_query_backend())),
+        .layout = {
+            .buffers[0] = sshape_vertex_buffer_layout_state(&shp),
+            .attrs = {
+                [0] = sshape_position_vertex_attr_state(&shp),
+                [1] = sshape_normal_vertex_attr_state(&shp),
+                [2] = sshape_texcoord_vertex_attr_state(&shp),
+                [3] = sshape_color_vertex_attr_state(&shp)
+            }
+        },
+        .index_type = SG_INDEXTYPE_UINT16,
+        .cull_mode = SG_CULLMODE_NONE,
+        .depth = {
+            .compare = SG_COMPAREFUNC_LESS_EQUAL,
+            .write_enabled = true
+        },
+    });
+
+}
+
+static void frame(void) {
+    // help text
+    sdtx_canvas(sapp_width()*0.5f, sapp_height()*0.5f);
+    sdtx_pos(0.5f, 0.5f);
+    sdtx_puts("press key to switch draw mode:\n\n"
+              "  1: vertex normals\n"
+              "  2: texture coords\n"
+              "  3: vertex color");
+
+    // build model-view-projection matrix
+    const float t = (float)(sapp_frame_duration() * 60.0);
+    state.rx += 1.0f * t;
+    state.ry += 2.0f * t;
+    const mat44_t proj = mat44_perspective_fov_rh(vm_radians(60.0f), sapp_widthf()/sapp_heightf(), 0.01f, 10.0f);
+    const mat44_t view = mat44_look_at_rh(vec3(0.0f, 1.5f, 4.0f), vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f));
+    const mat44_t view_proj = vm_mul(view, proj);
+    const mat44_t rxm = mat44_rotation_x(vm_radians(state.rx));
+    const mat44_t rym = mat44_rotation_y(vm_radians(state.ry));
+    const mat44_t model = vm_mul(rym, rxm);
+    state.vs_params.mvp = vm_mul(model, view_proj);
+
+    // render the single shape
+    _dbgui_update();
+    sg_begin_pass(&(sg_pass){ .action = state.pass_action, .swapchain = sglue_swapchain() });
+    sg_apply_pipeline(state.pip);
+    sg_apply_bindings(&state.bind);
+    sg_apply_uniforms(UB_vs_params, &SG_RANGE(state.vs_params));
+    sg_draw(state.elms.base_element, state.elms.num_elements, 1);
+
+    // render help text and finish frame
+    sdtx_draw();
+    _dbgui_draw();
+    sg_end_pass();
+    sg_commit();
+}
+
+static void input(const sapp_event* ev) {
+    if (ev->type == SAPP_EVENTTYPE_KEY_DOWN) {
+        switch (ev->key_code) {
+            case SAPP_KEYCODE_1: state.vs_params.draw_mode = 0.0f; break;
+            case SAPP_KEYCODE_2: state.vs_params.draw_mode = 1.0f; break;
+            case SAPP_KEYCODE_3: state.vs_params.draw_mode = 2.0f; break;
+            default: break;
+        }
+    }
+    _dbgui_event(ev);
+}
+
+static void cleanup(void) {
+    _dbgui_shutdown();
+    sg_shutdown();
+}
+
+sapp_desc sokol_main(int argc, char* argv[]) {
+    (void)argc; (void)argv;
+    return (sapp_desc) {
+        .init_cb = init,
+        .frame_cb = frame,
+        .cleanup_cb = cleanup,
+        .event_cb = input,
+        .width = 800,
+        .height = 600,
+        .sample_count = 4,
+        .window_title = "shapes-transform-sapp.c",
+        .icon.sokol_default = true,
+        .logger.func = slog_func,
+    };
+}

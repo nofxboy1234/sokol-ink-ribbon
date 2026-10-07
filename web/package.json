@@ -1,0 +1,50 @@
+{
+  "name": "ink-ribbon",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "prebuild": "npm --prefix .. run build:wasm && npm --prefix .. run copy:wasm",
+    "build": "vite build",
+    "deploy:cloudflare": "void deploy --backend cloudflare --provision",
+    "preview": "vite preview",
+    "test": "vitest",
+    "lint": "oxlint",
+    "fmt": "oxfmt --write .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.13.13",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "valibot": "^1.5.0"
+  },
+  "devDependencies": {
+    "@rolldown/plugin-babel": "^0.2.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "@void/react": "^0.26.0",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "jsdom": "^30.1.2",
+    "oxc-transform-react": "^0.152.0",
+    "oxfmt": "^0.72.0",
+    "oxlint": "^1.87.0",
+    "oxlint-tsgolint": "^7.0.2003",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.3",
+    "vitest": "^5.0.3",
+    "void": "^0.26.0",
+    "wrangler": "^4.148.0"
+  },
+  "allowScripts": {
+    "better-sqlite3@13.0.3": true,
+    "workerd@1.20260930.2": true,
+    "workerd@1.20261001.1": true,
+    "workerd@1.20261006.1": true,
+    "esbuild@0.18.20": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.1": true,
+    "esbuild@0.28.2": true
+  }
+}

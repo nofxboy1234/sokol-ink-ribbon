@@ -1,0 +1,9 @@
+{
+  "name": "sokol-ink-ribbon",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:wasm": "cd native && ./fibs config sapp-gles-emsc-ninja-release && ./fibs build main",
+    "copy:wasm": "node scripts/copy-wasm.mjs"
+  }
+}

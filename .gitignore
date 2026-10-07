@@ -1,0 +1,20 @@
+# node
+node_modules/
+
+# web (void + vite)
+web/dist/
+web/.void/
+web/.wrangler/
+web/.void-wrangler.jsonc
+web/public/wasm/
+web/*.tsbuildinfo
+
+# native fibs build artifacts
+native/.fibs/
+native/CMakeLists.txt
+native/CMakePresets.json
+native/deno.lock
+
+# misc
+.DS_Store
+*.swp

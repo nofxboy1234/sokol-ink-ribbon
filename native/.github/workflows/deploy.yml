@@ -1,0 +1,83 @@
+name: Deploy Webpage
+on: workflow_dispatch
+
+jobs:
+  build-webgl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+      - uses: ashutoshvarma/setup-ninja@master
+      - uses: denoland/setup-deno@v2
+      - name: setup
+        run:  |
+          sudo apt update
+          sudo apt install webp
+          ./fibs emsdk install
+      - name: build
+        run: |
+          ./fibs webpage build webgl
+      - name: upload-artifact-webgl
+        uses: actions/upload-artifact@main
+        with:
+          name: webpage_webgl
+          path: .fibs/webpage/webgl
+          retention-days: 1
+
+  build-webgpu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+      - uses: ashutoshvarma/setup-ninja@master
+      - uses: denoland/setup-deno@v2
+      - name: setup
+        run:  |
+          sudo apt update
+          sudo apt install webp
+          ./fibs emsdk install
+      - name: build
+        run: |
+          ./fibs webpage build webgpu
+      - name: upload-artifact-webgpu
+        uses: actions/upload-artifact@main
+        with:
+          name: webpage_webgpu
+          path: .fibs/webpage/webgpu
+          retention-days: 1
+
+  deploy_webgl:
+    needs: build-webgl
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+        with:
+          repository: floooh/sokol-html5
+          ssh-key: ${{ secrets.SOKOL_HTML5_DEPLOY }}
+      - uses: actions/download-artifact@main
+        with:
+          name: webpage_webgl
+      - name: "commit and push"
+        run: |
+          git config user.email "none"
+          git config user.name "GH Action"
+          git add .
+          git diff-index --quiet HEAD || git commit -m "updated (${{ github.run_number }})"
+          git push
+
+  deploy_webgpu:
+    needs: build-webgpu
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+        with:
+          repository: floooh/sokol-webgpu
+          ssh-key: ${{ secrets.SOKOL_WEBGPU_DEPLOY }}
+      - uses: actions/download-artifact@main
+        with:
+          name: webpage_webgpu
+      - name: "commit and push"
+        run: |
+          git config user.email "none"
+          git config user.name "GH Action"
+          git add .
+          git diff-index --quiet HEAD || git commit -m "updated (${{ github.run_number }})"
+          git push
