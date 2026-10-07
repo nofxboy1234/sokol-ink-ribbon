@@ -56,3 +56,16 @@ void draw_glow_dot(vec2_t center) {
         }
     }
 }
+
+void draw_filled_circle(vec2_t center, float radius, float r, float g, float b, float a) {
+    const int segments = 32;
+    const float PI = 3.14159265f;
+    for (int i = 0; i < segments; i++) {
+        const float a0 = (float)i / (float)segments * 2.0f * PI;
+        const float a1 = (float)(i + 1) / (float)segments * 2.0f * PI;
+        sgl_c4f(r, g, b, a);
+        sgl_v2f(center.x, center.y);
+        sgl_v2f(center.x + cosf(a0) * radius, center.y + sinf(a0) * radius);
+        sgl_v2f(center.x + cosf(a1) * radius, center.y + sinf(a1) * radius);
+    }
+}

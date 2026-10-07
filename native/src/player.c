@@ -82,3 +82,8 @@ void player_update(float dt) {
 vec2_t player_position(void) {
     return (vec2_t){ p.x, p.y };
 }
+
+void player_cell(int* cx, int* cy) {
+    *cx = p.cell_x;
+    *cy = p.cell_y;
+}

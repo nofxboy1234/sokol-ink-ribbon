@@ -17,3 +17,6 @@ void player_update(float dt);
 
 // current position in map units
 vec2_t player_position(void);
+
+// current cell coordinates
+void player_cell(int* cx, int* cy);

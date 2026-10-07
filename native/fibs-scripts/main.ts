@@ -7,6 +7,7 @@ const sources = [
     'draw.c',
     'pathfind.c',
     'player.c',
+    'item.c',
     'render.c',
 ];
 

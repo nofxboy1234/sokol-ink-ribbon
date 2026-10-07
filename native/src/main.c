@@ -12,6 +12,7 @@
 
 #include "camera.h"
 #include "grid.h"
+#include "item.h"
 #include "player.h"
 #include "render.h"
 
@@ -44,7 +45,17 @@ static void update_hover(void) {
     }
 }
 
+static bool rect_contains(vec2_t min, vec2_t max, vec2_t p) {
+    return (p.x >= min.x) && (p.x <= max.x) && (p.y >= min.y) && (p.y <= max.y);
+}
+
 static void handle_click(vec2_t screen_pos, player_move_t mode) {
+    // the "Pick up" popup takes priority over map movement
+    vec2_t pmin, pmax;
+    if (render_popup_rect(&pmin, &pmax) && rect_contains(pmin, pmax, screen_pos)) {
+        item_take(item_any_in_reach());
+        return;
+    }
     int cx, cy;
     camera_cell_at(screen_pos, &cx, &cy);
     player_move_to(cx, cy, mode);
@@ -64,6 +75,7 @@ static void init(void) {
     _dbgui_setup();
     grid_init();
     player_init(PLAYER_START_X, PLAYER_START_Y);
+    items_init();
 
     app.hover_x = -1;
     app.hover_y = -1;
@@ -89,6 +101,7 @@ static void frame(void) {
         .swapchain = sglue_swapchain(),
     });
     sgl_draw();
+    render_draw_overlay();
     _dbgui_draw();
     sg_end_pass();
     sg_commit();

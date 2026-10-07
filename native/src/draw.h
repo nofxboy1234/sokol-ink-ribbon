@@ -11,3 +11,6 @@ void draw_glow_line(vec2_t a, vec2_t b);
 
 // a glowing blue dot (bright core with a soft halo)
 void draw_glow_dot(vec2_t center);
+
+// a solid filled circle
+void draw_filled_circle(vec2_t center, float radius, float r, float g, float b, float a);
