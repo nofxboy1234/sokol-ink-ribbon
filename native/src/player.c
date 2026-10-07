@@ -23,6 +23,10 @@ void player_init(int cell_x, int cell_y) {
 }
 
 void player_move_to(int cell_x, int cell_y) {
+    // turn-based: ignore new targets until the current move has finished
+    if (p.moving) {
+        return;
+    }
     if (cell_x == p.cell_x && cell_y == p.cell_y) {
         return;
     }
