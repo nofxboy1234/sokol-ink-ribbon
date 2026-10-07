@@ -22,7 +22,8 @@ web/                         Void + React + Vite app (pages/index.tsx loads the 
 native/                      sokol-samples fork + our main target (fibs project)
   fibs                       fibs launcher (deno -> jsr:@floooh/fibs)
   fibs.ts, fibs-scripts/     build wiring (sapp samples + our main target)
-  src/main.c                 the main native/wasm target (the map)
+  src/                       the map app: main.c plus the grid, camera,
+                             draw, pathfind, player and render modules
   sapp/ libs/ html5/ ...     upstream sokol-samples sources and assets
   scripts/fibs-completion.bash
 ```
