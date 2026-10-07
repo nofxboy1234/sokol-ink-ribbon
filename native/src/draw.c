@@ -27,23 +27,33 @@ void draw_line(vec2_t a, vec2_t b, float width, float r, float g, float bl, floa
         (vec2_t){ a.x - nx, a.y - ny });
 }
 
-// layer alphas are halved so the walls read as a faint glow
+// The reference frame's ramp: shadow navy -> deep navy -> mid blue -> sky ->
+// cool white, with a very steep climb and only a thin band before white. The
+// wide bands are dark and the core is hot, which is the opposite of a cyan
+// halo, and it is what makes the walls read as lit surfaces instead of strokes
+// drawn on top of the dark.
+// Layer alphas are halved so the walls read as a faint glow. The bright bands
+// are saturated blues rather than near-white: a white core blended over dark
+// navy averages towards grey, which reads as slate rather than the reference's
+// sky blue. The core lands just above the frame's sky blue (~140 luminance)
+// and below its accent cyan (~179), so a picked-up item still outshines the
+// walls and Grace still outshines both.
 void draw_glow_line(vec2_t a, vec2_t b) {
-    draw_line(a, b, 20.0f, 0.15f, 0.45f, 1.00f, 0.0225f);
-    draw_line(a, b, 11.0f, 0.20f, 0.55f, 1.00f, 0.0450f);
-    draw_line(a, b,  6.0f, 0.28f, 0.65f, 1.00f, 0.0900f);
-    draw_line(a, b,  3.0f, 0.42f, 0.78f, 1.00f, 0.2000f);
-    draw_line(a, b,  1.4f, 0.70f, 0.92f, 1.00f, 0.4250f);
+    draw_line(a, b, 20.0f, 0.055f, 0.149f, 0.376f, 0.0500f);
+    draw_line(a, b, 11.0f, 0.078f, 0.169f, 0.380f, 0.0800f);
+    draw_line(a, b,  6.0f, 0.180f, 0.439f, 0.855f, 0.2200f);
+    draw_line(a, b,  3.0f, 0.314f, 0.584f, 0.878f, 0.5000f);
+    draw_line(a, b,  1.4f, 0.620f, 0.812f, 0.898f, 0.7000f);
 }
 
 void draw_glow_dot(vec2_t center) {
     const int segments = 48;
     const float PI = 3.14159265f;
-    const float radii[5] = { 34.0f, 21.0f, 11.5f, 5.5f, 2.6f };
-    const float center_a[5] = { 0.06f, 0.14f, 0.35f, 0.90f, 1.0f };
+    const float radii[5] = { 30.0f, 18.0f, 10.0f, 5.0f, 2.5f };
+    const float center_a[5] = { 0.05f, 0.12f, 0.32f, 0.85f, 1.0f };
     const float rim_a[5] = { 0.0f, 0.0f, 0.0f, 0.20f, 0.55f };
-    const float cr[5] = { 0.20f, 0.30f, 0.45f, 0.75f, 1.0f };
-    const float cg[5] = { 0.50f, 0.62f, 0.78f, 0.92f, 1.0f };
+    const float cr[5] = { 0.055f, 0.078f, 0.314f, 0.620f, 0.918f };
+    const float cg[5] = { 0.149f, 0.169f, 0.584f, 0.878f, 0.988f };
     for (int layer = 0; layer < 5; layer++) {
         const float rad = radii[layer];
         for (int i = 0; i < segments; i++) {

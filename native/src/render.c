@@ -30,6 +30,30 @@ static void wall_segment(float mx0, float my0, float mx1, float my1) {
         camera_to_screen((vec2_t){ mx1, my1 }));
 }
 
+// A wash over the walkable area so the playfield reads as a lit floor plane.
+// This carries most of the reference frame's character: its darkness comes
+// from large flat mid-blue areas against near-black void, not from thin
+// lines, so a faint wash leaves the map looking flat. The reference's mid blue
+// over the lifted void lands the floor near luminance 52 against a void of 16,
+// well clear of the walls at ~165 and Grace at ~243.
+static void render_floor_wash(void) {
+    for (int y = 0; y < GRID_H; y++) {
+        for (int x = 0; x < GRID_W; x++) {
+            if (!grid_is_floor(x, y)) {
+                continue;
+            }
+            const vec2_t p0 = camera_to_screen((vec2_t){ x * CELL, y * CELL });
+            const vec2_t p1 = camera_to_screen((vec2_t){ (x + 1) * CELL, (y + 1) * CELL });
+            sgl_c4f(0.180f, 0.439f, 0.855f, 0.40f);
+            draw_quad(
+                (vec2_t){ p0.x, p0.y },
+                (vec2_t){ p1.x, p0.y },
+                (vec2_t){ p1.x, p1.y },
+                (vec2_t){ p0.x, p1.y });
+        }
+    }
+}
+
 // walls where a floor cell meets a void cell (or the outside)
 static void render_boundary_walls(void) {
     for (int y = 0; y < GRID_H; y++) {
@@ -69,8 +93,8 @@ static void render_hover(int cx, int cy) {
     const vec2_t b = { p1.x, p0.y };
     const vec2_t c = { p1.x, p1.y };
     const vec2_t d = { p0.x, p1.y };
-    draw_rect_frame(a, b, c, d, 8.0f, 0.20f, 1.00f, 0.35f, 0.10f);
-    draw_rect_frame(a, b, c, d, 2.6f, 0.30f, 1.00f, 0.40f, 0.95f);
+    draw_rect_frame(a, b, c, d, 8.0f, 0.180f, 0.439f, 0.855f, 0.10f);
+    draw_rect_frame(a, b, c, d, 2.6f, 0.620f, 0.812f, 0.898f, 0.90f);
 }
 
 static void render_popup_bg(vec2_t min, vec2_t max) {
@@ -78,9 +102,9 @@ static void render_popup_bg(vec2_t min, vec2_t max) {
     const vec2_t b = { max.x, min.y };
     const vec2_t c = max;
     const vec2_t d = { min.x, max.y };
-    sgl_c4f(0.02f, 0.05f, 0.03f, 0.88f);
+    sgl_c4f(0.012f, 0.024f, 0.043f, 0.90f);
     draw_quad(a, b, c, d);
-    draw_rect_frame(a, b, c, d, 1.6f, 0.40f, 1.00f, 0.55f, 0.95f);
+    draw_rect_frame(a, b, c, d, 1.6f, 0.620f, 0.812f, 0.898f, 0.90f);
 }
 
 static void render_items(void) {
@@ -89,8 +113,11 @@ static void render_items(void) {
             continue;
         }
         const vec2_t s = camera_to_screen(item_position(i));
-        draw_filled_circle(s, 14.0f, 0.20f, 1.00f, 0.40f, 0.12f);
-        draw_filled_circle(s, 7.0f, 0.45f, 1.00f, 0.55f, 0.95f);
+        // three stages so the item reads as the frame's accent cyan: a dim
+        // halo, a cyan body, and a hot centre that still sits below Grace
+        draw_filled_circle(s, 14.0f, 0.122f, 0.267f, 0.580f, 0.16f);
+        draw_filled_circle(s, 7.0f, 0.498f, 0.816f, 0.961f, 0.95f);
+        draw_filled_circle(s, 3.5f, 0.659f, 0.871f, 0.976f, 0.90f);
     }
 }
 
@@ -149,6 +176,7 @@ void render_scene(int hover_x, int hover_y) {
     sgl_load_identity();
 
     sgl_begin_quads();
+    render_floor_wash();
     render_boundary_walls();
     render_interior_walls();
     if (hover_x >= 0) {
@@ -175,7 +203,7 @@ void render_draw_overlay(void) {
         const float tx = pmin.x + (POPUP_W - tw) * 0.5f;
         const float ty = pmin.y + (POPUP_H - TEXT_CELL) * 0.5f;
         sdtx_pos(tx / TEXT_CELL, ty / TEXT_CELL);
-        sdtx_color4b(0xd0, 0xff, 0xc8, 0xff);
+        sdtx_color4b(0xea, 0xfc, 0xfe, 0xff);
         sdtx_puts(POPUP_TEXT);
     }
     sdtx_draw();

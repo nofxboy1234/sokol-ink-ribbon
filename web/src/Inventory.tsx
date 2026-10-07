@@ -19,14 +19,15 @@ type Edge = { key: string; left: number; top: number; horizontal: boolean };
 /**
  * The five bands draw_glow_line stacks for one wall segment, widest first.
  * Each is a flat quad there, so each is a flat div here: the same widths and
- * alphas in the same order, which a single box-shadow cannot reproduce.
+ * alphas in the same order, which a single box-shadow cannot reproduce. Kept in
+ * step with native/src/draw.c so the grid matches the map's walls.
  */
 const GLOW_LAYERS = [
-  { width: 20, color: "rgba(38, 115, 255, 0.0225)" },
-  { width: 11, color: "rgba(51, 140, 255, 0.045)" },
-  { width: 6, color: "rgba(71, 166, 255, 0.09)" },
-  { width: 3, color: "rgba(107, 199, 255, 0.2)" },
-  { width: 1.4, color: "rgba(179, 235, 255, 0.425)" },
+  { width: 20, color: "rgba(14, 38, 96, 0.05)" },
+  { width: 11, color: "rgba(20, 43, 97, 0.08)" },
+  { width: 6, color: "rgba(46, 112, 218, 0.22)" },
+  { width: 3, color: "rgba(80, 149, 224, 0.5)" },
+  { width: 1.4, color: "rgba(158, 207, 229, 0.7)" },
 ];
 
 /**

@@ -98,7 +98,10 @@ static void init(void) {
     app.pass_action = (sg_pass_action){
         .colors[0] = {
             .load_action = SG_LOADACTION_CLEAR,
-            .clear_value = { 0.0f, 0.0f, 0.0f, 1.0f },
+            // lifted off pure black to the reference frame's shadow navy, so
+            // walls read as lit surfaces in the dark rather than strokes on a
+            // flat void
+            .clear_value = { 0.027f, 0.063f, 0.149f, 1.0f },
         },
     };
 }

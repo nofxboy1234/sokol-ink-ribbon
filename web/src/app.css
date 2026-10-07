@@ -5,7 +5,9 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #000;
+  /* matches the sokol clear colour, so the area around the canvas does not
+     read as a black letterbox against the lifted navy */
+  background: #071026;
 }
 
 /* Two panes side by side: the map on the left, the inventory at the top of the
@@ -98,7 +100,7 @@ body {
   height: 54%;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  background: rgba(51, 255, 102, 0.12);
+  background: rgba(31, 68, 148, 0.16);
 }
 
 .inventory-item::after {
@@ -110,7 +112,20 @@ body {
   height: 50%;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  background: rgba(115, 255, 140, 0.95);
+  background: rgba(127, 208, 245, 0.95);
+}
+
+/* the hot centre that matches the third stage of the item drawn on the map */
+.inventory-item::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 25%;
+  height: 25%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(168, 222, 249, 0.9);
 }
 
 /* Stack the inventory under the map well before the phone breakpoint. In the
