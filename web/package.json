@@ -1,5 +1,5 @@
 {
-  "name": "ink-ribbon",
+  "name": "sokol-ink-ribbon",
   "private": true,
   "type": "module",
   "scripts": {
