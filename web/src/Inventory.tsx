@@ -5,12 +5,14 @@ import {
   INVENTORY_ROWS,
   INVENTORY_SLOTS,
   type ItemId,
-  inventoryOrigin,
   inventorySlots,
   mapCellPx,
 } from "./wasmBridge";
 
-type Layout = { cellPx: number; x: number; y: number };
+// The pane needs no explicit width: it is flex-basis auto, so it sizes to this
+// grid, which is exactly INVENTORY_COLS * cellPx wide. The grid's cell size
+// comes from the camera, which fits the map to the canvas in the other pane,
+// so the two settle on the same scale without any JS coordination.
 
 type Edge = { key: string; left: number; top: number; horizontal: boolean };
 
@@ -66,7 +68,7 @@ export function Inventory() {
   const [slots, setSlots] = useState<ItemId[]>(() =>
     Array.from({ length: INVENTORY_SLOTS }, () => EMPTY_SLOT),
   );
-  const [layout, setLayout] = useState<Layout>({ cellPx: 0, x: 0, y: 0 });
+  const [cellPx, setCellPx] = useState(0);
 
   // the inventory lives in the wasm module, so poll it once per frame
   useEffect(() => {
@@ -74,10 +76,9 @@ export function Inventory() {
     const poll = () => {
       const next = inventorySlots();
       setSlots((prev) => (sameSlots(prev, next) ? prev : next));
-      setLayout((prev) => {
-        const cellPx = mapCellPx();
-        const { x, y } = inventoryOrigin();
-        return prev.cellPx === cellPx && prev.x === x && prev.y === y ? prev : { cellPx, x, y };
+      setCellPx((prev) => {
+        const next = mapCellPx();
+        return prev === next ? prev : next;
       });
       frame = requestAnimationFrame(poll);
     };
@@ -85,10 +86,10 @@ export function Inventory() {
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  const edges = useMemo(() => gridEdges(layout.cellPx), [layout.cellPx]);
+  const edges = useMemo(() => gridEdges(cellPx), [cellPx]);
 
   // stay hidden until the canvas has reported its cell size
-  if (layout.cellPx <= 0) {
+  if (cellPx <= 0) {
     return null;
   }
 
@@ -96,10 +97,8 @@ export function Inventory() {
     <div
       className="inventory"
       style={{
-        left: layout.x,
-        top: layout.y,
-        width: INVENTORY_COLS * layout.cellPx,
-        height: INVENTORY_ROWS * layout.cellPx,
+        width: INVENTORY_COLS * cellPx,
+        height: INVENTORY_ROWS * cellPx,
       }}
     >
       {slots.map((item, slot) => (
@@ -107,10 +106,10 @@ export function Inventory() {
           key={slot}
           className="inventory-cell"
           style={{
-            left: (slot % INVENTORY_COLS) * layout.cellPx,
-            top: Math.floor(slot / INVENTORY_COLS) * layout.cellPx,
-            width: layout.cellPx,
-            height: layout.cellPx,
+            left: (slot % INVENTORY_COLS) * cellPx,
+            top: Math.floor(slot / INVENTORY_COLS) * cellPx,
+            width: cellPx,
+            height: cellPx,
           }}
         >
           {item !== EMPTY_SLOT && <span className="inventory-item" data-item={item} />}
@@ -124,8 +123,8 @@ export function Inventory() {
           style={{
             left: edge.left,
             top: edge.top,
-            width: edge.horizontal ? layout.cellPx : 0,
-            height: edge.horizontal ? 0 : layout.cellPx,
+            width: edge.horizontal ? cellPx : 0,
+            height: edge.horizontal ? 0 : cellPx,
           }}
         >
           {GLOW_LAYERS.map((layer) => (

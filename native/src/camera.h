@@ -11,13 +11,7 @@ vec2_t camera_to_map(vec2_t screen_pos);
 // map the given screen position to a grid cell (may be outside the grid)
 void camera_cell_at(vec2_t screen_pos, int* cx, int* cy);
 
-// ---- values mirrored by the React inventory panel ----
-// (all in CSS pixels, since the web canvas is sized in CSS pixels)
-
-// on-screen size of one map cell in pixels, i.e. CELL * scale, so the
-// inventory cells can be drawn exactly the same size as the map cells
+// On-screen size of one map cell in pixels, i.e. CELL * scale. The camera fits
+// the map to whatever box sokol gives it, so the React shell only needs this
+// to size the inventory cells the same as the map cells.
 WEB_EXPORT float camera_cell_px(void);
-
-// top-left corner of the reserved inventory area in canvas pixels
-WEB_EXPORT float camera_inventory_x(void);
-WEB_EXPORT float camera_inventory_y(void);

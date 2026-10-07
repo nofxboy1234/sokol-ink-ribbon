@@ -1,4 +1,7 @@
-/** Layout of Grace's inventory, mirroring native/src/inventory.h. */
+/**
+ * Layout of Grace's inventory, mirroring native/src/inventory.h. The grid is
+ * always 4x2; the shell decides whether it sits beside or below the map.
+ */
 export const INVENTORY_COLS = 4;
 export const INVENTORY_ROWS = 2;
 export const INVENTORY_SLOTS = INVENTORY_COLS * INVENTORY_ROWS;
@@ -14,8 +17,6 @@ export type EmscriptenModule = {
   _inventory_slot?: (slot: number) => number;
   /** native/src/camera.c */
   _camera_cell_px?: () => number;
-  _camera_inventory_x?: () => number;
-  _camera_inventory_y?: () => number;
 };
 
 declare global {
@@ -48,12 +49,4 @@ export function inventorySlots(): ItemId[] {
 /** On-screen size of one map cell in CSS px; 0 until the canvas has sized. */
 export function mapCellPx(): number {
   return module()?._camera_cell_px?.() ?? 0;
-}
-
-/** Top-left corner of the reserved inventory area, in CSS px. */
-export function inventoryOrigin(): { x: number; y: number } {
-  return {
-    x: module()?._camera_inventory_x?.() ?? 0,
-    y: module()?._camera_inventory_y?.() ?? 0,
-  };
 }
