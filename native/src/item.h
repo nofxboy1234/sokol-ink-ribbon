@@ -21,4 +21,9 @@ bool item_in_reach(int item);
 // index of a present item that Grace is next to, or -1
 int item_any_in_reach(void);
 
-void item_take(int item);
+// true when the pickup would actually succeed: in reach and a free slot
+bool item_can_take(int item);
+
+// pick the item up into the inventory, returns false when it is out of
+// reach or the inventory is full (the item then stays where it is)
+bool item_take(int item);

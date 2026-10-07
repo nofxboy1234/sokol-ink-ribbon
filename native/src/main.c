@@ -12,6 +12,7 @@
 
 #include "camera.h"
 #include "grid.h"
+#include "inventory.h"
 #include "item.h"
 #include "player.h"
 #include "render.h"
@@ -76,6 +77,7 @@ static void init(void) {
     grid_init();
     player_init(PLAYER_START_X, PLAYER_START_Y);
     items_init();
+    inventory_init();
 
     app.hover_x = -1;
     app.hover_y = -1;

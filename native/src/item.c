@@ -1,5 +1,6 @@
 #include "item.h"
 #include "grid.h"
+#include "inventory.h"
 #include "player.h"
 #include <stdlib.h>
 
@@ -56,6 +57,10 @@ bool item_in_reach(int item) {
     return (abs(dx) + abs(dy)) <= 1;
 }
 
+bool item_can_take(int item) {
+    return item_in_reach(item) && !inventory_full();
+}
+
 int item_any_in_reach(void) {
     for (int i = 0; i < ITEM_COUNT; i++) {
         if (item_in_reach(i)) {
@@ -65,8 +70,14 @@ int item_any_in_reach(void) {
     return -1;
 }
 
-void item_take(int item) {
-    if (valid(item)) {
-        items[item].taken = true;
+bool item_take(int item) {
+    if (!valid(item) || items[item].taken) {
+        return false;
     }
+    // a full inventory leaves the item lying on the ground
+    if (!inventory_add(item)) {
+        return false;
+    }
+    items[item].taken = true;
+    return true;
 }

@@ -1,16 +1,7 @@
 import { useEffect, useRef } from "react";
+import type { EmscriptenModule } from "./wasmBridge";
 
-export type EmscriptenModule = {
-  canvas?: HTMLCanvasElement;
-  print?: (...args: unknown[]) => void;
-  printErr?: (...args: unknown[]) => void;
-};
-
-declare global {
-  interface Window {
-    Module?: EmscriptenModule;
-  }
-}
+export type { EmscriptenModule };
 
 export function createModuleOptions(canvas: HTMLCanvasElement): EmscriptenModule {
   return {

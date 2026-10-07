@@ -8,6 +8,7 @@ const sources = [
     'pathfind.c',
     'player.c',
     'item.c',
+    'inventory.c',
     'render.c',
 ];
 

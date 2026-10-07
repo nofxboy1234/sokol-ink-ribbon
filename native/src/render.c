@@ -96,7 +96,8 @@ static void render_items(void) {
 
 bool render_popup_rect(vec2_t* min, vec2_t* max) {
     const int item = item_any_in_reach();
-    if (item < 0) {
+    // no popup when the inventory is full: there is nothing Grace can do
+    if ((item < 0) || !item_can_take(item)) {
         return false;
     }
     const vec2_t hs = camera_to_screen(item_position(item));

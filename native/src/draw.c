@@ -27,12 +27,13 @@ void draw_line(vec2_t a, vec2_t b, float width, float r, float g, float bl, floa
         (vec2_t){ a.x - nx, a.y - ny });
 }
 
+// layer alphas are halved so the walls read as a faint glow
 void draw_glow_line(vec2_t a, vec2_t b) {
-    draw_line(a, b, 20.0f, 0.15f, 0.45f, 1.00f, 0.045f);
-    draw_line(a, b, 11.0f, 0.20f, 0.55f, 1.00f, 0.090f);
-    draw_line(a, b,  6.0f, 0.28f, 0.65f, 1.00f, 0.180f);
-    draw_line(a, b,  3.0f, 0.42f, 0.78f, 1.00f, 0.400f);
-    draw_line(a, b,  1.4f, 0.70f, 0.92f, 1.00f, 0.850f);
+    draw_line(a, b, 20.0f, 0.15f, 0.45f, 1.00f, 0.0225f);
+    draw_line(a, b, 11.0f, 0.20f, 0.55f, 1.00f, 0.0450f);
+    draw_line(a, b,  6.0f, 0.28f, 0.65f, 1.00f, 0.0900f);
+    draw_line(a, b,  3.0f, 0.42f, 0.78f, 1.00f, 0.2000f);
+    draw_line(a, b,  1.4f, 0.70f, 0.92f, 1.00f, 0.4250f);
 }
 
 void draw_glow_dot(vec2_t center) {

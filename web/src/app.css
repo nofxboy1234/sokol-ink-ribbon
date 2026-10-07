@@ -8,10 +8,75 @@ body {
   background: #000;
 }
 
+/* sokol sizes the canvas from its CSS box, so the stage is the positioning
+   context for the inventory panel that is drawn to the right of the map */
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
 .wasm-canvas {
   display: block;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   border: 0;
   outline: none;
+}
+
+.inventory {
+  position: absolute;
+  pointer-events: none;
+}
+
+.inventory-cell {
+  position: absolute;
+}
+
+/* An edge is a zero-thickness guide; each glow layer is a flat band centred
+   on it, which is exactly the quad draw_glow_line pushes per segment. */
+.inventory-edge {
+  position: absolute;
+  display: block;
+}
+
+.inventory-edge[data-axis="x"] {
+  transform: translateY(-50%);
+}
+
+.inventory-edge[data-axis="y"] {
+  transform: translateX(-50%);
+}
+
+.inventory-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* the Green Herb dot, sized as a fraction of the cell so it scales with it.
+   the element itself carries the outer halo so the inner dot has a real
+   containing block to measure its percentage against. */
+.inventory-item {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 54%;
+  height: 54%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(51, 255, 102, 0.12);
+}
+
+.inventory-item::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 50%;
+  height: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(115, 255, 140, 0.95);
 }
