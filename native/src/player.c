@@ -29,18 +29,35 @@ void player_init(int cell_x, int cell_y) {
     p.moving = false;
 }
 
-void player_move_to(int cell_x, int cell_y, player_move_t mode) {
-    if (cell_x == p.cell_x && cell_y == p.cell_y) {
-        return;
+// the cell Grace is currently heading to: the next waypoint while moving,
+// otherwise the cell she already stands on
+static void current_target_cell(int* cx, int* cy) {
+    if (p.moving) {
+        const int waypoint = p.path.cells[p.path_idx];
+        *cx = waypoint % GRID_W;
+        *cy = waypoint / GRID_W;
+    } else {
+        *cx = p.cell_x;
+        *cy = p.cell_y;
     }
+}
+
+void player_move_to(int cell_x, int cell_y, player_move_t mode) {
     if (!grid_is_floor(cell_x, cell_y)) {
         return;
     }
-    if (!pathfind_find(p.cell_x, p.cell_y, cell_x, cell_y, &p.path)) {
+    int from_x, from_y;
+    current_target_cell(&from_x, &from_y);
+    if ((cell_x == from_x) && (cell_y == from_y)) {
+        return;
+    }
+    // re-path from the cell Grace is heading to, so she finishes the current
+    // edge to a cell centre before turning (keeps movement grid-aligned)
+    if (!pathfind_find(from_x, from_y, cell_x, cell_y, &p.path)) {
         return;
     }
     p.speed = speed_for(mode);
-    p.path_idx = (p.path.len > 1) ? 1 : 0;
+    p.path_idx = p.moving ? 0 : 1;
     p.moving = (p.path.len > 1);
 }
 
@@ -65,13 +82,18 @@ void player_update(float dt) {
     const vec2_t center = grid_cell_center(tx, ty);
     const float dx = center.x - p.x;
     const float dy = center.y - p.y;
-    const float dist = sqrtf(dx * dx + dy * dy);
     const float step = p.speed * dt;
-    if (dist <= step) {
+    // snap onto the cell centre once it is within one step
+    if ((fabsf(dx) <= step) && (fabsf(dy) <= step)) {
         advance_to(center, tx, ty);
+        return;
+    }
+    // advance along a single axis (the larger remaining delta) so Grace never
+    // moves diagonally, even when a new target is picked mid-move
+    if (fabsf(dx) >= fabsf(dy)) {
+        p.x += (dx > 0.0f) ? step : -step;
     } else {
-        p.x += dx / dist * step;
-        p.y += dy / dist * step;
+        p.y += (dy > 0.0f) ? step : -step;
     }
 }
 
