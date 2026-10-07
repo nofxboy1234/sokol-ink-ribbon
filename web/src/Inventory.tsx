@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   EMPTY_SLOT,
   INVENTORY_COLS,
@@ -64,22 +64,32 @@ function sameSlots(a: ItemId[], b: ItemId[]): boolean {
   return a.length === b.length && a.every((item, i) => item === b[i]);
 }
 
+const EMPTY_SLOTS: ItemId[] = Array.from({ length: INVENTORY_SLOTS }, () => EMPTY_SLOT);
+
 export function Inventory() {
-  const [slots, setSlots] = useState<ItemId[]>(() =>
-    Array.from({ length: INVENTORY_SLOTS }, () => EMPTY_SLOT),
-  );
+  const [slots, setSlots] = useState<ItemId[]>(EMPTY_SLOTS);
   const [cellPx, setCellPx] = useState(0);
 
-  // the inventory lives in the wasm module, so poll it once per frame
+  // The inventory lives in the wasm module and is polled once per frame, but
+  // it almost never changes between frames. Compare against the last committed
+  // values held in refs and only call setState on a real change, so a steady
+  // state renders once rather than sixty times a second. Refs are read and
+  // written in the same rAF callback, so no re-render is needed to see them.
+  const slotsRef = useRef(slots);
+  const cellPxRef = useRef(cellPx);
   useEffect(() => {
     let frame = 0;
     const poll = () => {
-      const next = inventorySlots();
-      setSlots((prev) => (sameSlots(prev, next) ? prev : next));
-      setCellPx((prev) => {
-        const next = mapCellPx();
-        return prev === next ? prev : next;
-      });
+      const nextSlots = inventorySlots();
+      if (!sameSlots(slotsRef.current, nextSlots)) {
+        slotsRef.current = nextSlots;
+        setSlots(nextSlots);
+      }
+      const nextCellPx = mapCellPx();
+      if (nextCellPx !== cellPxRef.current) {
+        cellPxRef.current = nextCellPx;
+        setCellPx(nextCellPx);
+      }
       frame = requestAnimationFrame(poll);
     };
     frame = requestAnimationFrame(poll);

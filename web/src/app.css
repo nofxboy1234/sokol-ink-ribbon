@@ -9,8 +9,8 @@ body {
 }
 
 /* Two panes side by side: the map on the left, the inventory at the top of the
-   right pane. The map keeps the larger share, matching how much of the current
-   single-canvas layout the map occupies. */
+   right pane. The map keeps the larger share. No outer padding: the map fills
+   the page, and the camera's own margin keeps the grid off the edges. */
 .shell {
   display: flex;
   flex-direction: row;
@@ -19,7 +19,6 @@ body {
   height: 100dvh;
   width: 100%;
   gap: 24px;
-  padding: 24px;
   box-sizing: border-box;
 }
 
@@ -114,17 +113,18 @@ body {
   background: rgba(115, 255, 140, 0.95);
 }
 
-/* Phones: the map is too wide to sit beside anything, so stack the inventory
-   under it. The map is sized by its width here (its 3:2 grid cannot fill a
-   tall pane), so the pane takes the matching aspect ratio instead of the
-   whole column and the stack is centred in the leftover space. */
-@media (max-width: 640px) {
+/* Stack the inventory under the map well before the phone breakpoint. In the
+   row layout the side pane competes with the map for width, so the cell size -
+   and with it the grid - shrinks as the window narrows: by ~900px the cells
+   are around 29px and the grid is only ~116px wide, versus ~176px stacked.
+   Stacking is also strictly larger for the map at every width, since the 3:2
+   grid is height-limited beside the grid and width-limited below it. */
+@media (max-width: 900px) {
   .shell {
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 24px;
-    padding: 16px;
   }
 
   .pane-map {

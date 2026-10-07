@@ -1,11 +1,18 @@
 #include "player.h"
 #include "grid.h"
 #include "pathfind.h"
+#include <stdbool.h>
 #include <math.h>
 
 // Grace walks at half her running speed (map units per second)
 #define PLAYER_WALK_SPEED (CELL * 2.0f)
 #define PLAYER_RUN_SPEED (CELL * 4.0f)
+
+// Longest slice of a frame that movement is integrated in, in seconds. One
+// 60fps frame is enough resolution: even at running speed that is a few map
+// units per slice, far short of the distance to the next cell centre, so a
+// step can never overshoot a waypoint and snapping stays exact.
+#define MAX_SUB_STEP (1.0f / 60.0f)
 
 static struct {
     float x, y;
@@ -72,10 +79,9 @@ static void advance_to(const vec2_t center, int cell_x, int cell_y) {
     }
 }
 
-void player_update(float dt) {
-    if (!p.moving) {
-        return;
-    }
+// move towards the current waypoint by at most dt of travel. Returns false
+// once Grace has arrived (p.moving clears).
+static bool step_towards(float dt) {
     const int target = p.path.cells[p.path_idx];
     const int tx = target % GRID_W;
     const int ty = target / GRID_W;
@@ -86,7 +92,7 @@ void player_update(float dt) {
     // snap onto the cell centre once it is within one step
     if ((fabsf(dx) <= step) && (fabsf(dy) <= step)) {
         advance_to(center, tx, ty);
-        return;
+        return p.moving;
     }
     // advance along a single axis (the larger remaining delta) so Grace never
     // moves diagonally, even when a new target is picked mid-move
@@ -94,6 +100,24 @@ void player_update(float dt) {
         p.x += (dx > 0.0f) ? step : -step;
     } else {
         p.y += (dy > 0.0f) ? step : -step;
+    }
+    return true;
+}
+
+void player_update(float dt) {
+    if (!p.moving || (dt <= 0.0f)) {
+        return;
+    }
+    // Consume the frame in fixed sub-steps so the result does not depend on the
+    // frame rate. One step per frame would let a long frame move further than
+    // a cell, and the dominant-axis branch would overshoot the waypoint and
+    // leave Grace off-grid instead of snapping onto it.
+    while (p.moving && (dt > 0.0f)) {
+        const float slice = fminf(dt, MAX_SUB_STEP);
+        dt -= slice;
+        if (!step_towards(slice)) {
+            return;
+        }
     }
 }
 
