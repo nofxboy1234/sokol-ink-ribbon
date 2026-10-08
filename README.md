@@ -1,12 +1,13 @@
 # sokol-ink-ribbon
 
-A map/gameplay prototype for *Grace* (Resident Evil Requiem style), split into:
+A [sokol](https://github.com/floooh/sokol) cube sample rendered in the browser,
+split into:
 
 - **`native/`** — the sokol + C project. It is a fork of
   [floooh/sokol-samples](https://github.com/floooh/sokol-samples) driven by
   [fibs](https://github.com/floooh/fibs), plus our own `main` target
-  (`native/src/main.c`): the grid map with glowing walls, a player dot, A*
-  movement and the `sokol-gfx` / `sokol-app` debug menus.
+  (`native/src/main.c`): the spinning cube from the `cube-sapp` sample, with the
+  `sokol-gfx` / `sokol-app` debug menus.
 - **`web/`** — a [Void](https://void.cloud) + React + Vite app. Its index page
   loads the native `main` compiled to WebAssembly.
 
@@ -22,8 +23,7 @@ web/                         Void + React + Vite app (pages/index.tsx loads the 
 native/                      sokol-samples fork + our main target (fibs project)
   fibs                       fibs launcher (deno -> jsr:@floooh/fibs)
   fibs.ts, fibs-scripts/     build wiring (sapp samples + our main target)
-  src/                       the map app: main.c plus the grid, camera,
-                             draw, pathfind, player and render modules
+  src/                       the cube sample: main.c plus main.glsl
   sapp/ libs/ html5/ ...     upstream sokol-samples sources and assets
   scripts/fibs-completion.bash
 ```
