@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "source": {
+    "workers_dev": true,
+    "preview_urls": true,
+    "routes": []
+  },
+  "resolved": {
+    "account_id": "76f99fa3e4928247aa1b9c1e09cd39cb",
+    "name": "sokol-ink-ribbon",
+    "workers_dev": true,
+    "preview_urls": true,
+    "routes": []
+  },
+  "text": "{\n  \"account_id\": \"76f99fa3e4928247aa1b9c1e09cd39cb\",\n  \"name\": \"sokol-ink-ribbon\",\n  \"workers_dev\": true,\n  \"preview_urls\": true,\n  \"routes\": []\n}\n"
+}
