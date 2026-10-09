@@ -134,16 +134,18 @@ static void draw_objects(void) {
                 float cr, cg, cb;
                 door_color(o, &cr, &cg, &cb);
                 if (o->horizontal) {
-                    fill_rect(sx + scale * 0.1f, sy + scale * 0.42f, scale * 0.8f, scale * 0.16f, cr, cg, cb, 1.0f);
+                    // on the horizontal wall line at the cell's top edge
+                    fill_rect(sx, sy - scale * 0.09f, scale, scale * 0.18f, cr, cg, cb, 1.0f);
                     if (!o->open) {
-                        fill_rect(sx + scale * 0.1f, sy + scale * 0.4f, scale * 0.8f, scale * 0.03f, C_INK_R);
-                        fill_rect(sx + scale * 0.1f, sy + scale * 0.57f, scale * 0.8f, scale * 0.03f, C_INK_R);
+                        fill_rect(sx, sy - scale * 0.12f, scale, scale * 0.03f, C_INK_R);
+                        fill_rect(sx, sy + scale * 0.09f, scale, scale * 0.03f, C_INK_R);
                     }
                 } else {
-                    fill_rect(sx + scale * 0.42f, sy + scale * 0.1f, scale * 0.16f, scale * 0.8f, cr, cg, cb, 1.0f);
+                    // on the vertical wall line at the cell's left edge
+                    fill_rect(sx - scale * 0.09f, sy, scale * 0.18f, scale, cr, cg, cb, 1.0f);
                     if (!o->open) {
-                        fill_rect(sx + scale * 0.4f, sy + scale * 0.1f, scale * 0.03f, scale * 0.8f, C_INK_R);
-                        fill_rect(sx + scale * 0.57f, sy + scale * 0.1f, scale * 0.03f, scale * 0.8f, C_INK_R);
+                        fill_rect(sx - scale * 0.12f, sy, scale * 0.03f, scale, C_INK_R);
+                        fill_rect(sx + scale * 0.09f, sy, scale * 0.03f, scale, C_INK_R);
                     }
                 }
                 break;
@@ -152,6 +154,7 @@ static void draw_objects(void) {
                 float cr, cg, cb;
                 item_color(o->item_type, &cr, &cg, &cb);
                 fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.22f, cr, cg, cb, 1.0f);
+                ring_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.24f, scale * 0.05f, C_INK_R);
                 break;
             }
             case OBJ_LIGHT: {
@@ -278,7 +281,7 @@ void render_scene(int hover_x, int hover_y, const path_t* path) {
         for (int i = 1; i < path->count; i++) {
             float cx, cy;
             camera_cell_to_screen((float)path->x[i] + 0.5f, (float)path->y[i] + 0.5f, &cx, &cy);
-            thick_line(px, py, cx, cy, 2.0f, C_PURPLE_R);
+            thick_line(px, py, cx, cy, 2.0f, C_GREEN_R);
             px = cx;
             py = cy;
         }

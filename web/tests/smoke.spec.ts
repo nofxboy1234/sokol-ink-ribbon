@@ -11,6 +11,7 @@ declare global {
       _lighter_value?: () => number;
       _replay_length?: () => number;
       _level_cell_px?: () => number;
+      _level_revealed?: () => number;
     };
   }
 }
@@ -31,6 +32,7 @@ test("the map app boots and renders the level", async ({ page }) => {
     cellX: window.Module?._player_cell_x?.() ?? -1,
     cellY: window.Module?._player_cell_y?.() ?? -1,
     replay: window.Module?._replay_length?.() ?? 0,
+    revealed: window.Module?._level_revealed?.() ?? 0,
   }));
 
   expect(grid.cols).toBe(99);
@@ -38,6 +40,8 @@ test("the map app boots and renders the level", async ({ page }) => {
   expect(grid.cellX).toBe(89);
   expect(grid.cellY).toBe(4);
   expect(grid.replay).toBeGreaterThan(0);
+  // the whole starting section is revealed as one large chunk
+  expect(grid.revealed).toBeGreaterThan(100);
 });
 
 test("the side panes and pause menu are present", async ({ page }) => {

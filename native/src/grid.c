@@ -141,6 +141,16 @@ void grid_reveal_around(int x, int y, int radius) {
     }
 }
 
+void grid_reveal_rect(int x, int y, int w, int h) {
+    for (int j = y; j < y + h; j++) {
+        for (int i = x; i < x + w; i++) {
+            if (grid_is_floor(i, j)) {
+                g.revealed[j * g.cols + i] = 1;
+            }
+        }
+    }
+}
+
 int grid_revealed_count(void) {
     int n = 0;
     for (int i = 0; i < g.cols * g.rows; i++) {

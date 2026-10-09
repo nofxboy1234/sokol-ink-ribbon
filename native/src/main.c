@@ -26,8 +26,8 @@
 #include "levels.h"
 
 #include <math.h>
+#include <string.h>
 
-#define REVEAL_RADIUS 13
 
 static struct {
     sg_pass_action pass_action;
@@ -40,12 +40,27 @@ static struct {
     bool last_moving;
     unsigned int revision;
     double elapsed;
+    bool section_revealed[LEVEL_MAX_SECTIONS];
 } app;
 
-static void touch_reveal(void) {
-    int cx, cy;
-    player_cell(&cx, &cy);
-    grid_reveal_around(cx, cy, lighter_on() ? 20 : REVEAL_RADIUS);
+static void bump_revision(void);
+
+// Reveal whole map sections as Grace steps into them (large chunks).
+static void reveal_sections(void) {
+    int px, py;
+    player_cell(&px, &py);
+    const level_t* lv = grid_level();
+    for (int i = 0; i < lv->section_count && i < LEVEL_MAX_SECTIONS; i++) {
+        if (app.section_revealed[i]) {
+            continue;
+        }
+        const section_t* s = &lv->sections[i];
+        if (px >= s->x && px < s->x + s->w && py >= s->y && py < s->y + s->h) {
+            app.section_revealed[i] = true;
+            grid_reveal_rect(s->x, s->y, s->w, s->h);
+            bump_revision();
+        }
+    }
 }
 
 static void bump_revision(void) {
@@ -114,7 +129,7 @@ static void init(void) {
     camera_set_viewport(sapp_width(), sapp_height());
     camera_follow(player_x(), player_y());
     camera_recentre();
-    touch_reveal();
+    reveal_sections();
 
     app.hover_x = -1;
     app.hover_y = -1;
@@ -137,7 +152,7 @@ static void frame(void) {
     player_update(dt);
     camera_follow(player_x(), player_y());
     camera_update(dt);
-    touch_reveal();
+    reveal_sections();
     update_hover();
 
     if (items_update()) {
@@ -360,7 +375,8 @@ WEB_EXPORT void game_reset(void) {
     camera_set_follow(true);
     camera_follow(player_x(), player_y());
     camera_recentre();
-    touch_reveal();
+    memset(app.section_revealed, 0, sizeof(app.section_revealed));
+    reveal_sections();
     app.elapsed = 0.0;
     app.last_steps = 0;
     app.last_moving = false;

@@ -17,4 +17,5 @@ bool grid_is_revealed(int x, int y);
 bool grid_blocked(int ax, int ay, int bx, int by);
 
 void grid_reveal_around(int x, int y, int radius);
+void grid_reveal_rect(int x, int y, int w, int h);
 int grid_revealed_count(void);
