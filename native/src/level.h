@@ -99,6 +99,10 @@ item_t item_from_name(const char* name);
 const char* door_state_name(int state);
 int door_state_from_name(const char* name);
 
+// Reference map colours, shared by the runtime and the editor.
+void item_color_rgb(int item, float* r, float* g, float* b);
+void door_color_rgb(int state, float* r, float* g, float* b);
+
 #ifdef __cplusplus
 }
 #endif

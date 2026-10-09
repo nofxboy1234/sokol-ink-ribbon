@@ -96,27 +96,11 @@ static void thick_line(float x0, float y0, float x1, float y1, float t, float cr
 }
 
 static void item_color(int item, float* cr, float* cg, float* cb) {
-    switch (item) {
-        case ITEM_BOTTLE: *cr = 0.0f; *cg = 0.867f; *cb = 1.0f; break;
-        case ITEM_COIN: *cr = 0.949f; *cg = 1.0f; *cb = 0.0f; break;
-        case ITEM_HERB: *cr = 0.0f; *cg = 1.0f; *cb = 0.149f; break;
-        case ITEM_INK_RIBBON: *cr = 0.118f; *cg = 0.118f; *cb = 0.118f; break;
-        case ITEM_SCREWDRIVER: *cr = 0.616f; *cg = 0.616f; *cb = 0.616f; break;
-        case ITEM_INJECTOR: *cr = 1.0f; *cg = 0.0f; *cb = 0.165f; break;
-        case ITEM_FUSE: *cr = 0.949f; *cg = 1.0f; *cb = 0.0f; break;
-        case ITEM_LIGHTER: *cr = 1.0f; *cg = 0.0f; *cb = 0.416f; break;
-        case ITEM_CHERUB_KEY: *cr = 0.588f; *cg = 0.118f; *cb = 1.0f; break;
-        default: *cr = 0.118f; *cg = 0.118f; *cb = 0.118f; break;
-    }
+    item_color_rgb(item, cr, cg, cb);
 }
 
 static void door_color(const obj_t* o, float* cr, float* cg, float* cb) {
-    switch (o->state) {
-        case DOOR_LOCKED: *cr = 1.0f; *cg = 0.0f; *cb = 0.165f; break;
-        case DOOR_UNLOCKED: *cr = 0.118f; *cg = 1.0f; *cb = 0.973f; break;
-        case DOOR_UNOPENABLE: *cr = 0.118f; *cg = 0.118f; *cb = 0.118f; break;
-        default: *cr = 0.616f; *cg = 0.616f; *cb = 0.616f; break;
-    }
+    door_color_rgb(o->state, cr, cg, cb);
 }
 
 static void draw_objects(void) {

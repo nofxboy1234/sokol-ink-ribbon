@@ -171,6 +171,30 @@ int door_state_from_name(const char* name) {
     return DOOR_UNKNOWN;
 }
 
+void item_color_rgb(int item, float* r, float* g, float* b) {
+    switch (item) {
+        case ITEM_BOTTLE: *r = 0.0f; *g = 0.867f; *b = 1.0f; break;
+        case ITEM_COIN: *r = 0.949f; *g = 1.0f; *b = 0.0f; break;
+        case ITEM_HERB: *r = 0.0f; *g = 1.0f; *b = 0.149f; break;
+        case ITEM_INK_RIBBON: *r = 0.118f; *g = 0.118f; *b = 0.118f; break;
+        case ITEM_SCREWDRIVER: *r = 0.616f; *g = 0.616f; *b = 0.616f; break;
+        case ITEM_INJECTOR: *r = 1.0f; *g = 0.0f; *b = 0.165f; break;
+        case ITEM_FUSE: *r = 0.949f; *g = 1.0f; *b = 0.0f; break;
+        case ITEM_LIGHTER: *r = 1.0f; *g = 0.0f; *b = 0.416f; break;
+        case ITEM_CHERUB_KEY: *r = 0.588f; *g = 0.118f; *b = 1.0f; break;
+        default: *r = 0.118f; *g = 0.118f; *b = 0.118f; break;
+    }
+}
+
+void door_color_rgb(int state, float* r, float* g, float* b) {
+    switch (state) {
+        case DOOR_LOCKED: *r = 1.0f; *g = 0.0f; *b = 0.165f; break;
+        case DOOR_UNLOCKED: *r = 0.118f; *g = 1.0f; *b = 0.973f; break;
+        case DOOR_UNOPENABLE: *r = 0.118f; *g = 0.118f; *b = 0.118f; break;
+        default: *r = 0.616f; *g = 0.616f; *b = 0.616f; break;
+    }
+}
+
 static void parse_walls(const char* js, const jsmntok_t* t, level_t* lv, int arr) {
     if (t[arr].type != JSMN_ARRAY) {
         return;

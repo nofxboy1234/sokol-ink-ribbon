@@ -34,6 +34,7 @@ static struct {
     int place_item;
     int selected;
     int section_selected;
+    int drag_obj;
     bool wall_active;
     float wall_x, wall_y;
     float cam_x, cam_y, scale;
@@ -63,6 +64,18 @@ static void fill_rect(float x, float y, float w, float h, float r, float g, floa
     sgl_v2f(x + w, y);
     sgl_v2f(x + w, y + h);
     sgl_v2f(x, y + h);
+    sgl_end();
+}
+
+static void fill_circle(float cx, float cy, float radius, float r, float g, float b, float a) {
+    const int segments = 20;
+    sgl_begin_triangle_strip();
+    sgl_c4f(r, g, b, a);
+    for (int i = 0; i <= segments; i++) {
+        float angle = (float)i / (float)segments * 6.2831853f;
+        sgl_v2f(cx, cy);
+        sgl_v2f(cx + cosf(angle) * radius, cy + sinf(angle) * radius);
+    }
     sgl_end();
 }
 
@@ -239,31 +252,48 @@ static void draw_map(void) {
     }
     for (int i = 0; i < ed.level.obj_count; i++) {
         obj_t* o = &ed.level.objs[i];
-        float sx = view_x((float)o->x + 0.5f);
-        float sy = view_y((float)o->y + 0.5f);
-        float r = 0.6f, g = 0.6f, b = 0.6f;
-        switch (o->kind) {
-            case OBJ_DOOR: r = 0.3f; g = 0.6f; b = 1.0f; break;
-            case OBJ_ITEM: r = 0.3f; g = 0.9f; b = 0.4f; break;
-            case OBJ_LIGHT: r = 1.0f; g = 0.85f; b = 0.3f; break;
-            case OBJ_SWITCH: r = 0.4f; g = 0.9f; b = 0.95f; break;
-            case OBJ_TYPEWRITER: r = 0.9f; g = 0.9f; b = 0.85f; break;
-            case OBJ_FILE: r = 0.95f; g = 0.95f; b = 0.8f; break;
-            case OBJ_SAFE: r = 0.6f; g = 0.4f; b = 0.2f; break;
-            case OBJ_OBSTACLE: r = 0.5f; g = 0.45f; b = 0.4f; break;
-            case OBJ_MOVABLE: r = 0.6f; g = 0.5f; b = 0.3f; break;
-            case OBJ_OPENABLE: r = 0.7f; g = 0.5f; b = 0.8f; break;
-            case OBJ_START: r = 0.3f; g = 1.0f; b = 0.4f; break;
-            case OBJ_GOAL: r = 0.9f; g = 0.2f; b = 0.8f; break;
-            default: break;
+        float cx = view_x((float)o->x + 0.5f);
+        float cy = view_y((float)o->y + 0.5f);
+        float scale = ed.scale;
+        if (o->kind == OBJ_ITEM) {
+            float r, g, b;
+            item_color_rgb(o->item_type, &r, &g, &b);
+            fill_circle(cx, cy, scale * 0.24f, 0.118f, 0.118f, 0.118f, 1.0f);
+            fill_circle(cx, cy, scale * 0.22f, r, g, b, 1.0f);
+        } else if (o->kind == OBJ_DOOR) {
+            float r, g, b;
+            door_color_rgb(o->state, &r, &g, &b);
+            float span = scale * (o->span > 0 ? o->span : 1);
+            if (o->horizontal) {
+                fill_rect(cx - scale * 0.5f, cy - scale * 0.09f, span, scale * 0.18f, r, g, b, 1.0f);
+            } else {
+                fill_rect(cx - scale * 0.09f, cy - scale * 0.5f, scale * 0.18f, span, r, g, b, 1.0f);
+            }
+        } else {
+            float r = 0.6f, g = 0.6f, b = 0.6f;
+            switch (o->kind) {
+                case OBJ_LIGHT: r = 1.0f; g = 0.85f; b = 0.3f; break;
+                case OBJ_SWITCH: r = 0.95f; g = 1.0f; b = 0.0f; break;
+                case OBJ_TYPEWRITER: r = 0.118f; g = 0.118f; b = 0.118f; break;
+                case OBJ_FILE: r = 0.95f; g = 0.95f; b = 0.9f; break;
+                case OBJ_SAFE: r = 0.616f; g = 0.616f; b = 0.616f; break;
+                case OBJ_OBSTACLE: r = 0.5f; g = 0.45f; b = 0.4f; break;
+                case OBJ_MOVABLE: r = 0.6f; g = 0.5f; b = 0.3f; break;
+                case OBJ_OPENABLE: r = 0.0f; g = 1.0f; b = 0.733f; break;
+                case OBJ_FUSEBOX: r = 0.95f; g = 0.85f; b = 0.0f; break;
+                case OBJ_START: r = 0.588f; g = 0.118f; b = 1.0f; break;
+                case OBJ_GOAL: r = 1.0f; g = 0.0f; b = 0.416f; break;
+                default: break;
+            }
+            float size = scale * 0.3f;
+            fill_rect(cx - size, cy - size, size * 2, size * 2, r, g, b, 1.0f);
         }
-        float size = ed.scale * 0.3f;
-        fill_rect(sx - size, sy - size, size * 2, size * 2, r, g, b, 1.0f);
         if (i == ed.selected) {
-            draw_line(sx - size - 2, sy - size - 2, sx + size + 2, sy - size - 2, 2, 1, 1, 1, 1);
-            draw_line(sx + size + 2, sy - size - 2, sx + size + 2, sy + size + 2, 2, 1, 1, 1, 1);
-            draw_line(sx + size + 2, sy + size + 2, sx - size - 2, sy + size + 2, 2, 1, 1, 1, 1);
-            draw_line(sx - size - 2, sy + size + 2, sx - size - 2, sy - size - 2, 2, 1, 1, 1, 1);
+            float size = scale * 0.45f;
+            draw_line(cx - size, cy - size, cx + size, cy - size, 2.0f, 1, 1, 1, 1);
+            draw_line(cx + size, cy - size, cx + size, cy + size, 2.0f, 1, 1, 1, 1);
+            draw_line(cx + size, cy + size, cx - size, cy + size, 2.0f, 1, 1, 1, 1);
+            draw_line(cx - size, cy + size, cx - size, cy - size, 2.0f, 1, 1, 1, 1);
         }
     }
     if (ed.wall_active) {
@@ -411,8 +441,24 @@ static void handle_input(void) {
             } else if (ed.tool == TOOL_SELECT) {
                 pick_object(wx, wy);
                 ed.section_selected = -1;
+                ed.drag_obj = ed.selected;
             } else if (ed.tool == TOOL_PLACE) {
                 add_object(ed.place_kind, (int)floorf(wx), (int)floorf(wy));
+            }
+        }
+        // dragging a selected object moves it to the cell under the cursor
+        if (ed.drag_obj >= 0 && ed.drag_obj < ed.level.obj_count) {
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                obj_t* o = &ed.level.objs[ed.drag_obj];
+                int nx = (int)floorf(wx);
+                int ny = (int)floorf(wy);
+                if (nx != o->x || ny != o->y) {
+                    o->x = nx;
+                    o->y = ny;
+                    ed.dirty = true;
+                }
+            } else {
+                ed.drag_obj = -1;
             }
         }
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
@@ -443,6 +489,7 @@ static void init(void) {
     ed.place_item = ITEM_HERB;
     ed.selected = -1;
     ed.section_selected = -1;
+    ed.drag_obj = -1;
     ed.wall_active = false;
     ed.cam_x = 32.0f;
     ed.cam_y = 24.0f;
