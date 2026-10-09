@@ -184,12 +184,16 @@ button.recipe {
   color: var(--ink);
 }
 
-button.recipe:hover:not(:disabled) {
+button.recipe:hover {
   background: var(--teal);
 }
 
 button.recipe:disabled {
   cursor: default;
+}
+
+.file:hover {
+  background: var(--teal);
 }
 
 .replay {

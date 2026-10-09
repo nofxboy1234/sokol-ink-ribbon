@@ -30,8 +30,10 @@ test("sign up and save a run", async ({ request, baseURL }) => {
 test("sign up through the form", async ({ page }) => {
   await page.goto("/");
   const email = `ui_${Date.now()}@example.com`;
-  await page.locator('input[type="email"]').fill(email);
-  await page.locator('input[type="password"]').fill("password123");
+  await page.locator('input[type="email"]').click();
+  await page.keyboard.type(email);
+  await page.locator('input[type="password"]').click();
+  await page.keyboard.type("password123");
   await page.getByRole("button", { name: "Sign up" }).click();
   await expect(page.getByText(email)).toBeVisible({ timeout: 10_000 });
 });

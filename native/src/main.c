@@ -242,6 +242,9 @@ sapp_desc sokol_main(int argc, char* argv[]) {
         .height = 720,
         .window_title = "sokol-ink-ribbon",
         .icon.sokol_default = true,
+        // let the browser handle keys so the HTML auth inputs can be typed into
+        .html5.bubble_key_events = true,
+        .html5.bubble_char_events = true,
         .logger.func = slog_func,
     };
 }
