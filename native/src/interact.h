@@ -17,3 +17,5 @@ const char* file_name_at(int index);
 int file_code_at(int index);
 
 int saves_made(void);
+
+bool goal_met(void);

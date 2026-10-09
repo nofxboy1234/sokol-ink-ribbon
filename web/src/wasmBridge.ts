@@ -24,6 +24,7 @@ export type EmscriptenModule = {
   _file_code?: (index: number) => number;
   _file_name?: (index: number) => number;
   _web_saves_made?: () => number;
+  _web_goal_met?: () => number;
   _game_reset?: () => void;
   _craft_recipe?: (index: number) => number;
   _replay_length?: () => number;
@@ -73,6 +74,7 @@ export type GameSnapshot = {
   doorsDiscovered: number;
   filesFound: number;
   saves: number;
+  goalMet: boolean;
 };
 
 const EMPTY_INVENTORY = [-1, -1, -1, -1, -1, -1, -1, -1];
@@ -98,6 +100,7 @@ export function readSnapshot(revision: number): GameSnapshot {
       doorsDiscovered: 0,
       filesFound: 0,
       saves: 0,
+      goalMet: false,
     };
   }
   const count = m._web_inventory_count?.() ?? 0;
@@ -123,6 +126,7 @@ export function readSnapshot(revision: number): GameSnapshot {
     doorsDiscovered: m._doors_discovered?.() ?? 0,
     filesFound: m._web_files_found?.() ?? 0,
     saves: m._web_saves_made?.() ?? 0,
+    goalMet: (m._web_goal_met?.() ?? 0) !== 0,
   };
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "@void/react";
 import "../src/app.css";
 import { formatMs } from "../src/panes";
 
@@ -65,7 +66,7 @@ export default function RecordsPage() {
     <main className="records">
       <header className="records-header">
         <h1>Records</h1>
-        <a href="/">Back to map</a>
+        <Link href="/">Back to map</Link>
       </header>
       <section className="records-section">
         <h2>Leaderboard</h2>

@@ -22,6 +22,7 @@ typedef enum {
     OBJ_OBSTACLE,
     OBJ_MOVABLE,
     OBJ_OPENABLE,
+    OBJ_FUSEBOX,
     OBJ_START,
     OBJ_GOAL,
     OBJ_KIND_COUNT,

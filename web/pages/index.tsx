@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "@void/react";
 import "../src/app.css";
 import { AuthPanel } from "../src/AuthPanel";
 import { GameStateProvider } from "../src/GameState";
@@ -55,9 +56,9 @@ export default function HomePage() {
             <header className="side-header">
               <HealthBar />
               <LighterButton />
-              <a className="records-link" href="/records">
+              <Link className="records-link" href="/records">
                 Records
-              </a>
+              </Link>
               <AuthPanel />
             </header>
             <RunPanel />

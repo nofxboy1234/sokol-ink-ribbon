@@ -4772,6 +4772,13 @@
    "name": "Grace start"
   },
   {
+   "kind": "fusebox",
+   "id": 200,
+   "x": 7,
+   "y": 84,
+   "name": "Fuse box"
+  },
+  {
    "kind": "door",
    "id": 100,
    "x": 13,

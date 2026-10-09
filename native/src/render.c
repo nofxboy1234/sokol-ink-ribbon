@@ -191,6 +191,10 @@ static void draw_objects(void) {
             case OBJ_OPENABLE:
                 fill_rect(sx + scale * 0.25f, sy + scale * 0.25f, scale * 0.5f, scale * 0.5f, 0.0f, 1.0f, 0.733f, 1.0f);
                 break;
+            case OBJ_FUSEBOX:
+                fill_rect(sx + scale * 0.25f, sy + scale * 0.25f, scale * 0.5f, scale * 0.5f, C_INK_R);
+                fill_rect(sx + scale * 0.35f, sy + scale * 0.35f, scale * 0.3f, scale * 0.3f, C_YELLOW_R);
+                break;
             case OBJ_GOAL:
                 fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.3f, C_MAGENTA_R);
                 break;

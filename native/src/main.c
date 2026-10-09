@@ -348,6 +348,10 @@ WEB_EXPORT int web_saves_made(void) {
     return saves_made();
 }
 
+WEB_EXPORT int web_goal_met(void) {
+    return goal_met() ? 1 : 0;
+}
+
 WEB_EXPORT int craft_recipe(int index) {
     if (craft(index)) {
         bump_revision();

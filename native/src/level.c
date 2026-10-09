@@ -126,7 +126,7 @@ void level_init(level_t* lv) {
 const char* obj_kind_name(obj_kind_t kind) {
     static const char* names[OBJ_KIND_COUNT] = {
         "door", "item", "light", "switch", "typewriter", "file",
-        "safe", "obstacle", "movable", "openable", "start", "goal",
+        "safe", "obstacle", "movable", "openable", "fusebox", "start", "goal",
     };
     return (kind >= 0 && kind < OBJ_KIND_COUNT) ? names[kind] : "door";
 }

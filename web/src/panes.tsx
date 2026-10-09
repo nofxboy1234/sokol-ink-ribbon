@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ITEM_NAMES,
   craftRecipe,
   gameReset,
   readFiles,
   readReplay,
+  runElapsedMs,
   setLighter,
 } from "./wasmBridge";
 import { useElapsed, useGameState } from "./GameState";
@@ -30,35 +31,41 @@ const ITEM_COLORS = [
 
 export function RunPanel() {
   const elapsed = useElapsed();
+  const { goalMet } = useGameState();
   const [status, setStatus] = useState("");
+  const savedRef = useRef(false);
 
-  const save = async () => {
-    const replay = readReplay();
-    try {
-      const response = await fetch("/runs", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          levelId: "care-center-01",
-          durationMs: Math.round(elapsed),
-          completed: false,
-          replay,
-        }),
-      });
-      setStatus(
-        response.ok ? "Saved" : response.status === 401 ? "Sign in to save" : "Save failed",
-      );
-    } catch {
-      setStatus("Save failed");
+  // A run saves itself the moment the goal (the fuse box) is activated.
+  useEffect(() => {
+    if (!goalMet || savedRef.current) {
+      return;
     }
-  };
+    savedRef.current = true;
+    const replay = readReplay();
+    void (async () => {
+      try {
+        const response = await fetch("/runs", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            levelId: "care-center-01",
+            durationMs: Math.round(runElapsedMs()),
+            completed: true,
+            replay,
+          }),
+        });
+        setStatus(
+          response.ok ? "Run saved" : response.status === 401 ? "Sign in to save" : "Save failed",
+        );
+      } catch {
+        setStatus("Save failed");
+      }
+    })();
+  }, [goalMet]);
 
   return (
     <div className="run-panel">
       <span className="timer">{formatMs(elapsed)}</span>
-      <button type="button" onClick={() => void save()}>
-        Save run
-      </button>
       {status && <span className="run-status">{status}</span>}
     </div>
   );

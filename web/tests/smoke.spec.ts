@@ -103,3 +103,16 @@ test("pause stops movement", async ({ page }) => {
   expect(t2 - t1).toBeLessThan(50);
   expect(s2).toBe(s1);
 });
+
+test("no save button and records navigates client-side", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Save run" })).toHaveCount(0);
+
+  await page.evaluate(() => {
+    (window as unknown as { __marker?: number }).__marker = 1;
+  });
+  await page.getByRole("link", { name: "Records" }).click();
+  await expect(page.getByRole("heading", { name: "Records" })).toBeVisible();
+  const marker = await page.evaluate(() => (window as unknown as { __marker?: number }).__marker);
+  expect(marker).toBe(1);
+});

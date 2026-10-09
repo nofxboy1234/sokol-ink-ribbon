@@ -12,6 +12,7 @@ static struct {
     int file_obj[LEVEL_MAX_OBJECTS];
     int file_count;
     int saves;
+    bool goal;
 } in;
 
 void interact_init(void) {
@@ -76,6 +77,10 @@ bool interact_at(int x, int y) {
             }
             return true;
         }
+        if (o->kind == OBJ_FUSEBOX && !in.goal) {
+            in.goal = true;
+            return true;
+        }
     }
     return false;
 }
@@ -118,4 +123,8 @@ int file_code_at(int index) {
 
 int saves_made(void) {
     return in.saves;
+}
+
+bool goal_met(void) {
+    return in.goal;
 }
