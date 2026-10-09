@@ -13,19 +13,6 @@ static struct {
     uint8_t vwall[GRID_MAX_ROWS * (GRID_MAX_COLS + 1)];
 } g;
 
-static void fill_floor_from_sections(const level_t* lv) {
-    for (int s = 0; s < lv->section_count; s++) {
-        const section_t* sec = &lv->sections[s];
-        for (int y = sec->y; y < sec->y + sec->h; y++) {
-            for (int x = sec->x; x < sec->x + sec->w; x++) {
-                if (x >= 0 && x < g.cols && y >= 0 && y < g.rows) {
-                    g.floor[y * g.cols + x] = 1;
-                }
-            }
-        }
-    }
-}
-
 static void rasterize_walls(const level_t* lv) {
     for (int i = 0; i < lv->wall_count; i++) {
         const wall_seg_t* w = &lv->walls[i];
@@ -51,13 +38,51 @@ static void rasterize_walls(const level_t* lv) {
     }
 }
 
+// The walkable interior is whatever is reachable from the start cell without
+// crossing a wall, so the floor always sits exactly inside the drawn walls.
+static void flood_floor(const level_t* lv) {
+    int cols = g.cols;
+    int rows = g.rows;
+    if (lv->start_x < 0 || lv->start_x >= cols || lv->start_y < 0 || lv->start_y >= rows) {
+        return;
+    }
+    static int stack[GRID_MAX_COLS * GRID_MAX_ROWS];
+    int top = 0;
+    int start = lv->start_y * cols + lv->start_x;
+    g.floor[start] = 1;
+    stack[top++] = start;
+    while (top > 0) {
+        int cur = stack[--top];
+        int cx = cur % cols;
+        int cy = cur / cols;
+        int nx[4] = { cx + 1, cx - 1, cx, cx };
+        int ny[4] = { cy, cy, cy + 1, cy - 1 };
+        bool blocked[4] = {
+            g.vwall[cy * (cols + 1) + (cx + 1)],
+            g.vwall[cy * (cols + 1) + cx],
+            g.hwall[(cy + 1) * cols + cx],
+            g.hwall[cy * cols + cx],
+        };
+        for (int d = 0; d < 4; d++) {
+            if (nx[d] < 0 || nx[d] >= cols || ny[d] < 0 || ny[d] >= rows || blocked[d]) {
+                continue;
+            }
+            int ni = ny[d] * cols + nx[d];
+            if (!g.floor[ni]) {
+                g.floor[ni] = 1;
+                stack[top++] = ni;
+            }
+        }
+    }
+}
+
 void grid_init(const level_t* lv) {
     memset(&g, 0, sizeof(g));
     g.level = lv;
     g.cols = lv->cols < GRID_MAX_COLS ? lv->cols : GRID_MAX_COLS;
     g.rows = lv->rows < GRID_MAX_ROWS ? lv->rows : GRID_MAX_ROWS;
-    fill_floor_from_sections(lv);
     rasterize_walls(lv);
+    flood_floor(lv);
 }
 
 int grid_cols(void) {

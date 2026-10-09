@@ -10,6 +10,7 @@ declare global {
       _web_inventory_count?: () => number;
       _lighter_value?: () => number;
       _replay_length?: () => number;
+      _level_cell_px?: () => number;
     };
   }
 }
@@ -32,10 +33,10 @@ test("the map app boots and renders the level", async ({ page }) => {
     replay: window.Module?._replay_length?.() ?? 0,
   }));
 
-  expect(grid.cols).toBe(64);
-  expect(grid.rows).toBe(56);
-  expect(grid.cellX).toBe(5);
-  expect(grid.cellY).toBe(13);
+  expect(grid.cols).toBe(99);
+  expect(grid.rows).toBe(86);
+  expect(grid.cellX).toBe(89);
+  expect(grid.cellY).toBe(4);
   expect(grid.replay).toBeGreaterThan(0);
 });
 
@@ -57,13 +58,14 @@ test("walking records a replay", async ({ page }) => {
   });
 
   const before = await page.evaluate(() => window.Module?._replay_length?.() ?? 0);
+  const cellPx = await page.evaluate(() => window.Module?._level_cell_px?.() ?? 20);
   const canvas = page.locator("canvas#canvas");
   const box = await canvas.boundingBox();
   if (!box) {
     throw new Error("canvas has no box");
   }
-  // click to the right of Grace's start cell to walk a few cells
-  await page.mouse.click(box.x + box.width * 0.62, box.y + box.height * 0.5);
+  // Grace is centred; click ~2.5 cells to her right to walk within the room
+  await page.mouse.click(box.x + box.width / 2 + cellPx * 2.5, box.y + box.height / 2);
   await page.waitForTimeout(1500);
   const after = await page.evaluate(() => window.Module?._replay_length?.() ?? 0);
   expect(after).toBeGreaterThan(before);

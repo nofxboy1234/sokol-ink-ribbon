@@ -4,7 +4,7 @@
 
 #define CAMERA_MIN_SCALE 6.0f
 #define CAMERA_MAX_SCALE 96.0f
-#define CAMERA_FIT_CELLS 28.0f
+#define CAMERA_FIT_CELLS 44.0f
 #define CAMERA_CATCHUP 6.0f
 
 static struct {

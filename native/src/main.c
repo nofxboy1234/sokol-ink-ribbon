@@ -27,9 +27,7 @@
 
 #include <math.h>
 
-#define REVEAL_RADIUS 7
-#define DRAG_THRESHOLD 6.0f
-#define PINCH_MIN_DIST 12.0f
+#define REVEAL_RADIUS 13
 
 static struct {
     sg_pass_action pass_action;
@@ -38,12 +36,6 @@ static struct {
     float mouse_x, mouse_y;
     int hover_x, hover_y;
     bool ui_captured;
-    bool dragging;
-    bool dragged;
-    bool pinching;
-    float pinch_dist;
-    float press_x, press_y;
-    player_move_t drag_mode;
     int last_steps;
     bool last_moving;
     unsigned int revision;
@@ -53,7 +45,7 @@ static struct {
 static void touch_reveal(void) {
     int cx, cy;
     player_cell(&cx, &cy);
-    grid_reveal_around(cx, cy, lighter_on() ? 11 : REVEAL_RADIUS);
+    grid_reveal_around(cx, cy, lighter_on() ? 20 : REVEAL_RADIUS);
 }
 
 static void bump_revision(void) {
@@ -128,11 +120,6 @@ static void init(void) {
     app.hover_y = -1;
     app.preview.count = 0;
     app.ui_captured = false;
-    app.dragging = false;
-    app.dragged = false;
-    app.pinching = false;
-    app.pinch_dist = 0.0f;
-    app.drag_mode = PLAYER_WALK;
     app.last_steps = 0;
     app.last_moving = false;
     app.revision = 0;
@@ -186,88 +173,12 @@ static void cleanup(void) {
     sg_shutdown();
 }
 
-static void begin_drag(const sapp_event* e) {
-    app.dragging = true;
-    app.dragged = false;
-    app.press_x = e->mouse_x;
-    app.press_y = e->mouse_y;
-    app.drag_mode = (e->mouse_button == SAPP_MOUSEBUTTON_RIGHT) ? PLAYER_RUN : PLAYER_WALK;
-}
-
-static void update_drag(const sapp_event* e) {
-    if (!app.dragging) {
-        return;
-    }
-    float dx = e->mouse_x - app.press_x;
-    float dy = e->mouse_y - app.press_y;
-    if (!app.dragged && (fabsf(dx) > DRAG_THRESHOLD || fabsf(dy) > DRAG_THRESHOLD)) {
-        app.dragged = true;
-    }
-    if (app.dragged) {
-        camera_pan_pixels(dx, dy);
-        app.press_x = e->mouse_x;
-        app.press_y = e->mouse_y;
-    }
-}
-
-static float touch_distance(const sapp_touchpoint* a, const sapp_touchpoint* b) {
-    float dx = b->pos_x - a->pos_x;
-    float dy = b->pos_y - a->pos_y;
-    return sqrtf(dx * dx + dy * dy);
-}
-
-static void handle_touches(const sapp_event* e) {
-    if (e->num_touches >= 2) {
-        const sapp_touchpoint* a = &e->touches[0];
-        const sapp_touchpoint* b = &e->touches[1];
-        float dist = touch_distance(a, b);
-        float mid_x = (a->pos_x + b->pos_x) * 0.5f;
-        float mid_y = (a->pos_y + b->pos_y) * 0.5f;
-        if (app.pinching && app.pinch_dist > PINCH_MIN_DIST) {
-            camera_zoom_at(mid_x, mid_y, dist / app.pinch_dist);
-        }
-        app.pinching = true;
-        app.pinch_dist = dist;
-        app.dragging = false;
-        app.dragged = false;
-        return;
-    }
-    if (e->num_touches == 1) {
-        if (e->type == SAPP_EVENTTYPE_TOUCHES_BEGAN && !app.pinching) {
-            app.dragging = true;
-            app.dragged = false;
-            app.press_x = e->touches[0].pos_x;
-            app.press_y = e->touches[0].pos_y;
-            app.mouse_x = e->touches[0].pos_x;
-            app.mouse_y = e->touches[0].pos_y;
-        } else if (app.dragging) {
-            sapp_event fake = *e;
-            fake.mouse_x = e->touches[0].pos_x;
-            fake.mouse_y = e->touches[0].pos_y;
-            update_drag(&fake);
-        }
-        return;
-    }
-    if (app.pinching) {
-        app.pinching = false;
-        app.pinch_dist = 0.0f;
-        return;
-    }
-    if (app.dragging) {
-        bool was_click = !app.dragged;
-        app.dragging = false;
-        app.dragged = false;
-        if (was_click && e->num_touches == 0) {
-            app.mouse_x = app.press_x;
-            app.mouse_y = app.press_y;
-            update_hover();
-            handle_click(PLAYER_WALK);
-        }
-    }
+static void click_at(sapp_mousebutton button) {
+    update_hover();
+    handle_click(button == SAPP_MOUSEBUTTON_RIGHT ? PLAYER_RUN : PLAYER_WALK);
 }
 
 static void event(const sapp_event* e) {
-    bool captured = false;
     switch (e->type) {
         case SAPP_EVENTTYPE_RESIZED:
             camera_set_viewport(sapp_width(), sapp_height());
@@ -275,52 +186,24 @@ static void event(const sapp_event* e) {
         case SAPP_EVENTTYPE_MOUSE_MOVE:
             app.mouse_x = e->mouse_x;
             app.mouse_y = e->mouse_y;
-            app.ui_captured = captured;
-            update_drag(e);
-            return;
-        case SAPP_EVENTTYPE_MOUSE_SCROLL:
-            if (!captured && e->scroll_y != 0.0f) {
-                camera_zoom_step(e->mouse_x, e->mouse_y, e->scroll_y);
-            }
-            return;
-        case SAPP_EVENTTYPE_TOUCHES_BEGAN:
-        case SAPP_EVENTTYPE_TOUCHES_MOVED:
-        case SAPP_EVENTTYPE_TOUCHES_ENDED:
-        case SAPP_EVENTTYPE_TOUCHES_CANCELLED:
-            handle_touches(e);
             return;
         case SAPP_EVENTTYPE_MOUSE_UP:
             app.mouse_x = e->mouse_x;
             app.mouse_y = e->mouse_y;
-            app.ui_captured = captured;
-            if (!captured) {
-                bool was_click = app.dragging && !app.dragged;
-                app.dragging = false;
-                app.dragged = false;
-                if (was_click) {
-                    update_hover();
-                    handle_click(app.drag_mode);
-                }
-            } else {
-                app.dragging = false;
-                app.dragged = false;
+            if (e->mouse_button == SAPP_MOUSEBUTTON_LEFT || e->mouse_button == SAPP_MOUSEBUTTON_RIGHT) {
+                click_at(e->mouse_button);
             }
             return;
-        case SAPP_EVENTTYPE_MOUSE_DOWN:
-            app.mouse_x = e->mouse_x;
-            app.mouse_y = e->mouse_y;
-            app.ui_captured = captured;
-            if (captured) {
-                return;
+        case SAPP_EVENTTYPE_TOUCHES_BEGAN:
+        case SAPP_EVENTTYPE_TOUCHES_MOVED:
+            if (e->num_touches >= 1) {
+                app.mouse_x = e->touches[0].pos_x;
+                app.mouse_y = e->touches[0].pos_y;
             }
-            if (e->mouse_button == SAPP_MOUSEBUTTON_MIDDLE) {
-                player_stop();
-                camera_set_follow(true);
-                bump_revision();
-                return;
-            }
-            if (e->mouse_button == SAPP_MOUSEBUTTON_LEFT || e->mouse_button == SAPP_MOUSEBUTTON_RIGHT) {
-                begin_drag(e);
+            return;
+        case SAPP_EVENTTYPE_TOUCHES_ENDED:
+            if (e->num_touches == 0) {
+                click_at(SAPP_MOUSEBUTTON_LEFT);
             }
             return;
         default:
