@@ -320,66 +320,60 @@ static void ui_properties(void) {
     if (ed.selected >= 0 && ed.selected < ed.level.obj_count) {
         obj_t* o = &ed.level.objs[ed.selected];
         ImGui::Text("Object #%d (%s)", o->id, obj_kind_name(o->kind));
-        if (ImGui::InputInt("x", &o->x)) {
-            ed.dirty = true;
-        }
-        if (ImGui::InputInt("y", &o->y)) {
-            ed.dirty = true;
-        }
-        if (ImGui::InputText("name", o->name, LEVEL_MAX_NAME)) {
-            ed.dirty = true;
-        }
+        bool changed = false;
+        changed |= ImGui::InputInt("x", &o->x);
+        changed |= ImGui::InputInt("y", &o->y);
+        changed |= ImGui::InputText("name", o->name, LEVEL_MAX_NAME);
         if (o->kind == OBJ_DOOR) {
-            ImGui::Checkbox("horizontal", (bool*)&o->horizontal);
+            changed |= ImGui::Checkbox("horizontal", (bool*)&o->horizontal);
             const char* states[4] = { "unknown", "locked", "unlocked", "unopenable" };
-            ImGui::Combo("state", &o->state, states, 4);
-            ImGui::Checkbox("open", (bool*)&o->open);
-            ImGui::InputInt("key_id", &o->key_id);
-            ImGui::InputFloat("auto_close", &o->auto_close);
-            ImGui::Checkbox("breakable", (bool*)&o->breakable);
-            ed.dirty = true;
+            changed |= ImGui::Combo("state", &o->state, states, 4);
+            changed |= ImGui::Checkbox("open", (bool*)&o->open);
+            changed |= ImGui::InputInt("key_id", &o->key_id);
+            changed |= ImGui::InputInt("span", &o->span);
+            changed |= ImGui::InputFloat("auto_close", &o->auto_close);
+            changed |= ImGui::Checkbox("breakable", (bool*)&o->breakable);
         } else if (o->kind == OBJ_ITEM) {
             const char* items[ITEM_COUNT];
             for (int i = 0; i < ITEM_COUNT; i++) {
                 items[i] = item_name((item_t)i);
             }
-            ImGui::Combo("item", &o->item_type, items, ITEM_COUNT);
-            ed.dirty = true;
+            changed |= ImGui::Combo("item", &o->item_type, items, ITEM_COUNT);
         } else if (o->kind == OBJ_LIGHT) {
-            ImGui::InputFloat("radius", &o->radius);
-            ImGui::Checkbox("on", (bool*)&o->state);
-            ImGui::InputInt("group_id", &o->group_id);
-            ImGui::Checkbox("breakable", (bool*)&o->breakable);
-            ed.dirty = true;
+            changed |= ImGui::InputFloat("radius", &o->radius);
+            changed |= ImGui::Checkbox("on", (bool*)&o->state);
+            changed |= ImGui::InputInt("group_id", &o->group_id);
+            changed |= ImGui::Checkbox("breakable", (bool*)&o->breakable);
         } else if (o->kind == OBJ_SWITCH) {
-            ImGui::InputInt("group_id", &o->group_id);
-            ed.dirty = true;
+            changed |= ImGui::InputInt("group_id", &o->group_id);
         } else if (o->kind == OBJ_OBSTACLE) {
-            ImGui::Checkbox("climbable", (bool*)&o->climbable);
-            ed.dirty = true;
+            changed |= ImGui::Checkbox("climbable", (bool*)&o->climbable);
         } else if (o->kind == OBJ_FILE || o->kind == OBJ_SAFE) {
-            ImGui::InputInt("code", &o->code);
-            ed.dirty = true;
+            changed |= ImGui::InputInt("code", &o->code);
         }
+        ed.dirty |= changed;
         if (ImGui::Button("Delete")) {
             delete_selected();
         }
     } else if (ed.section_selected >= 0 && ed.section_selected < ed.level.section_count) {
         section_t* s = &ed.level.sections[ed.section_selected];
         ImGui::Text("Section %s", s->name);
-        ImGui::InputText("name", s->name, LEVEL_MAX_NAME);
-        ImGui::InputInt("x", &s->x);
-        ImGui::InputInt("y", &s->y);
-        ImGui::InputInt("w", &s->w);
-        ImGui::InputInt("h", &s->h);
-        ed.dirty = true;
+        bool changed = false;
+        changed |= ImGui::InputText("name", s->name, LEVEL_MAX_NAME);
+        changed |= ImGui::InputInt("x", &s->x);
+        changed |= ImGui::InputInt("y", &s->y);
+        changed |= ImGui::InputInt("w", &s->w);
+        changed |= ImGui::InputInt("h", &s->h);
+        ed.dirty |= changed;
     } else {
         ImGui::TextUnformatted("Nothing selected");
         ImGui::Text("Start");
-        ImGui::InputInt("start x", &ed.level.start_x);
-        ImGui::InputInt("start y", &ed.level.start_y);
-        ImGui::InputInt("cols", &ed.level.cols);
-        ImGui::InputInt("rows", &ed.level.rows);
+        bool changed = false;
+        changed |= ImGui::InputInt("start x", &ed.level.start_x);
+        changed |= ImGui::InputInt("start y", &ed.level.start_y);
+        changed |= ImGui::InputInt("cols", &ed.level.cols);
+        changed |= ImGui::InputInt("rows", &ed.level.rows);
+        ed.dirty |= changed;
     }
     ImGui::Separator();
     ImGui::TextWrapped("%s", ed.status);
@@ -471,6 +465,7 @@ static void frame(void) {
     ui_toolbar();
     ui_properties();
     ImGui::Render();
+    simgui_flush();
 
     sg_pass pass = {};
     pass.action = ed.pass_action;
