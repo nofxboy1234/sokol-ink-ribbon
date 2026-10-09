@@ -20,8 +20,7 @@ export function addMain(b: Builder) {
         t.addSources(sources);
         t.addIncludeDirectories({ system: true, dirs: ['../libs'] });
         t.addIncludeDirectories([t.buildDir()]);
-        t.addDependencies(['sokol-static', 'dbgui']);
-        t.addCompileDefinitions({ USE_DBG_UI: '1' });
+        t.addDependencies(['sokol-static']);
         t.addJob({
             job: 'embedfiles',
             args: { outHeader: 'levels.h', files: ['level_01.json'], asText: true },

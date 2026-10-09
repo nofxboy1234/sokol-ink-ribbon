@@ -9,7 +9,6 @@
 #include "sokol_glue.h"
 #define SOKOL_GL_IMPL
 #include "sokol_gl.h"
-#include "dbgui/dbgui.h"
 
 #include "camera.h"
 #include "doors.h"
@@ -101,7 +100,6 @@ static void init(void) {
         .logger.func = slog_func,
     });
     sgl_setup(&(sgl_desc_t){ .logger.func = slog_func });
-    _dbgui_setup();
     render_init();
 
     if (!level_from_json(&app.level, embed_level_01_json)) {
@@ -135,7 +133,7 @@ static void init(void) {
     app.pass_action = (sg_pass_action){
         .colors[0] = {
             .load_action = SG_LOADACTION_CLEAR,
-            .clear_value = { 0.027f, 0.063f, 0.149f, 1.0f },
+            .clear_value = { 1.0f, 1.0f, 1.0f, 1.0f },
         },
     };
 }
@@ -166,19 +164,16 @@ static void frame(void) {
 
     render_scene(app.hover_x, app.hover_y, &app.preview);
 
-    _dbgui_update();
     sg_begin_pass(&(sg_pass){
         .action = app.pass_action,
         .swapchain = sglue_swapchain(),
     });
     sgl_draw();
-    _dbgui_draw();
     sg_end_pass();
     sg_commit();
 }
 
 static void cleanup(void) {
-    _dbgui_shutdown();
     render_shutdown();
     sgl_shutdown();
     sg_shutdown();
@@ -265,8 +260,11 @@ static void handle_touches(const sapp_event* e) {
 }
 
 static void event(const sapp_event* e) {
-    bool captured = _dbgui_event_with_retval(e);
+    bool captured = false;
     switch (e->type) {
+        case SAPP_EVENTTYPE_RESIZED:
+            camera_set_viewport(sapp_width(), sapp_height());
+            return;
         case SAPP_EVENTTYPE_MOUSE_MOVE:
             app.mouse_x = e->mouse_x;
             app.mouse_y = e->mouse_y;

@@ -9,6 +9,18 @@ export function formatMs(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+const ITEM_COLORS = [
+  "#00ddff",
+  "#f2ff00",
+  "#00ff26",
+  "#1e1e1e",
+  "#9d9d9d",
+  "#ff002a",
+  "#f2ff00",
+  "#ff006a",
+  "#961eff",
+];
+
 export function RunPanel() {
   const elapsed = useElapsed();
   const { steps, revealed, itemsCollected } = useGameState();
@@ -48,11 +60,10 @@ export function RunPanel() {
 
 export function HealthBar() {
   const { health } = useGameState();
-  const labels = ["Fine", "Caution", "Danger"];
-  const colors = ["#3fbf5f", "#e0a020", "#d33b3b"];
+  const labels = ["FINE", "CAUTION", "DANGER"];
+  const colors = ["var(--green)", "var(--orange)", "var(--red)"];
   return (
-    <div className="health" data-state={health}>
-      <span className="health-dot" style={{ background: colors[health] ?? colors[0] }} />
+    <div className="health" style={{ background: colors[health] ?? colors[0] }}>
       <span className="health-label">{labels[health] ?? labels[0]}</span>
     </div>
   );
@@ -62,11 +73,21 @@ export function Inventory() {
   const { inventory } = useGameState();
   return (
     <div className="pane-content">
-      <h2>Items</h2>
+      <h2>ITEMS</h2>
       <div className="inventory-grid">
         {inventory.map((item, index) => (
-          <div key={index} className="inventory-slot" title={item >= 0 ? ITEM_NAMES[item] : ""}>
-            {item >= 0 && <span className="inventory-item" data-item={item} />}
+          <div
+            key={index}
+            className="inventory-slot"
+            data-filled={item >= 0}
+            title={item >= 0 ? ITEM_NAMES[item] : ""}
+          >
+            {item >= 0 && (
+              <span
+                className="inventory-item"
+                style={{ background: ITEM_COLORS[item] ?? "#ff006a" }}
+              />
+            )}
             {item >= 0 && <span className="inventory-name">{ITEM_NAMES[item]}</span>}
           </div>
         ))}
@@ -84,12 +105,17 @@ const RECIPES = [
 export function Crafting() {
   return (
     <div className="pane-content">
-      <h2>Crafting</h2>
+      <h2>CRAFTING</h2>
       <ul className="recipe-list">
         {RECIPES.map((recipe) => (
           <li key={recipe.output} className="recipe">
-            <span className="recipe-inputs">{recipe.inputs.join(" + ")}</span>
-            <span className="recipe-arrow">→</span>
+            <span className="recipe-dot" style={{ background: "#ff006a" }} />
+            <span>{recipe.inputs[0]}</span>
+            <span className="recipe-op">+</span>
+            <span className="recipe-ring" />
+            <span>{recipe.inputs[1]}</span>
+            <span className="recipe-op">→</span>
+            <span className="recipe-dot" style={{ background: "#ff006a" }} />
             <span className="recipe-output">{recipe.output}</span>
           </li>
         ))}
@@ -99,6 +125,7 @@ export function Crafting() {
 }
 
 const FILES = [
+  { name: "Safe code", code: 1234 },
   { name: "Fuse box note", code: 4721 },
   { name: "Lobby safe", code: 1938 },
 ];
@@ -106,12 +133,12 @@ const FILES = [
 export function Files() {
   return (
     <div className="pane-content">
-      <h2>Files</h2>
+      <h2>FILES</h2>
       <ul className="file-list">
         {FILES.map((file) => (
           <li key={file.name} className="file">
             <span className="file-name">{file.name}</span>
-            <span className="file-code">{file.code}</span>
+            <span className="file-code">= {file.code}</span>
           </li>
         ))}
       </ul>

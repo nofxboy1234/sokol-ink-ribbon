@@ -58,22 +58,49 @@ static void tok_str(const char* js, const jsmntok_t* t, char* out, int cap) {
     out[len] = 0;
 }
 
+// Number of tokens an object/array/scalar occupies, children included.
+static int tok_span(const jsmntok_t* t, int i) {
+    if (t[i].type == JSMN_OBJECT) {
+        int span = 1;
+        int k = i + 1;
+        for (int p = 0; p < t[i].size; p++) {
+            span += 1; // key token
+            int v = k + 1;
+            int vs = tok_span(t, v);
+            span += vs;
+            k = v + vs;
+        }
+        return span;
+    }
+    if (t[i].type == JSMN_ARRAY) {
+        int span = 1;
+        int k = i + 1;
+        for (int e = 0; e < t[i].size; e++) {
+            int es = tok_span(t, k);
+            span += es;
+            k += es;
+        }
+        return span;
+    }
+    return 1;
+}
+
 static int tok_next(const jsmntok_t* t, int i) {
-    return i + 1 + t[i].size;
+    return i + tok_span(t, i);
 }
 
 static int obj_find(const char* js, const jsmntok_t* t, int obj, const char* key) {
     if (t[obj].type != JSMN_OBJECT) {
         return -1;
     }
-    int end = obj + 1 + t[obj].size;
+    int pairs = t[obj].size;
     int i = obj + 1;
-    while (i < end) {
+    for (int p = 0; p < pairs; p++) {
         int value = i + 1;
         if (t[i].type == JSMN_STRING && tok_eq(js, &t[i], key)) {
             return value;
         }
-        i = value + 1 + t[value].size;
+        i = value + tok_span(t, value);
     }
     return -1;
 }
@@ -148,9 +175,9 @@ static void parse_walls(const char* js, const jsmntok_t* t, level_t* lv, int arr
     if (t[arr].type != JSMN_ARRAY) {
         return;
     }
-    int end = arr + 1 + t[arr].size;
+    int count = t[arr].size;
     int i = arr + 1;
-    while (i < end && lv->wall_count < LEVEL_MAX_WALLS) {
+    for (int e = 0; e < count && lv->wall_count < LEVEL_MAX_WALLS; e++) {
         if (t[i].type == JSMN_ARRAY && t[i].size >= 4) {
             wall_seg_t* w = &lv->walls[lv->wall_count++];
             w->x0 = arr_int(js, t, i, 0, 0);
@@ -166,9 +193,9 @@ static void parse_sections(const char* js, const jsmntok_t* t, level_t* lv, int 
     if (t[arr].type != JSMN_ARRAY) {
         return;
     }
-    int end = arr + 1 + t[arr].size;
+    int count = t[arr].size;
     int i = arr + 1;
-    while (i < end && lv->section_count < LEVEL_MAX_SECTIONS) {
+    for (int e = 0; e < count && lv->section_count < LEVEL_MAX_SECTIONS; e++) {
         if (t[i].type == JSMN_OBJECT) {
             section_t* s = &lv->sections[lv->section_count++];
             memset(s, 0, sizeof(*s));
@@ -187,9 +214,9 @@ static void parse_objects(const char* js, const jsmntok_t* t, level_t* lv, int a
     if (t[arr].type != JSMN_ARRAY) {
         return;
     }
-    int end = arr + 1 + t[arr].size;
+    int count = t[arr].size;
     int i = arr + 1;
-    while (i < end && lv->obj_count < LEVEL_MAX_OBJECTS) {
+    for (int e = 0; e < count && lv->obj_count < LEVEL_MAX_OBJECTS; e++) {
         if (t[i].type == JSMN_OBJECT) {
             obj_t* o = &lv->objs[lv->obj_count];
             memset(o, 0, sizeof(*o));

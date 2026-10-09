@@ -4,7 +4,7 @@
 
 #define CAMERA_MIN_SCALE 6.0f
 #define CAMERA_MAX_SCALE 96.0f
-#define CAMERA_FIT_CELLS 20.0f
+#define CAMERA_FIT_CELLS 28.0f
 #define CAMERA_CATCHUP 6.0f
 
 static struct {
@@ -18,7 +18,7 @@ static struct {
 void camera_init(void) {
     cam.center_x = cam.target_x = 0.0f;
     cam.center_y = cam.target_y = 0.0f;
-    cam.scale = 32.0f;
+    cam.scale = 0.0f;
     cam.width = 1;
     cam.height = 1;
     cam.following = true;

@@ -11,7 +11,17 @@
 
 #include <math.h>
 
-#define GLOW_LAYERS 5
+// Reference palette (ref/map.kra)
+#define C_INK_R 0.118f, 0.118f, 0.118f, 1.0f
+#define C_CYAN_R 0.118f, 1.0f, 0.973f, 1.0f
+#define C_GREEN_R 0.0f, 1.0f, 0.149f, 1.0f
+#define C_YELLOW_R 0.949f, 1.0f, 0.0f, 1.0f
+#define C_MAGENTA_R 1.0f, 0.0f, 0.416f, 1.0f
+#define C_RED_R 1.0f, 0.0f, 0.165f, 1.0f
+#define C_PURPLE_R 0.588f, 0.118f, 1.0f, 1.0f
+#define C_BLUE_R 0.0f, 0.867f, 1.0f, 1.0f
+#define C_GRAY_R 0.616f, 0.616f, 0.616f, 1.0f
+#define C_DARK_R 0.118f, 0.118f, 0.118f, 1.0f
 
 static struct {
     sgl_pipeline pip;
@@ -68,59 +78,45 @@ static void ring_circle(float cx, float cy, float radius, float thickness, float
     sgl_end();
 }
 
-static void wall_glow_h(float x0, float y, float x1, float scale) {
-    static const float widths[GLOW_LAYERS] = { 20.0f, 11.0f, 6.0f, 3.0f, 1.4f };
-    static const float cols[GLOW_LAYERS][4] = {
-        { 0.055f, 0.149f, 0.376f, 0.05f },
-        { 0.078f, 0.169f, 0.380f, 0.08f },
-        { 0.180f, 0.439f, 0.855f, 0.22f },
-        { 0.314f, 0.584f, 0.878f, 0.50f },
-        { 0.620f, 0.812f, 0.898f, 0.70f },
-    };
-    (void)scale;
-    for (int i = 0; i < GLOW_LAYERS; i++) {
-        float h = widths[i];
-        fill_rect(x0, y - h * 0.5f, x1 - x0, h, cols[i][0], cols[i][1], cols[i][2], cols[i][3]);
+static void thick_line(float x0, float y0, float x1, float y1, float t, float cr, float cg, float cb, float ca) {
+    float dx = x1 - x0;
+    float dy = y1 - y0;
+    float len = sqrtf(dx * dx + dy * dy);
+    if (len <= 0.0f) {
+        return;
     }
-}
-
-static void wall_glow_v(float x, float y0, float y1, float scale) {
-    static const float widths[GLOW_LAYERS] = { 20.0f, 11.0f, 6.0f, 3.0f, 1.4f };
-    static const float cols[GLOW_LAYERS][4] = {
-        { 0.055f, 0.149f, 0.376f, 0.05f },
-        { 0.078f, 0.169f, 0.380f, 0.08f },
-        { 0.180f, 0.439f, 0.855f, 0.22f },
-        { 0.314f, 0.584f, 0.878f, 0.50f },
-        { 0.620f, 0.812f, 0.898f, 0.70f },
-    };
-    (void)scale;
-    for (int i = 0; i < GLOW_LAYERS; i++) {
-        float w = widths[i];
-        fill_rect(x - w * 0.5f, y0, w, y1 - y0, cols[i][0], cols[i][1], cols[i][2], cols[i][3]);
-    }
+    float nx = -dy / len * t * 0.5f;
+    float ny = dx / len * t * 0.5f;
+    sgl_begin_quads();
+    sgl_c4f(cr, cg, cb, ca);
+    sgl_v2f(x0 + nx, y0 + ny);
+    sgl_v2f(x1 + nx, y1 + ny);
+    sgl_v2f(x1 - nx, y1 - ny);
+    sgl_v2f(x0 - nx, y0 - ny);
+    sgl_end();
 }
 
 static void item_color(int item, float* cr, float* cg, float* cb) {
     switch (item) {
-        case ITEM_BOTTLE: *cr = 0.6f; *cg = 0.75f; *cb = 0.85f; break;
-        case ITEM_COIN: *cr = 0.95f; *cg = 0.8f; *cb = 0.25f; break;
-        case ITEM_HERB: *cr = 0.35f; *cg = 0.85f; *cb = 0.35f; break;
-        case ITEM_INK_RIBBON: *cr = 0.15f; *cg = 0.15f; *cb = 0.2f; break;
-        case ITEM_SCREWDRIVER: *cr = 0.8f; *cg = 0.8f; *cb = 0.85f; break;
-        case ITEM_INJECTOR: *cr = 0.9f; *cg = 0.3f; *cb = 0.3f; break;
-        case ITEM_FUSE: *cr = 0.95f; *cg = 0.65f; *cb = 0.2f; break;
-        case ITEM_LIGHTER: *cr = 0.98f; *cg = 0.55f; *cb = 0.1f; break;
-        case ITEM_CHERUB_KEY: *cr = 0.85f; *cg = 0.7f; *cb = 0.95f; break;
-        default: *cr = 0.8f; *cg = 0.8f; *cb = 0.8f; break;
+        case ITEM_BOTTLE: *cr = 0.0f; *cg = 0.867f; *cb = 1.0f; break;
+        case ITEM_COIN: *cr = 0.949f; *cg = 1.0f; *cb = 0.0f; break;
+        case ITEM_HERB: *cr = 0.0f; *cg = 1.0f; *cb = 0.149f; break;
+        case ITEM_INK_RIBBON: *cr = 0.118f; *cg = 0.118f; *cb = 0.118f; break;
+        case ITEM_SCREWDRIVER: *cr = 0.616f; *cg = 0.616f; *cb = 0.616f; break;
+        case ITEM_INJECTOR: *cr = 1.0f; *cg = 0.0f; *cb = 0.165f; break;
+        case ITEM_FUSE: *cr = 0.949f; *cg = 1.0f; *cb = 0.0f; break;
+        case ITEM_LIGHTER: *cr = 1.0f; *cg = 0.0f; *cb = 0.416f; break;
+        case ITEM_CHERUB_KEY: *cr = 0.588f; *cg = 0.118f; *cb = 1.0f; break;
+        default: *cr = 0.118f; *cg = 0.118f; *cb = 0.118f; break;
     }
 }
 
 static void door_color(const obj_t* o, float* cr, float* cg, float* cb) {
     switch (o->state) {
-        case DOOR_LOCKED: *cr = 0.85f; *cg = 0.25f; *cb = 0.25f; break;
-        case DOOR_UNLOCKED: *cr = 0.25f; *cg = 0.55f; *cb = 0.95f; break;
-        case DOOR_UNOPENABLE: *cr = 0.35f; *cg = 0.35f; *cb = 0.4f; break;
-        default: *cr = 0.5f; *cg = 0.5f; *cb = 0.5f; break;
+        case DOOR_LOCKED: *cr = 1.0f; *cg = 0.0f; *cb = 0.165f; break;
+        case DOOR_UNLOCKED: *cr = 0.118f; *cg = 1.0f; *cb = 0.973f; break;
+        case DOOR_UNOPENABLE: *cr = 0.118f; *cg = 0.118f; *cb = 0.118f; break;
+        default: *cr = 0.616f; *cg = 0.616f; *cb = 0.616f; break;
     }
 }
 
@@ -139,17 +135,16 @@ static void draw_objects(void) {
                 float cr, cg, cb;
                 door_color(o, &cr, &cg, &cb);
                 if (o->horizontal) {
-                    fill_rect(sx, sy + scale * 0.4f, scale, scale * 0.2f, cr, cg, cb, 1.0f);
+                    fill_rect(sx + scale * 0.1f, sy + scale * 0.42f, scale * 0.8f, scale * 0.16f, cr, cg, cb, 1.0f);
+                    if (!o->open) {
+                        fill_rect(sx + scale * 0.1f, sy + scale * 0.4f, scale * 0.8f, scale * 0.03f, C_INK_R);
+                        fill_rect(sx + scale * 0.1f, sy + scale * 0.57f, scale * 0.8f, scale * 0.03f, C_INK_R);
+                    }
                 } else {
-                    fill_rect(sx + scale * 0.4f, sy, scale * 0.2f, scale, cr, cg, cb, 1.0f);
-                }
-                if (!o->open) {
-                    if (o->horizontal) {
-                        fill_rect(sx, sy + scale * 0.36f, scale, scale * 0.04f, 0.0f, 0.0f, 0.0f, 0.9f);
-                        fill_rect(sx, sy + scale * 0.6f, scale, scale * 0.04f, 0.0f, 0.0f, 0.0f, 0.9f);
-                    } else {
-                        fill_rect(sx + scale * 0.36f, sy, scale * 0.04f, scale, 0.0f, 0.0f, 0.0f, 0.9f);
-                        fill_rect(sx + scale * 0.6f, sy, scale * 0.04f, scale, 0.0f, 0.0f, 0.0f, 0.9f);
+                    fill_rect(sx + scale * 0.42f, sy + scale * 0.1f, scale * 0.16f, scale * 0.8f, cr, cg, cb, 1.0f);
+                    if (!o->open) {
+                        fill_rect(sx + scale * 0.4f, sy + scale * 0.1f, scale * 0.03f, scale * 0.8f, C_INK_R);
+                        fill_rect(sx + scale * 0.57f, sy + scale * 0.1f, scale * 0.03f, scale * 0.8f, C_INK_R);
                     }
                 }
                 break;
@@ -157,63 +152,46 @@ static void draw_objects(void) {
             case OBJ_ITEM: {
                 float cr, cg, cb;
                 item_color(o->item_type, &cr, &cg, &cb);
-                fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.28f, cr, cg, cb, 1.0f);
+                fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.22f, cr, cg, cb, 1.0f);
                 break;
             }
             case OBJ_LIGHT: {
                 if (o->state) {
                     float radius = (o->radius > 0.0f ? o->radius : 3.0f) * scale;
-                    fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, radius, 1.0f, 0.85f, 0.4f, 0.08f);
+                    fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, radius, C_YELLOW_R);
                 }
-                fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.12f, 1.0f, 0.9f, 0.5f, 0.9f);
+                fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.1f, C_YELLOW_R);
                 break;
             }
             case OBJ_SWITCH:
-                fill_rect(sx + scale * 0.35f, sy + scale * 0.35f, scale * 0.3f, scale * 0.3f, 0.4f, 0.9f, 0.95f, 1.0f);
+                fill_rect(sx + scale * 0.3f, sy + scale * 0.3f, scale * 0.4f, scale * 0.4f, C_YELLOW_R);
                 break;
             case OBJ_TYPEWRITER:
-                fill_rect(sx + scale * 0.25f, sy + scale * 0.25f, scale * 0.5f, scale * 0.5f, 0.9f, 0.9f, 0.85f, 1.0f);
+                fill_rect(sx + scale * 0.25f, sy + scale * 0.3f, scale * 0.5f, scale * 0.4f, C_DARK_R);
                 break;
             case OBJ_FILE:
-                fill_rect(sx + scale * 0.3f, sy + scale * 0.25f, scale * 0.4f, scale * 0.5f, 0.95f, 0.95f, 0.9f, 1.0f);
+                fill_rect(sx + scale * 0.3f, sy + scale * 0.25f, scale * 0.4f, scale * 0.5f, 1.0f, 1.0f, 1.0f, 1.0f);
+                fill_rect(sx + scale * 0.3f, sy + scale * 0.25f, scale * 0.4f, scale * 0.04f, C_INK_R);
                 break;
             case OBJ_SAFE:
-                fill_rect(sx + scale * 0.25f, sy + scale * 0.25f, scale * 0.5f, scale * 0.5f, 0.55f, 0.4f, 0.25f, 1.0f);
+                fill_rect(sx + scale * 0.25f, sy + scale * 0.25f, scale * 0.5f, scale * 0.5f, C_GRAY_R);
                 break;
             case OBJ_OBSTACLE:
-                fill_rect(sx + scale * 0.2f, sy + scale * 0.2f, scale * 0.6f, scale * 0.6f, 0.45f, 0.4f, 0.35f, 1.0f);
+                fill_rect(sx + scale * 0.2f, sy + scale * 0.2f, scale * 0.6f, scale * 0.6f, C_GRAY_R);
                 break;
             case OBJ_MOVABLE:
-                fill_rect(sx + scale * 0.25f, sy + scale * 0.25f, scale * 0.5f, scale * 0.5f, 0.5f, 0.45f, 0.3f, 1.0f);
+                fill_rect(sx + scale * 0.28f, sy + scale * 0.28f, scale * 0.44f, scale * 0.44f, C_GRAY_R);
                 break;
             case OBJ_OPENABLE:
-                fill_rect(sx + scale * 0.25f, sy + scale * 0.25f, scale * 0.5f, scale * 0.5f, 0.6f, 0.5f, 0.7f, 1.0f);
+                fill_rect(sx + scale * 0.25f, sy + scale * 0.25f, scale * 0.5f, scale * 0.5f, 0.0f, 1.0f, 0.733f, 1.0f);
                 break;
             case OBJ_GOAL:
-                fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.4f, 0.9f, 0.2f, 0.8f, 1.0f);
+                fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.3f, C_MAGENTA_R);
                 break;
             default:
                 break;
         }
     }
-}
-
-static void thick_line(float x0, float y0, float x1, float y1, float t, float cr, float cg, float cb, float ca) {
-    float dx = x1 - x0;
-    float dy = y1 - y0;
-    float len = sqrtf(dx * dx + dy * dy);
-    if (len <= 0.0f) {
-        return;
-    }
-    float nx = -dy / len * t * 0.5f;
-    float ny = dx / len * t * 0.5f;
-    sgl_begin_quads();
-    sgl_c4f(cr, cg, cb, ca);
-    sgl_v2f(x0 + nx, y0 + ny);
-    sgl_v2f(x1 + nx, y1 + ny);
-    sgl_v2f(x1 - nx, y1 - ny);
-    sgl_v2f(x0 - nx, y0 - ny);
-    sgl_end();
 }
 
 static void draw_discovery_markers(void) {
@@ -245,12 +223,12 @@ static void draw_discovery_markers(void) {
         float cx = sx + scale * 0.5f;
         float cy = sy + scale * 0.5f;
         if (d <= 1) {
-            fill_circle(cx, cy, scale * 0.32f, 0.0f, 0.0f, 0.0f, 0.85f);
-            float e = scale * 0.2f;
-            thick_line(cx - e, cy - e, cx + e, cy + e, scale * 0.08f, 1.0f, 1.0f, 1.0f, 0.95f);
-            thick_line(cx - e, cy + e, cx + e, cy - e, scale * 0.08f, 1.0f, 1.0f, 1.0f, 0.95f);
+            fill_circle(cx, cy, scale * 0.34f, C_INK_R);
+            float e = scale * 0.18f;
+            thick_line(cx - e, cy - e, cx + e, cy + e, scale * 0.09f, 1.0f, 1.0f, 1.0f, 1.0f);
+            thick_line(cx - e, cy + e, cx + e, cy - e, scale * 0.09f, 1.0f, 1.0f, 1.0f, 1.0f);
         } else {
-            ring_circle(cx, cy, scale * 0.34f, scale * 0.06f, 0.0f, 0.0f, 0.0f, 0.8f);
+            ring_circle(cx, cy, scale * 0.34f, scale * 0.07f, C_INK_R);
         }
     }
 }
@@ -279,20 +257,46 @@ void render_scene(int hover_x, int hover_y, const path_t* path) {
             }
             float sx, sy;
             camera_cell_to_screen((float)x, (float)y, &sx, &sy);
-            float shade = ((x + y) & 1) ? 0.0f : 0.012f;
-            fill_rect(sx, sy, scale, scale, 0.035f + shade, 0.06f + shade, 0.12f + shade, 1.0f);
+            fill_rect(sx, sy, scale, scale, 1.0f, 1.0f, 1.0f, 1.0f);
+        }
+    }
+
+    {
+        const level_t* lv = grid_level();
+        for (int s = 0; s < lv->section_count; s++) {
+            const section_t* sec = &lv->sections[s];
+            bool any = false;
+            for (int y = sec->y; y < sec->y + sec->h && !any; y++) {
+                for (int x = sec->x; x < sec->x + sec->w && !any; x++) {
+                    if (grid_is_revealed(x, y)) {
+                        any = true;
+                    }
+                }
+            }
+            if (!any) {
+                continue;
+            }
+            float sx, sy, ex, ey;
+            camera_cell_to_screen((float)sec->x, (float)sec->y, &sx, &sy);
+            camera_cell_to_screen((float)(sec->x + sec->w), (float)(sec->y + sec->h), &ex, &ey);
+            fill_rect(sx, sy, ex - sx, 1.5f, C_CYAN_R);
+            fill_rect(sx, ey - 1.5f, ex - sx, 1.5f, C_CYAN_R);
+            fill_rect(sx, sy, 1.5f, ey - sy, C_CYAN_R);
+            fill_rect(ex - 1.5f, sy, 1.5f, ey - sy, C_CYAN_R);
         }
     }
 
     if (hover_x >= 0 && hover_y >= 0 && grid_is_floor(hover_x, hover_y)) {
         float sx, sy;
         camera_cell_to_screen((float)hover_x, (float)hover_y, &sx, &sy);
-        fill_rect(sx, sy, scale, scale, 0.3f, 0.95f, 0.5f, 0.18f);
-        ring_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.4f, 2.0f, 0.35f, 0.95f, 0.55f, 0.9f);
+        fill_rect(sx, sy, scale, scale, 0.0f, 1.0f, 0.149f, 0.12f);
+        thick_line(sx, sy, sx + scale, sy, 2.0f, C_GREEN_R);
+        thick_line(sx + scale, sy, sx + scale, sy + scale, 2.0f, C_GREEN_R);
+        thick_line(sx + scale, sy + scale, sx, sy + scale, 2.0f, C_GREEN_R);
+        thick_line(sx, sy + scale, sx, sy, 2.0f, C_GREEN_R);
     }
 
     draw_objects();
-    draw_discovery_markers();
 
     if (path && path->count > 1) {
         float px, py;
@@ -300,20 +304,7 @@ void render_scene(int hover_x, int hover_y, const path_t* path) {
         for (int i = 1; i < path->count; i++) {
             float cx, cy;
             camera_cell_to_screen((float)path->x[i] + 0.5f, (float)path->y[i] + 0.5f, &cx, &cy);
-            float dx = cx - px;
-            float dy = cy - py;
-            float len = sqrtf(dx * dx + dy * dy);
-            if (len > 0.0f) {
-                float nx = -dy / len * 1.5f;
-                float ny = dx / len * 1.5f;
-                sgl_begin_quads();
-                sgl_c4f(0.3f, 0.95f, 0.5f, 0.9f);
-                sgl_v2f(px + nx, py + ny);
-                sgl_v2f(cx + nx, cy + ny);
-                sgl_v2f(cx - nx, cy - ny);
-                sgl_v2f(px - nx, py - ny);
-                sgl_end();
-            }
+            thick_line(px, py, cx, cy, 2.0f, C_PURPLE_R);
             px = cx;
             py = cy;
         }
@@ -332,7 +323,7 @@ void render_scene(int hover_x, int hover_y, const path_t* path) {
             if (blocked) {
                 float sx, sy;
                 camera_cell_to_screen((float)x, (float)y, &sx, &sy);
-                wall_glow_v(sx, sy, sy + scale, scale);
+                fill_rect(sx - 1.0f, sy, 2.0f, scale, C_INK_R);
             }
         }
     }
@@ -349,15 +340,17 @@ void render_scene(int hover_x, int hover_y, const path_t* path) {
             if (blocked) {
                 float sx, sy;
                 camera_cell_to_screen((float)x, (float)y, &sx, &sy);
-                wall_glow_h(sx, sy, sx + scale, scale);
+                fill_rect(sx, sy - 1.0f, scale, 2.0f, C_INK_R);
             }
         }
     }
 
+    draw_discovery_markers();
+
     {
         float px, py;
         camera_cell_to_screen(player_x(), player_y(), &px, &py);
-        fill_circle(px, py, scale * 0.3f, 0.75f, 0.4f, 0.95f, 1.0f);
-        fill_circle(px, py, scale * 0.16f, 0.95f, 0.85f, 1.0f, 1.0f);
+        fill_circle(px, py, scale * 0.32f, C_PURPLE_R);
+        fill_circle(px, py, scale * 0.16f, 1.0f, 1.0f, 1.0f, 1.0f);
     }
 }
