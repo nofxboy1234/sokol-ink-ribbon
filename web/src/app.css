@@ -161,12 +161,12 @@ body > div {
   text-align: left;
 }
 
-.pause-item:last-child {
-  border-bottom: 0;
+.pause-item:hover {
+  background: var(--teal);
 }
 
-.pause-selected {
-  background: var(--teal);
+.pause-item:last-child {
+  border-bottom: 0;
 }
 
 .file-empty {
@@ -177,15 +177,18 @@ button.recipe {
   width: 100%;
   text-align: left;
   cursor: pointer;
-  background: var(--teal);
+  background: var(--paper);
   border: 1px solid var(--ink);
   border-radius: 0;
   font: inherit;
   color: var(--ink);
 }
 
+button.recipe:hover:not(:disabled) {
+  background: var(--teal);
+}
+
 button.recipe:disabled {
-  background: var(--paper);
   cursor: default;
 }
 
@@ -212,8 +215,12 @@ button.recipe:disabled {
   letter-spacing: 0.02em;
 }
 
-.tab[data-active="true"] {
+.tab:hover {
   background: var(--teal);
+}
+
+.tab[data-active="true"] {
+  border-bottom-width: 3px;
 }
 
 .pane-content {
@@ -433,11 +440,14 @@ button.recipe:disabled {
   }
 
   .pane-map {
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    min-height: 0;
   }
 
   .pane-side {
-    flex: 0 0 auto;
+    flex: 0 0 45dvh;
+    height: 45dvh;
     max-height: 45dvh;
+    overflow-y: auto;
   }
 }

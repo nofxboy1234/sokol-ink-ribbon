@@ -29,6 +29,7 @@ export type EmscriptenModule = {
   _replay_length?: () => number;
   _replay_x?: (index: number) => number;
   _replay_y?: (index: number) => number;
+  _set_paused?: (paused: number) => void;
   UTF8ToString?: (ptr: number) => string;
 };
 
@@ -145,6 +146,10 @@ export function setLighter(on: boolean): void {
 
 export function gameReset(): void {
   module()?._game_reset?.();
+}
+
+export function setPaused(paused: boolean): void {
+  module()?._set_paused?.(paused ? 1 : 0);
 }
 
 export function craftRecipe(index: number): boolean {

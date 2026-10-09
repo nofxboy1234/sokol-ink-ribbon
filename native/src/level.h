@@ -61,6 +61,7 @@ typedef struct {
     obj_kind_t kind;
     int x, y;
     int horizontal;
+    int span;
     int state;
     int open;
     int key_id;

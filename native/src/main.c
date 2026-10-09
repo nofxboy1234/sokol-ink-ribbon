@@ -40,6 +40,7 @@ static struct {
     bool last_moving;
     unsigned int revision;
     double elapsed;
+    bool paused;
     bool section_revealed[LEVEL_MAX_SECTIONS];
 } app;
 
@@ -139,6 +140,7 @@ static void init(void) {
     app.last_moving = false;
     app.revision = 0;
     app.elapsed = 0.0;
+    app.paused = false;
     app.pass_action = (sg_pass_action){
         .colors[0] = {
             .load_action = SG_LOADACTION_CLEAR,
@@ -149,27 +151,29 @@ static void init(void) {
 
 static void frame(void) {
     const float dt = (float)sapp_frame_duration();
-    player_update(dt);
-    camera_follow(player_x(), player_y());
-    camera_update(dt);
-    reveal_sections();
+    if (!app.paused) {
+        player_update(dt);
+        camera_follow(player_x(), player_y());
+        camera_update(dt);
+        reveal_sections();
+
+        if (items_update()) {
+            bump_revision();
+        }
+        if (doors_update(dt)) {
+            bump_revision();
+        }
+        app.elapsed += (double)dt;
+
+        int steps = player_steps_taken();
+        bool moving = player_is_moving();
+        if (steps != app.last_steps || moving != app.last_moving) {
+            app.last_steps = steps;
+            app.last_moving = moving;
+            bump_revision();
+        }
+    }
     update_hover();
-
-    if (items_update()) {
-        bump_revision();
-    }
-    if (doors_update(dt)) {
-        bump_revision();
-    }
-    app.elapsed += (double)dt;
-
-    int steps = player_steps_taken();
-    bool moving = player_is_moving();
-    if (steps != app.last_steps || moving != app.last_moving) {
-        app.last_steps = steps;
-        app.last_moving = moving;
-        bump_revision();
-    }
 
     render_scene(app.hover_x, app.hover_y, &app.preview);
 
@@ -378,6 +382,7 @@ WEB_EXPORT void game_reset(void) {
     memset(app.section_revealed, 0, sizeof(app.section_revealed));
     reveal_sections();
     app.elapsed = 0.0;
+    app.paused = false;
     app.last_steps = 0;
     app.last_moving = false;
     bump_revision();
@@ -385,4 +390,8 @@ WEB_EXPORT void game_reset(void) {
 
 WEB_EXPORT double run_elapsed_ms(void) {
     return app.elapsed * 1000.0;
+}
+
+WEB_EXPORT void set_paused(int paused) {
+    app.paused = paused != 0;
 }

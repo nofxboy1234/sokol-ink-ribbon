@@ -25,31 +25,46 @@ static bool is_door(const obj_t* o) {
 }
 
 static bool blocks(const obj_t* o) {
-    if (o->state == DOOR_UNLOCKED) {
-        return !o->open;
+    // unlocked doors never block movement; Grace opens them by walking through
+    return o->state != DOOR_UNLOCKED;
+}
+
+static bool on_edge(const obj_t* o, int ax, int ay, int bx, int by) {
+    int span = o->span > 0 ? o->span : 1;
+    for (int k = 0; k < span; k++) {
+        if (o->horizontal) {
+            // on the horizontal wall line at row y, between (x, y-1) and (x, y)
+            int x = o->x + k;
+            if (ax == x && bx == x && ((ay == o->y - 1 && by == o->y) || (ay == o->y && by == o->y - 1))) {
+                return true;
+            }
+        } else {
+            // on the vertical wall line at column x, between (x-1, y) and (x, y)
+            int y = o->y + k;
+            if (ay == y && by == y && ((ax == o->x - 1 && bx == o->x) || (ax == o->x && bx == o->x - 1))) {
+                return true;
+            }
+        }
     }
-    return true;
+    return false;
+}
+
+bool doors_on_edge(int ax, int ay, int bx, int by) {
+    level_t* lv = dr.level;
+    for (int i = 0; i < lv->obj_count; i++) {
+        if (is_door(&lv->objs[i]) && on_edge(&lv->objs[i], ax, ay, bx, by)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool doors_block_edge(int ax, int ay, int bx, int by) {
     level_t* lv = dr.level;
     for (int i = 0; i < lv->obj_count; i++) {
         obj_t* o = &lv->objs[i];
-        if (!is_door(o) || !blocks(o)) {
-            continue;
-        }
-        if (o->horizontal) {
-            // sits on the horizontal wall line at row y, between (x, y-1) and (x, y)
-            if (ax == o->x && bx == o->x &&
-                ((ay == o->y - 1 && by == o->y) || (ay == o->y && by == o->y - 1))) {
-                return true;
-            }
-        } else {
-            // sits on the vertical wall line at column x, between (x-1, y) and (x, y)
-            if (ay == o->y && by == o->y &&
-                ((ax == o->x - 1 && bx == o->x) || (ax == o->x && bx == o->x - 1))) {
-                return true;
-            }
+        if (is_door(o) && blocks(o) && on_edge(o, ax, ay, bx, by)) {
+            return true;
         }
     }
     return false;
@@ -113,6 +128,24 @@ bool doors_update(float dt) {
                 if (o->state == DOOR_UNKNOWN) {
                     o->state = o->key_id > 0 ? DOOR_LOCKED : DOOR_UNLOCKED;
                 }
+                changed = true;
+            }
+        }
+        if (o->state == DOOR_UNLOCKED && !o->open) {
+            // Grace opens an unlocked door by walking up to or through it
+            bool on = false;
+            int span = o->span > 0 ? o->span : 1;
+            for (int k = 0; k < span && !on; k++) {
+                if (o->horizontal) {
+                    int x = o->x + k;
+                    on = px == x && (py == o->y || py == o->y - 1);
+                } else {
+                    int y = o->y + k;
+                    on = py == y && (px == o->x || px == o->x - 1);
+                }
+            }
+            if (on) {
+                o->open = 1;
                 changed = true;
             }
         }

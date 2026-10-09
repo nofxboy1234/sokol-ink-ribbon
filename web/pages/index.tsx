@@ -12,6 +12,7 @@ import {
   PauseMenu,
   RunPanel,
 } from "../src/panes";
+import { setPaused as setGamePaused } from "../src/wasmBridge";
 
 type Tab = "items" | "crafting" | "files";
 
@@ -34,6 +35,10 @@ export default function HomePage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  useEffect(() => {
+    setGamePaused(paused);
+  }, [paused]);
 
   return (
     <>

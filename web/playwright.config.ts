@@ -8,7 +8,7 @@ export default defineConfig({
   },
   webServer: {
     command:
-      "BETTER_AUTH_SECRET=playwright-local-secret npm run build && BETTER_AUTH_SECRET=playwright-local-secret npm run preview -- --port 4173 --strictPort",
+      "BETTER_AUTH_SECRET=playwright-local-secret npm run build && npx void db migrate && BETTER_AUTH_SECRET=playwright-local-secret npm run preview -- --port 4173 --strictPort",
     url: "http://localhost:4173",
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,

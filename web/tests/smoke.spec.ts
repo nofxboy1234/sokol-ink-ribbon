@@ -12,6 +12,8 @@ declare global {
       _replay_length?: () => number;
       _level_cell_px?: () => number;
       _level_revealed?: () => number;
+      _player_total_steps?: () => number;
+      _run_elapsed_ms?: () => number;
     };
   }
 }
@@ -73,4 +75,31 @@ test("walking records a replay", async ({ page }) => {
   await page.waitForTimeout(1500);
   const after = await page.evaluate(() => window.Module?._replay_length?.() ?? 0);
   expect(after).toBeGreaterThan(before);
+});
+
+test("pause stops movement", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
+    timeout: 30_000,
+  });
+
+  const cellPx = await page.evaluate(() => window.Module?._level_cell_px?.() ?? 20);
+  const box = await page.locator("canvas#canvas").boundingBox();
+  if (!box) {
+    throw new Error("canvas has no box");
+  }
+
+  // start a long walk, then pause mid-move
+  await page.mouse.click(box.x + box.width / 2 + cellPx * 6, box.y + box.height / 2);
+  await page.waitForTimeout(300);
+  await page.getByRole("button", { name: "Pause" }).click();
+
+  const t1 = await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0);
+  const s1 = await page.evaluate(() => window.Module?._player_total_steps?.() ?? 0);
+  await page.waitForTimeout(900);
+  const t2 = await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0);
+  const s2 = await page.evaluate(() => window.Module?._player_total_steps?.() ?? 0);
+
+  expect(t2 - t1).toBeLessThan(50);
+  expect(s2).toBe(s1);
 });

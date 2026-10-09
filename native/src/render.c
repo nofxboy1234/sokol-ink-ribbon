@@ -127,25 +127,29 @@ static void draw_objects(void) {
         if (!grid_is_revealed(o->x, o->y)) {
             continue;
         }
+        if (o->kind == OBJ_ITEM && items_taken(i)) {
+            continue;
+        }
         float sx, sy;
         camera_cell_to_screen((float)o->x, (float)o->y, &sx, &sy);
         switch (o->kind) {
             case OBJ_DOOR: {
                 float cr, cg, cb;
                 door_color(o, &cr, &cg, &cb);
+                float span = scale * (o->span > 0 ? o->span : 1);
                 if (o->horizontal) {
                     // on the horizontal wall line at the cell's top edge
-                    fill_rect(sx, sy - scale * 0.09f, scale, scale * 0.18f, cr, cg, cb, 1.0f);
+                    fill_rect(sx, sy - scale * 0.09f, span, scale * 0.18f, cr, cg, cb, 1.0f);
                     if (!o->open) {
-                        fill_rect(sx, sy - scale * 0.12f, scale, scale * 0.03f, C_INK_R);
-                        fill_rect(sx, sy + scale * 0.09f, scale, scale * 0.03f, C_INK_R);
+                        fill_rect(sx, sy - scale * 0.12f, span, scale * 0.03f, C_INK_R);
+                        fill_rect(sx, sy + scale * 0.09f, span, scale * 0.03f, C_INK_R);
                     }
                 } else {
                     // on the vertical wall line at the cell's left edge
-                    fill_rect(sx - scale * 0.09f, sy, scale * 0.18f, scale, cr, cg, cb, 1.0f);
+                    fill_rect(sx - scale * 0.09f, sy, scale * 0.18f, span, cr, cg, cb, 1.0f);
                     if (!o->open) {
-                        fill_rect(sx - scale * 0.12f, sy, scale * 0.03f, scale, C_INK_R);
-                        fill_rect(sx + scale * 0.09f, sy, scale * 0.03f, scale, C_INK_R);
+                        fill_rect(sx - scale * 0.12f, sy, scale * 0.03f, span, C_INK_R);
+                        fill_rect(sx + scale * 0.09f, sy, scale * 0.03f, span, C_INK_R);
                     }
                 }
                 break;
@@ -217,7 +221,7 @@ static void draw_discovery_markers(void) {
         int adx = dx < 0 ? -dx : dx;
         int ady = dy < 0 ? -dy : dy;
         int d = adx > ady ? adx : ady;
-        if (d > 2) {
+        if (d > 4) {
             continue;
         }
         float sx, sy;
@@ -263,30 +267,6 @@ void render_scene(int hover_x, int hover_y, const path_t* path) {
         }
     }
 
-    if (hover_x >= 0 && hover_y >= 0 && grid_is_floor(hover_x, hover_y)) {
-        float sx, sy;
-        camera_cell_to_screen((float)hover_x, (float)hover_y, &sx, &sy);
-        fill_rect(sx, sy, scale, scale, 0.0f, 1.0f, 0.149f, 0.12f);
-        thick_line(sx, sy, sx + scale, sy, 2.0f, C_GREEN_R);
-        thick_line(sx + scale, sy, sx + scale, sy + scale, 2.0f, C_GREEN_R);
-        thick_line(sx + scale, sy + scale, sx, sy + scale, 2.0f, C_GREEN_R);
-        thick_line(sx, sy + scale, sx, sy, 2.0f, C_GREEN_R);
-    }
-
-    draw_objects();
-
-    if (path && path->count > 1) {
-        float px, py;
-        camera_cell_to_screen((float)path->x[0] + 0.5f, (float)path->y[0] + 0.5f, &px, &py);
-        for (int i = 1; i < path->count; i++) {
-            float cx, cy;
-            camera_cell_to_screen((float)path->x[i] + 0.5f, (float)path->y[i] + 0.5f, &cx, &cy);
-            thick_line(px, py, cx, cy, 2.0f, C_GREEN_R);
-            px = cx;
-            py = cy;
-        }
-    }
-
     for (int y = 0; y < rows; y++) {
         for (int x = 0; x <= cols; x++) {
             int ax = x - 1;
@@ -322,12 +302,36 @@ void render_scene(int hover_x, int hover_y, const path_t* path) {
         }
     }
 
+    if (hover_x >= 0 && hover_y >= 0 && grid_is_floor(hover_x, hover_y)) {
+        float sx, sy;
+        camera_cell_to_screen((float)hover_x, (float)hover_y, &sx, &sy);
+        fill_rect(sx, sy, scale, scale, 0.0f, 1.0f, 0.149f, 0.12f);
+        thick_line(sx, sy, sx + scale, sy, 2.0f, C_GREEN_R);
+        thick_line(sx + scale, sy, sx + scale, sy + scale, 2.0f, C_GREEN_R);
+        thick_line(sx + scale, sy + scale, sx, sy + scale, 2.0f, C_GREEN_R);
+        thick_line(sx, sy + scale, sx, sy, 2.0f, C_GREEN_R);
+    }
+
+    // doors and items draw on top of the wall lines
+    draw_objects();
+
+    if (path && path->count > 1) {
+        float px, py;
+        camera_cell_to_screen((float)path->x[0] + 0.5f, (float)path->y[0] + 0.5f, &px, &py);
+        for (int i = 1; i < path->count; i++) {
+            float cx, cy;
+            camera_cell_to_screen((float)path->x[i] + 0.5f, (float)path->y[i] + 0.5f, &cx, &cy);
+            thick_line(px, py, cx, cy, 2.0f, C_GREEN_R);
+            px = cx;
+            py = cy;
+        }
+    }
+
     draw_discovery_markers();
 
     {
         float px, py;
         camera_cell_to_screen(player_x(), player_y(), &px, &py);
-        fill_circle(px, py, scale * 0.32f, C_PURPLE_R);
-        fill_circle(px, py, scale * 0.16f, 1.0f, 1.0f, 1.0f, 1.0f);
+        fill_circle(px, py, scale * 0.34f, C_PURPLE_R);
     }
 }

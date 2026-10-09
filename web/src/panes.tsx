@@ -179,8 +179,8 @@ export function PauseMenu({ open, onClose }: { open: boolean; onClose: () => voi
     return null;
   }
   return (
-    <div className="pause-overlay">
-      <div className="pause-menu">
+    <div className="pause-overlay" onClick={onClose}>
+      <div className="pause-menu" onClick={(event) => event.stopPropagation()}>
         <button
           type="button"
           className="pause-item pause-selected"

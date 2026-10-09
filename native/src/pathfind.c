@@ -68,8 +68,14 @@ bool pathfind(int sx, int sy, int tx, int ty, path_t* out) {
         for (int d = 0; d < 4; d++) {
             int nx = cx + dx[d];
             int ny = cy + dy[d];
-            if (!grid_is_floor(nx, ny) || grid_blocked(cx, cy, nx, ny) ||
-                doors_block_edge(cx, cy, nx, ny) || obstacles_block_cell(nx, ny)) {
+            if (!grid_is_floor(nx, ny) || obstacles_block_cell(nx, ny)) {
+                continue;
+            }
+            // a door covers the wall line: its state decides, not the wall
+            bool blocked = doors_on_edge(cx, cy, nx, ny)
+                ? doors_block_edge(cx, cy, nx, ny)
+                : grid_blocked(cx, cy, nx, ny);
+            if (blocked) {
                 continue;
             }
             int ni = ny * cols + nx;
