@@ -11,6 +11,8 @@ const sources = [
     'inventory.c',
     'items.c',
     'doors.c',
+    'interact.c',
+    'crafting.c',
     'health.c',
 ];
 

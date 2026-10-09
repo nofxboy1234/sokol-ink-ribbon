@@ -11,9 +11,11 @@
 #include "sokol_gl.h"
 
 #include "camera.h"
+#include "crafting.h"
 #include "doors.h"
 #include "grid.h"
 #include "health.h"
+#include "interact.h"
 #include "inventory.h"
 #include "items.h"
 #include "level.h"
@@ -51,7 +53,7 @@ static struct {
 static void touch_reveal(void) {
     int cx, cy;
     player_cell(&cx, &cy);
-    grid_reveal_around(cx, cy, REVEAL_RADIUS);
+    grid_reveal_around(cx, cy, lighter_on() ? 11 : REVEAL_RADIUS);
 }
 
 static void bump_revision(void) {
@@ -90,6 +92,10 @@ static void handle_click(player_move_t mode) {
         bump_revision();
         return;
     }
+    if (interact_at(app.hover_x, app.hover_y)) {
+        bump_revision();
+        return;
+    }
     player_move_to(app.hover_x, app.hover_y, mode);
     bump_revision();
 }
@@ -110,6 +116,7 @@ static void init(void) {
     inventory_init();
     items_init();
     doors_init();
+    interact_init();
     health_init();
     camera_init();
     camera_set_viewport(sapp_width(), sapp_height());
@@ -407,6 +414,74 @@ WEB_EXPORT int items_collected(void) {
 
 WEB_EXPORT int doors_discovered(void) {
     return doors_discovered_count();
+}
+
+WEB_EXPORT int lighter_value(void) {
+    return lighter_on() ? 1 : 0;
+}
+
+WEB_EXPORT void lighter_set(int on) {
+    if ((on != 0) != lighter_on()) {
+        lighter_toggle();
+        bump_revision();
+    }
+}
+
+WEB_EXPORT int web_files_found(void) {
+    return files_found();
+}
+
+WEB_EXPORT int file_code(int index) {
+    return file_code_at(index);
+}
+
+WEB_EXPORT const char* file_name(int index) {
+    return file_name_at(index);
+}
+
+WEB_EXPORT int web_saves_made(void) {
+    return saves_made();
+}
+
+WEB_EXPORT int craft_recipe(int index) {
+    if (craft(index)) {
+        bump_revision();
+        return 1;
+    }
+    return 0;
+}
+
+WEB_EXPORT int replay_length(void) {
+    return player_replay_length();
+}
+
+WEB_EXPORT int replay_x(int index) {
+    return player_replay_x(index);
+}
+
+WEB_EXPORT int replay_y(int index) {
+    return player_replay_y(index);
+}
+
+WEB_EXPORT void game_reset(void) {
+    if (!level_from_json(&app.level, embed_level_01_json)) {
+        level_init(&app.level);
+    }
+    grid_init(&app.level);
+    player_init(app.level.start_x, app.level.start_y);
+    inventory_init();
+    items_init();
+    doors_init();
+    interact_init();
+    health_init();
+    camera_set_follow(true);
+    camera_follow(player_x(), player_y());
+    camera_recentre();
+    touch_reveal();
+    app.elapsed = 0.0;
+    app.last_steps = 0;
+    app.last_moving = false;
+    bump_revision();
 }
 
 WEB_EXPORT double run_elapsed_ms(void) {

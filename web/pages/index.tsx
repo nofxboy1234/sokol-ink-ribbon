@@ -1,9 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "../src/app.css";
 import { AuthPanel } from "../src/AuthPanel";
 import { GameStateProvider } from "../src/GameState";
 import { MapCanvas } from "../src/MapCanvas";
-import { Crafting, Files, HealthBar, Inventory, RunPanel } from "../src/panes";
+import {
+  Crafting,
+  Files,
+  HealthBar,
+  Inventory,
+  LighterButton,
+  PauseMenu,
+  RunPanel,
+} from "../src/panes";
 
 type Tab = "items" | "crafting" | "files";
 
@@ -15,6 +23,17 @@ const TABS: { id: Tab; label: string }[] = [
 
 export default function HomePage() {
   const [tab, setTab] = useState<Tab>("items");
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPaused((value) => !value);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
     <>
@@ -23,10 +42,14 @@ export default function HomePage() {
         <main className="shell">
           <section className="pane pane-map">
             <MapCanvas />
+            <button type="button" className="pause-button" onClick={() => setPaused(true)}>
+              Pause
+            </button>
           </section>
           <section className="pane pane-side">
             <header className="side-header">
               <HealthBar />
+              <LighterButton />
               <a className="records-link" href="/records">
                 Records
               </a>
@@ -51,6 +74,7 @@ export default function HomePage() {
             {tab === "files" && <Files />}
           </section>
         </main>
+        <PauseMenu open={paused} onClose={() => setPaused(false)} />
       </GameStateProvider>
     </>
   );

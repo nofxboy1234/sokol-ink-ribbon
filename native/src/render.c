@@ -13,7 +13,6 @@
 
 // Reference palette (ref/map.kra)
 #define C_INK_R 0.118f, 0.118f, 0.118f, 1.0f
-#define C_CYAN_R 0.118f, 1.0f, 0.973f, 1.0f
 #define C_GREEN_R 0.0f, 1.0f, 0.149f, 1.0f
 #define C_YELLOW_R 0.949f, 1.0f, 0.0f, 1.0f
 #define C_MAGENTA_R 1.0f, 0.0f, 0.416f, 1.0f
@@ -157,10 +156,10 @@ static void draw_objects(void) {
             }
             case OBJ_LIGHT: {
                 if (o->state) {
-                    float radius = (o->radius > 0.0f ? o->radius : 3.0f) * scale;
-                    fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, radius, C_YELLOW_R);
+                    fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.14f, C_YELLOW_R);
+                } else {
+                    fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.14f, C_GRAY_R);
                 }
-                fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.1f, C_YELLOW_R);
                 break;
             }
             case OBJ_SWITCH:
@@ -258,31 +257,6 @@ void render_scene(int hover_x, int hover_y, const path_t* path) {
             float sx, sy;
             camera_cell_to_screen((float)x, (float)y, &sx, &sy);
             fill_rect(sx, sy, scale, scale, 1.0f, 1.0f, 1.0f, 1.0f);
-        }
-    }
-
-    {
-        const level_t* lv = grid_level();
-        for (int s = 0; s < lv->section_count; s++) {
-            const section_t* sec = &lv->sections[s];
-            bool any = false;
-            for (int y = sec->y; y < sec->y + sec->h && !any; y++) {
-                for (int x = sec->x; x < sec->x + sec->w && !any; x++) {
-                    if (grid_is_revealed(x, y)) {
-                        any = true;
-                    }
-                }
-            }
-            if (!any) {
-                continue;
-            }
-            float sx, sy, ex, ey;
-            camera_cell_to_screen((float)sec->x, (float)sec->y, &sx, &sy);
-            camera_cell_to_screen((float)(sec->x + sec->w), (float)(sec->y + sec->h), &ex, &ey);
-            fill_rect(sx, sy, ex - sx, 1.5f, C_CYAN_R);
-            fill_rect(sx, ey - 1.5f, ex - sx, 1.5f, C_CYAN_R);
-            fill_rect(sx, sy, 1.5f, ey - sy, C_CYAN_R);
-            fill_rect(ex - 1.5f, sy, 1.5f, ey - sy, C_CYAN_R);
         }
     }
 

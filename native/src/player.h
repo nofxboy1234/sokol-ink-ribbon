@@ -20,3 +20,7 @@ bool player_is_waiting(void);
 void player_toggle_wait(void);
 player_move_t player_move_mode(void);
 int player_facing(void);
+
+int player_replay_length(void);
+int player_replay_x(int index);
+int player_replay_y(int index);

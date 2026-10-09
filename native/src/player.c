@@ -6,6 +6,7 @@
 #define PLAYER_WALK_SPEED 3.0f
 #define PLAYER_RUN_SPEED 6.5f
 #define PLAYER_EPSILON 0.02f
+#define REPLAY_MAX 8192
 
 static struct {
     float x, y;
@@ -16,7 +17,19 @@ static struct {
     bool moving;
     bool waiting;
     int facing;
+    int replay_len;
+    int replay_x[REPLAY_MAX];
+    int replay_y[REPLAY_MAX];
 } p;
+
+static void replay_record(void) {
+    if (p.replay_len >= REPLAY_MAX) {
+        return;
+    }
+    p.replay_x[p.replay_len] = (int)floorf(p.x);
+    p.replay_y[p.replay_len] = (int)floorf(p.y);
+    p.replay_len++;
+}
 
 void player_init(int x, int y) {
     p.x = (float)x + 0.5f;
@@ -28,6 +41,8 @@ void player_init(int x, int y) {
     p.moving = false;
     p.waiting = false;
     p.facing = 0;
+    p.replay_len = 0;
+    replay_record();
 }
 
 void player_move_to(int x, int y, player_move_t mode) {
@@ -65,6 +80,7 @@ void player_update(float dt) {
         p.x = tx;
         p.y = ty;
         p.steps++;
+        replay_record();
         p.index++;
         if (p.index >= p.path.count) {
             p.moving = false;
@@ -122,4 +138,22 @@ player_move_t player_move_mode(void) {
 
 int player_facing(void) {
     return p.facing;
+}
+
+int player_replay_length(void) {
+    return p.replay_len;
+}
+
+int player_replay_x(int index) {
+    if (index < 0 || index >= p.replay_len) {
+        return -1;
+    }
+    return p.replay_x[index];
+}
+
+int player_replay_y(int index) {
+    if (index < 0 || index >= p.replay_len) {
+        return -1;
+    }
+    return p.replay_y[index];
 }

@@ -106,6 +106,94 @@ body > div {
   font-size: 12px;
 }
 
+.pause-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 10px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.lighter {
+  padding: 4px 8px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.lighter[data-on="true"] {
+  background: var(--yellow);
+}
+
+.pause-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pause-menu {
+  display: flex;
+  flex-direction: column;
+  width: 220px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+
+.pause-item {
+  padding: 10px 12px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  cursor: pointer;
+  font-size: 14px;
+  text-align: left;
+}
+
+.pause-item:last-child {
+  border-bottom: 0;
+}
+
+.pause-selected {
+  background: var(--teal);
+}
+
+.file-empty {
+  color: var(--ink);
+}
+
+button.recipe {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: var(--teal);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  font: inherit;
+  color: var(--ink);
+}
+
+button.recipe:disabled {
+  background: var(--paper);
+  cursor: default;
+}
+
+.replay {
+  display: block;
+  margin: 0 auto;
+}
+
 .tabs {
   display: flex;
   gap: 6px;

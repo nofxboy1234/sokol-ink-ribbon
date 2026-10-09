@@ -1,5 +1,12 @@
-import { useState } from "react";
-import { ITEM_NAMES } from "./wasmBridge";
+import { useMemo, useState } from "react";
+import {
+  ITEM_NAMES,
+  craftRecipe,
+  gameReset,
+  readFiles,
+  readReplay,
+  setLighter,
+} from "./wasmBridge";
 import { useElapsed, useGameState } from "./GameState";
 
 export function formatMs(ms: number): string {
@@ -23,11 +30,10 @@ const ITEM_COLORS = [
 
 export function RunPanel() {
   const elapsed = useElapsed();
-  const { steps, revealed, itemsCollected } = useGameState();
   const [status, setStatus] = useState("");
 
   const save = async () => {
-    const replay = [{ steps, revealed, itemsCollected, t: Math.round(elapsed) }];
+    const replay = readReplay();
     try {
       const response = await fetch("/runs", {
         method: "POST",
@@ -69,6 +75,23 @@ export function HealthBar() {
   );
 }
 
+export function LighterButton() {
+  const { hasLighter, lighterOn } = useGameState();
+  if (!hasLighter) {
+    return null;
+  }
+  return (
+    <button
+      type="button"
+      className="lighter"
+      data-on={lighterOn}
+      onClick={() => setLighter(!lighterOn)}
+    >
+      Lighter {lighterOn ? "on" : "off"}
+    </button>
+  );
+}
+
 export function Inventory() {
   const { inventory } = useGameState();
   return (
@@ -103,20 +126,28 @@ const RECIPES = [
 ];
 
 export function Crafting() {
+  const { inventory } = useGameState();
   return (
     <div className="pane-content">
       <h2>CRAFTING</h2>
       <ul className="recipe-list">
-        {RECIPES.map((recipe) => (
-          <li key={recipe.output} className="recipe">
-            <span className="recipe-dot" style={{ background: "#ff006a" }} />
-            <span>{recipe.inputs[0]}</span>
-            <span className="recipe-op">+</span>
-            <span className="recipe-ring" />
-            <span>{recipe.inputs[1]}</span>
-            <span className="recipe-op">→</span>
-            <span className="recipe-dot" style={{ background: "#ff006a" }} />
-            <span className="recipe-output">{recipe.output}</span>
+        {RECIPES.map((recipe, index) => (
+          <li key={recipe.output}>
+            <button
+              type="button"
+              className="recipe"
+              disabled={inventory.every((item) => item < 0)}
+              onClick={() => craftRecipe(index)}
+            >
+              <span className="recipe-dot" style={{ background: "#ff006a" }} />
+              <span>{recipe.inputs[0]}</span>
+              <span className="recipe-op">+</span>
+              <span className="recipe-ring" />
+              <span>{recipe.inputs[1]}</span>
+              <span className="recipe-op">→</span>
+              <span className="recipe-dot" style={{ background: "#ff006a" }} />
+              <span className="recipe-output">{recipe.output}</span>
+            </button>
           </li>
         ))}
       </ul>
@@ -124,24 +155,56 @@ export function Crafting() {
   );
 }
 
-const FILES = [
-  { name: "Safe code", code: 1234 },
-  { name: "Fuse box note", code: 4721 },
-  { name: "Lobby safe", code: 1938 },
-];
-
 export function Files() {
+  const { filesFound } = useGameState();
+  const files = useMemo(() => readFiles(), [filesFound]);
   return (
     <div className="pane-content">
       <h2>FILES</h2>
       <ul className="file-list">
-        {FILES.map((file) => (
+        {files.length === 0 && <li className="file file-empty">NO DATA</li>}
+        {files.map((file) => (
           <li key={file.name} className="file">
             <span className="file-name">{file.name}</span>
             <span className="file-code">= {file.code}</span>
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+export function PauseMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+  if (!open) {
+    return null;
+  }
+  return (
+    <div className="pause-overlay">
+      <div className="pause-menu">
+        <button
+          type="button"
+          className="pause-item pause-selected"
+          onClick={() => {
+            gameReset();
+            onClose();
+          }}
+        >
+          Restart
+        </button>
+        <button
+          type="button"
+          className="pause-item"
+          onClick={() => {
+            gameReset();
+            onClose();
+          }}
+        >
+          Load Game
+        </button>
+        <button type="button" className="pause-item" onClick={onClose}>
+          Resume
+        </button>
+      </div>
     </div>
   );
 }

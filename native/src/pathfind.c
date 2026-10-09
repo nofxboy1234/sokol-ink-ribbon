@@ -1,6 +1,7 @@
 #include "pathfind.h"
 #include "doors.h"
 #include "grid.h"
+#include "interact.h"
 
 #include <limits.h>
 #include <string.h>
@@ -67,7 +68,8 @@ bool pathfind(int sx, int sy, int tx, int ty, path_t* out) {
         for (int d = 0; d < 4; d++) {
             int nx = cx + dx[d];
             int ny = cy + dy[d];
-            if (!grid_is_floor(nx, ny) || grid_blocked(cx, cy, nx, ny) || doors_block_cell(nx, ny)) {
+            if (!grid_is_floor(nx, ny) || grid_blocked(cx, cy, nx, ny) || doors_block_cell(nx, ny) ||
+                obstacles_block_cell(nx, ny)) {
                 continue;
             }
             int ni = ny * cols + nx;
