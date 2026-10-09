@@ -26,3 +26,12 @@ test("sign up and save a run", async ({ request, baseURL }) => {
   const body = (await mine.json()) as { runs?: unknown[] };
   expect((body.runs ?? []).length).toBeGreaterThan(0);
 });
+
+test("sign up through the form", async ({ page }) => {
+  await page.goto("/");
+  const email = `ui_${Date.now()}@example.com`;
+  await page.locator('input[type="email"]').fill(email);
+  await page.locator('input[type="password"]').fill("password123");
+  await page.getByRole("button", { name: "Sign up" }).click();
+  await expect(page.getByText(email)).toBeVisible({ timeout: 10_000 });
+});

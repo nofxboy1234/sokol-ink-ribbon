@@ -2,19 +2,22 @@ import { useState } from "react";
 import { auth } from "void/client";
 
 type SessionUser = { email?: string };
+type AuthError = { message?: string } | null;
+type AuthResult = { error?: AuthError } | undefined;
 type AuthClient = {
   useSession: () => {
     data: { user?: SessionUser } | null;
     isPending: boolean;
   };
-  signIn: { email: (value: { email: string; password: string }) => Promise<unknown> };
+  signIn: { email: (value: { email: string; password: string }) => Promise<AuthResult> };
   signUp: {
-    email: (value: { email: string; password: string; name: string }) => Promise<unknown>;
+    email: (value: { email: string; password: string; name: string }) => Promise<AuthResult>;
   };
   signOut: () => Promise<unknown>;
 };
 
 const client = auth as unknown as AuthClient;
+const MIN_PASSWORD = 8;
 
 export function AuthPanel() {
   const { data: session, isPending } = client.useSession();
@@ -39,16 +42,26 @@ export function AuthPanel() {
   }
 
   const submit = async (mode: "signin" | "signup") => {
-    setBusy(true);
     setError("");
+    if (!email.includes("@")) {
+      setError("Enter a valid email");
+      return;
+    }
+    if (password.length < MIN_PASSWORD) {
+      setError(`Password must be at least ${MIN_PASSWORD} characters`);
+      return;
+    }
+    setBusy(true);
     try {
-      if (mode === "signup") {
-        await client.signUp.email({ email, password, name: email });
-      } else {
-        await client.signIn.email({ email, password });
+      const result =
+        mode === "signup"
+          ? await client.signUp.email({ email, password, name: email })
+          : await client.signIn.email({ email, password });
+      if (result?.error) {
+        setError(result.error.message ?? "Request failed");
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Sign in failed");
+      setError(cause instanceof Error ? cause.message : "Request failed");
     } finally {
       setBusy(false);
     }
@@ -64,12 +77,14 @@ export function AuthPanel() {
     >
       <input
         type="email"
+        autoComplete="email"
         placeholder="email"
         value={email}
         onChange={(event) => setEmail(event.target.value)}
       />
       <input
         type="password"
+        autoComplete="current-password"
         placeholder="password"
         value={password}
         onChange={(event) => setPassword(event.target.value)}

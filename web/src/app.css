@@ -257,6 +257,10 @@ button.recipe:disabled {
 }
 
 .inventory-slot[data-filled="true"] {
+  background: var(--paper);
+}
+
+.inventory-slot:hover {
   background: var(--teal);
 }
 
