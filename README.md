@@ -1,29 +1,42 @@
 # sokol-ink-ribbon
 
-A [sokol](https://github.com/floooh/sokol) cube sample rendered in the browser,
-split into:
+sokol-ink-ribbon is the *Grace* map app from the design plan in
+`ref/care-center-01-plan`: a turn-based, grid map rendered with sokol + C and
+embedded in a React app, plus a dear-imgui level editor. It is split into:
 
 - **`native/`** — the sokol + C project. It is a fork of
   [floooh/sokol-samples](https://github.com/floooh/sokol-samples) driven by
-  [fibs](https://github.com/floooh/fibs), plus our own `main` target
-  (`native/src/main.c`): the spinning cube from the `cube-sapp` sample, with the
-  `sokol-gfx` / `sokol-app` debug menus.
+  [fibs](https://github.com/floooh/fibs), plus two of our own targets:
+  - `main` (`native/src/main.c`) — the map runtime: grid, smooth follow camera,
+    A* movement, section reveal, doors, items, inventory and health. It builds
+    for the host **and** for Emscripten (the wasm canvas).
+  - `editor` (`native/src/editor.cc`) — a desktop-only dear-imgui level editor:
+    a snapping wall line tool, an object palette, property/link editing and
+    JSON save/load. It shares the `level` module with the runtime.
 - **`web/`** — a [Void](https://void.cloud) + React + Vite app. Its index page
-  loads the native `main` compiled to WebAssembly.
+  loads the native `main` wasm, and a `records` page shows saved runs and the
+  leaderboard (Cloudflare D1 via Void, Better Auth email/password).
 
-The native `main` is built for the host **and** for Emscripten; the wasm build is
-copied into `web/public/wasm/` and rendered on the web index page.
+The runtime reads the level from JSON that the editor writes and fibs embeds
+into the wasm at build time (`native/src/level_01.json` → `native/src/levels.h`).
 
 ## Layout
 
 ```
 package.json                 root scripts: build:wasm, copy:wasm
 scripts/copy-wasm.mjs        copies the wasm output into web/public/wasm
-web/                         Void + React + Vite app (pages/index.tsx loads the wasm)
-native/                      sokol-samples fork + our main target (fibs project)
+web/                         Void + React + Vite app
+  pages/index.tsx            map canvas + ITEMS/CRAFTING/FILES panes
+  pages/records.tsx          saved runs and the leaderboard
+  src/                       React components + the wasm bridge
+  db/schema.ts, migrations/  D1 (Drizzle) schema: runs + Better Auth tables
+  routes/                    /runs and /leaderboard API endpoints
+  tests/                     Playwright functional tests (production build)
+native/                      sokol-samples fork + our main/editor targets
   fibs                       fibs launcher (deno -> jsr:@floooh/fibs)
-  fibs.ts, fibs-scripts/     build wiring (sapp samples + our main target)
-  src/                       the cube sample: main.c plus main.glsl
+  fibs.ts, fibs-scripts/     build wiring (sapp samples + main + editor)
+  src/                       map runtime, level model and the imgui editor
+  libs/json/jsmn.h           vendored JSON parser for the embedded level
   sapp/ libs/ html5/ ...     upstream sokol-samples sources and assets
   scripts/fibs-completion.bash
 ```
@@ -84,8 +97,24 @@ wasm cache:
 npm run wasm                     # fibs build main (emscripten) + copy into web/public/wasm
 ```
 
-Other web scripts: `npm test` (vitest), `npm run lint` (oxlint),
-`npm run typecheck` (tsc), `npm run fmt` (oxfmt).
+Other web scripts: `npm run lint` (oxlint), `npm run typecheck` (tsc),
+`npm run fmt` (oxfmt).
+
+## Functional tests
+
+The tests are Playwright specs that run against the **production** web build
+(which exercises the native wasm inside it). Install the browser once, then run
+them:
+
+```sh
+cd web
+npm run test:install   # one-time: downloads Chromium
+npm test               # builds, serves, and runs tests/smoke.spec.ts
+```
+
+Auth is enabled, so a local production preview needs a Better Auth secret. Put
+one in `web/.env` (`BETTER_AUTH_SECRET=...`); `void deploy` stores it as a
+Worker secret instead.
 
 ## Building the native project
 
@@ -108,6 +137,22 @@ Build and run the **main** target natively:
 ./fibs build main
 ./fibs run main
 ```
+
+## Level editor
+
+The editor is desktop-only (not part of the wasm build). With a desktop config
+selected (`sapp-gl-linux-ninja-release` on Linux):
+
+```sh
+./fibs build editor
+./fibs run editor
+```
+
+It reads and writes `native/src/level_01.json` (relative to `native/`). Use the
+wall line tool to draw walls, the place tool to add doors/items/lights/etc., and
+the properties panel to edit the selected object. Saving rewrites the level JSON;
+the runtime picks it up on the next `npm run wasm` (the file is embedded as
+`native/src/levels.h`).
 
 Build the **main** target for the browser (WebAssembly):
 

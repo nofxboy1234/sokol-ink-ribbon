@@ -1,0 +1,106 @@
+{
+  "name": "care-center-01",
+  "cols": 64,
+  "rows": 48,
+  "start": [6, 10],
+  "walls": [
+    [2, 6, 62, 6],
+    [2, 44, 62, 44],
+    [2, 6, 2, 44],
+    [62, 6, 62, 44],
+
+    [14, 18, 14, 22],
+    [14, 26, 14, 30],
+
+    [26, 16, 26, 22],
+    [26, 26, 26, 32],
+
+    [26, 16, 36, 16],
+    [26, 32, 32, 32],
+
+    [42, 16, 42, 22],
+    [42, 26, 42, 32],
+
+    [54, 16, 54, 22],
+    [54, 26, 54, 32],
+
+    [10, 18, 10, 18],
+    [2, 18, 10, 18],
+    [10, 16, 10, 18],
+
+    [26, 16, 26, 6],
+    [42, 16, 42, 6],
+    [26, 6, 42, 6],
+
+    [26, 32, 26, 44],
+    [42, 32, 42, 44],
+    [26, 44, 42, 44],
+
+    [10, 32, 10, 44],
+    [10, 32, 26, 32],
+    [10, 44, 26, 44],
+
+    [42, 32, 58, 32],
+    [42, 44, 58, 44],
+    [58, 32, 58, 44],
+
+    [42, 16, 58, 16],
+    [58, 16, 58, 32],
+
+    [54, 6, 54, 16],
+    [54, 6, 62, 6],
+    [62, 6, 62, 16],
+    [54, 16, 62, 16]
+  ],
+  "sections": [
+    { "name": "section 01", "x": 2, "y": 18, "w": 12, "h": 12 },
+    { "name": "section 02", "x": 14, "y": 22, "w": 12, "h": 4 },
+    { "name": "section 03", "x": 26, "y": 16, "w": 16, "h": 16 },
+    { "name": "section 04", "x": 42, "y": 22, "w": 12, "h": 4 },
+    { "name": "section 05", "x": 54, "y": 18, "w": 8, "h": 12 },
+    { "name": "section 06", "x": 26, "y": 6, "w": 16, "h": 10 },
+    { "name": "section 07", "x": 10, "y": 6, "w": 16, "h": 10 },
+    { "name": "section 08", "x": 42, "y": 6, "w": 16, "h": 10 },
+    { "name": "section 09", "x": 26, "y": 32, "w": 16, "h": 10 },
+    { "name": "section 10", "x": 10, "y": 32, "w": 16, "h": 12 },
+    { "name": "section 11", "x": 42, "y": 32, "w": 16, "h": 12 },
+    { "name": "section 12", "x": 2, "y": 8, "w": 8, "h": 10 },
+    { "name": "section 13", "x": 54, "y": 6, "w": 8, "h": 10 }
+  ],
+  "objects": [
+    { "kind": "start", "id": 1, "x": 6, "y": 10, "name": "Grace start" },
+    { "kind": "goal", "id": 2, "x": 2, "y": 24, "name": "Exit gate" },
+
+    { "kind": "door", "id": 3, "x": 3, "y": 24, "horizontal": 0, "state": "locked", "open": false, "key_id": 6, "name": "Gate" },
+    { "kind": "door", "id": 4, "x": 14, "y": 20, "horizontal": 0, "state": "unlocked", "open": true, "name": "West door" },
+    { "kind": "door", "id": 5, "x": 26, "y": 24, "horizontal": 0, "state": "unlocked", "open": false, "name": "Lobby door" },
+    { "kind": "door", "id": 6, "x": 36, "y": 16, "horizontal": 1, "state": "locked", "open": false, "key_id": 8, "name": "Cherub door" },
+    { "kind": "door", "id": 7, "x": 54, "y": 20, "horizontal": 0, "state": "unknown", "open": false, "name": "East door" },
+    { "kind": "door", "id": 8, "x": 26, "y": 32, "horizontal": 1, "state": "unknown", "open": false, "name": "South door" },
+
+    { "kind": "item", "id": 10, "x": 6, "y": 24, "item": "herb", "name": "Green Herb" },
+    { "kind": "item", "id": 11, "x": 58, "y": 12, "item": "fuse", "name": "Fuse" },
+    { "kind": "item", "id": 12, "x": 4, "y": 10, "item": "lighter", "name": "Lighter" },
+    { "kind": "item", "id": 13, "x": 30, "y": 38, "item": "screwdriver", "name": "Screwdriver" },
+    { "kind": "item", "id": 14, "x": 12, "y": 40, "item": "injector", "name": "Med Injector" },
+    { "kind": "item", "id": 15, "x": 50, "y": 40, "item": "coin", "name": "Antique Coin" },
+    { "kind": "item", "id": 16, "x": 30, "y": 20, "item": "ink_ribbon", "name": "Ink Ribbon" },
+    { "kind": "item", "id": 17, "x": 20, "y": 10, "item": "cherub_key", "name": "Cherub Key" },
+    { "kind": "item", "id": 18, "x": 50, "y": 10, "item": "bottle", "name": "Empty Bottle" },
+
+    { "kind": "typewriter", "id": 20, "x": 32, "y": 18, "name": "Typewriter" },
+    { "kind": "file", "id": 21, "x": 34, "y": 20, "code": 4721, "name": "Fuse box note" },
+    { "kind": "safe", "id": 22, "x": 30, "y": 22, "code": 1938, "name": "Lobby safe" },
+
+    { "kind": "switch", "id": 30, "x": 28, "y": 24, "group_id": 1, "name": "Lobby switch" },
+    { "kind": "light", "id": 31, "x": 8, "y": 22, "radius": 5, "state": 1, "group_id": 1, "name": "West light" },
+    { "kind": "light", "id": 32, "x": 34, "y": 22, "radius": 6, "state": 1, "group_id": 1, "name": "Lobby light" },
+    { "kind": "light", "id": 33, "x": 58, "y": 24, "radius": 5, "state": 0, "group_id": 2, "name": "East light" },
+    { "kind": "light", "id": 34, "x": 34, "y": 10, "radius": 4, "state": 0, "group_id": 3, "name": "North light" },
+    { "kind": "light", "id": 35, "x": 16, "y": 38, "radius": 4, "state": 0, "group_id": 3, "name": "South light" },
+
+    { "kind": "obstacle", "id": 40, "x": 28, "y": 26, "climbable": true, "name": "Table" },
+    { "kind": "movable", "id": 41, "x": 44, "y": 24, "name": "Cart" },
+    { "kind": "openable", "id": 42, "x": 52, "y": 24, "name": "Locker" }
+  ]
+}

@@ -9,6 +9,7 @@ import { addGlfwSamples } from './fibs-scripts/glfw.ts';
 import { addMetalSamples } from './fibs-scripts/metal.ts';
 import { addEmscriptenSamples } from './fibs-scripts/emscripten.ts';
 import { addMain } from './fibs-scripts/main.ts';
+import { addEditor } from './fibs-scripts/editor.ts';
 import { addBox3d, addBox3dImport } from './fibs-scripts/box3d.ts';
 import { addCompdbCommand } from './fibs-scripts/compdb.ts';
 
@@ -32,6 +33,9 @@ export function build(b: Builder) {
     addBox3d(b);
     addMain(b);
     const cfg = b.activeConfig();
+    if (cfg.platform !== 'emscripten') {
+        addEditor(b);
+    }
     if (cfg.options.sappSamples) {
         addSokolAppSamples(b);
     } else if (cfg.options.d3d11Samples) {

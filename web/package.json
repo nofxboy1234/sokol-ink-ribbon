@@ -8,7 +8,8 @@
     "build": "vite build",
     "deploy:cloudflare": "void deploy --platform cloudflare",
     "preview": "vite preview",
-    "test": "vitest",
+    "test": "playwright test",
+    "test:install": "playwright install chromium",
     "lint": "oxlint",
     "fmt": "oxfmt --write .",
     "typecheck": "tsc --noEmit"
@@ -20,20 +21,19 @@
     "valibot": "^1.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.0",
     "@rolldown/plugin-babel": "^0.2.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "@void/react": "^0.26.0",
     "babel-plugin-react-compiler": "^1.0.0",
-    "jsdom": "^30.1.2",
     "oxc-transform-react": "^0.152.0",
     "oxfmt": "^0.72.0",
     "oxlint": "^1.87.0",
     "oxlint-tsgolint": "^7.0.2003",
     "typescript": "^7.0.2",
     "vite": "^8.3.3",
-    "vitest": "^5.0.3",
     "void": "^0.26.0",
     "wrangler": "^4.148.0"
   },
