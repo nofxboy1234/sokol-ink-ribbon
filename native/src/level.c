@@ -158,12 +158,12 @@ item_t item_from_name(const char* name) {
 }
 
 const char* door_state_name(int state) {
-    static const char* names[4] = { "unknown", "locked", "unlocked", "unopenable" };
-    return (state >= 0 && state < 4) ? names[state] : "unknown";
+    static const char* names[3] = { "unknown", "locked", "unlocked" };
+    return (state >= 0 && state < 3) ? names[state] : "unknown";
 }
 
 int door_state_from_name(const char* name) {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 3; i++) {
         if (strcmp(name, door_state_name(i)) == 0) {
             return i;
         }
@@ -173,16 +173,29 @@ int door_state_from_name(const char* name) {
 
 void item_color_rgb(int item, float* r, float* g, float* b) {
     switch (item) {
-        case ITEM_BOTTLE: *r = 0.0f; *g = 0.867f; *b = 1.0f; break;
-        case ITEM_COIN: *r = 0.949f; *g = 1.0f; *b = 0.0f; break;
+        case ITEM_BOTTLE: *r = 0.0f; *g = 0.031f; *b = 1.0f; break;
+        case ITEM_COIN: *r = 0.733f; *g = 0.733f; *b = 0.733f; break;
         case ITEM_HERB: *r = 0.0f; *g = 1.0f; *b = 0.149f; break;
-        case ITEM_INK_RIBBON: *r = 0.118f; *g = 0.118f; *b = 0.118f; break;
-        case ITEM_SCREWDRIVER: *r = 0.616f; *g = 0.616f; *b = 0.616f; break;
-        case ITEM_INJECTOR: *r = 1.0f; *g = 0.0f; *b = 0.165f; break;
-        case ITEM_FUSE: *r = 0.949f; *g = 1.0f; *b = 0.0f; break;
-        case ITEM_LIGHTER: *r = 1.0f; *g = 0.0f; *b = 0.416f; break;
-        case ITEM_CHERUB_KEY: *r = 0.588f; *g = 0.118f; *b = 1.0f; break;
+        case ITEM_INK_RIBBON: *r = 0.8f; *g = 0.0f; *b = 0.4f; break;
+        case ITEM_SCREWDRIVER: *r = 1.0f; *g = 0.0f; *b = 0.933f; break;
+        case ITEM_INJECTOR: *r = 0.0f; *g = 0.8f; *b = 0.15f; break;
+        case ITEM_FUSE: *r = 0.0f; *g = 1.0f; *b = 0.733f; break;
+        case ITEM_LIGHTER: *r = 0.95f; *g = 0.95f; *b = 0.0f; break;
+        case ITEM_CHERUB_KEY: *r = 0.9f; *g = 0.0f; *b = 0.15f; break;
         default: *r = 0.118f; *g = 0.118f; *b = 0.118f; break;
+    }
+}
+
+// Icon style from ref/map.kra: 0 circle, 1 square, 2 hollow ring, 3 circle + ink ring.
+int item_icon_shape(int item) {
+    switch (item) {
+        case ITEM_BOTTLE: return 1;
+        case ITEM_LIGHTER: return 1;
+        case ITEM_SCREWDRIVER: return 2;
+        case ITEM_INK_RIBBON: return 3;
+        case ITEM_INJECTOR: return 3;
+        case ITEM_CHERUB_KEY: return 3;
+        default: return 0;
     }
 }
 
@@ -190,7 +203,6 @@ void door_color_rgb(int state, float* r, float* g, float* b) {
     switch (state) {
         case DOOR_LOCKED: *r = 1.0f; *g = 0.0f; *b = 0.165f; break;
         case DOOR_UNLOCKED: *r = 0.118f; *g = 1.0f; *b = 0.973f; break;
-        case DOOR_UNOPENABLE: *r = 0.118f; *g = 0.118f; *b = 0.118f; break;
         default: *r = 0.616f; *g = 0.616f; *b = 0.616f; break;
     }
 }
@@ -245,6 +257,7 @@ static void parse_objects(const char* js, const jsmntok_t* t, level_t* lv, int a
             obj_t* o = &lv->objs[lv->obj_count];
             memset(o, 0, sizeof(*o));
             o->radius = 0.0f;
+            o->discover_state = -1;
             o->id = lv->obj_count + 1;
             int v;
             char kind[LEVEL_MAX_NAME] = "item";
@@ -278,6 +291,11 @@ static void parse_objects(const char* js, const jsmntok_t* t, level_t* lv, int a
             if ((v = obj_find(js, t, i, "item")) >= 0) {
                 tok_str(js, &t[v], item, LEVEL_MAX_NAME);
                 o->item_type = item_from_name(item);
+            }
+            if ((v = obj_find(js, t, i, "discover")) >= 0) {
+                char discover[LEVEL_MAX_NAME] = "";
+                tok_str(js, &t[v], discover, LEVEL_MAX_NAME);
+                o->discover_state = door_state_from_name(discover);
             }
             lv->obj_count++;
         }
@@ -333,9 +351,36 @@ static int ap(char* out, int cap, int n, const char* fmt, ...) {
     return n + wrote;
 }
 
+// Append a JSON string literal with the value escaped.
+static int ap_str(char* out, int cap, int n, const char* s) {
+    n = ap(out, cap, n, "\"");
+    for (const char* p = s; *p; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (c == '"' || c == '\\') {
+            n = ap(out, cap, n, "\\%c", c);
+        } else if (c == '\n') {
+            n = ap(out, cap, n, "\\n");
+        } else if (c == '\r') {
+            n = ap(out, cap, n, "\\r");
+        } else if (c == '\t') {
+            n = ap(out, cap, n, "\\t");
+        } else if (c < 0x20) {
+            n = ap(out, cap, n, "\\u%04x", c);
+        } else {
+            n = ap(out, cap, n, "%c", c);
+        }
+        if (n < 0) {
+            return n;
+        }
+    }
+    return ap(out, cap, n, "\"");
+}
+
 int level_to_json(const level_t* lv, char* out, int cap) {
     int n = 0;
-    n = ap(out, cap, n, "{\n  \"name\": \"%s\",\n  \"cols\": %d,\n  \"rows\": %d,\n", lv->name, lv->cols, lv->rows);
+    n = ap(out, cap, n, "{\n  \"name\": ");
+    n = ap_str(out, cap, n, lv->name);
+    n = ap(out, cap, n, ",\n  \"cols\": %d,\n  \"rows\": %d,\n", lv->cols, lv->rows);
     n = ap(out, cap, n, "  \"start\": [%d, %d],\n", lv->start_x, lv->start_y);
     n = ap(out, cap, n, "  \"walls\": [");
     for (int i = 0; i < lv->wall_count; i++) {
@@ -345,8 +390,9 @@ int level_to_json(const level_t* lv, char* out, int cap) {
     n = ap(out, cap, n, "\n  ],\n  \"sections\": [");
     for (int i = 0; i < lv->section_count; i++) {
         const section_t* s = &lv->sections[i];
-        n = ap(out, cap, n, "%s\n    { \"name\": \"%s\", \"x\": %d, \"y\": %d, \"w\": %d, \"h\": %d }",
-               i ? "," : "", s->name, s->x, s->y, s->w, s->h);
+        n = ap(out, cap, n, "%s\n    { \"name\": ", i ? "," : "");
+        n = ap_str(out, cap, n, s->name);
+        n = ap(out, cap, n, ", \"x\": %d, \"y\": %d, \"w\": %d, \"h\": %d }", s->x, s->y, s->w, s->h);
     }
     n = ap(out, cap, n, "\n  ],\n  \"objects\": [");
     for (int i = 0; i < lv->obj_count; i++) {
@@ -354,9 +400,13 @@ int level_to_json(const level_t* lv, char* out, int cap) {
         n = ap(out, cap, n, "%s\n    { \"kind\": \"%s\", \"id\": %d, \"x\": %d, \"y\": %d",
                i ? "," : "", obj_kind_name(o->kind), o->id, o->x, o->y);
         if (o->kind == OBJ_DOOR) {
-            n = ap(out, cap, n, ", \"horizontal\": %d, \"span\": %d, \"state\": \"%s\", \"open\": %s, \"key_id\": %d, \"auto_close\": %.2f, \"breakable\": %s",
-                   o->horizontal, o->span, door_state_name(o->state), o->open ? "true" : "false",
-                   o->key_id, o->auto_close, o->breakable ? "true" : "false");
+            n = ap(out, cap, n, ", \"horizontal\": %d, \"span\": %d, \"state\": \"%s\"",
+                   o->horizontal, o->span, door_state_name(o->state));
+            if (o->discover_state >= 0) {
+                n = ap(out, cap, n, ", \"discover\": \"%s\"", door_state_name(o->discover_state));
+            }
+            n = ap(out, cap, n, ", \"open\": %s, \"key_id\": %d, \"auto_close\": %.2f, \"breakable\": %s",
+                   o->open ? "true" : "false", o->key_id, o->auto_close, o->breakable ? "true" : "false");
         } else if (o->kind == OBJ_ITEM) {
             n = ap(out, cap, n, ", \"item\": \"%s\"", item_name((item_t)o->item_type));
         } else if (o->kind == OBJ_LIGHT) {
@@ -370,7 +420,8 @@ int level_to_json(const level_t* lv, char* out, int cap) {
             n = ap(out, cap, n, ", \"code\": %d", o->code);
         }
         if (o->name[0]) {
-            n = ap(out, cap, n, ", \"name\": \"%s\"", o->name);
+            n = ap(out, cap, n, ", \"name\": ");
+            n = ap_str(out, cap, n, o->name);
         }
         n = ap(out, cap, n, " }");
     }

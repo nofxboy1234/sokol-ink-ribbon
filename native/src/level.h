@@ -45,7 +45,6 @@ typedef enum {
     DOOR_UNKNOWN = 0,
     DOOR_LOCKED,
     DOOR_UNLOCKED,
-    DOOR_UNOPENABLE,
 } door_state_t;
 
 typedef struct {
@@ -64,6 +63,7 @@ typedef struct {
     int horizontal;
     int span;
     int state;
+    int discover_state;
     int open;
     int key_id;
     float auto_close;
@@ -101,6 +101,7 @@ int door_state_from_name(const char* name);
 
 // Reference map colours, shared by the runtime and the editor.
 void item_color_rgb(int item, float* r, float* g, float* b);
+int item_icon_shape(int item);
 void door_color_rgb(int state, float* r, float* g, float* b);
 
 #ifdef __cplusplus

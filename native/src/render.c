@@ -142,8 +142,20 @@ static void draw_objects(void) {
             case OBJ_ITEM: {
                 float cr, cg, cb;
                 item_color(o->item_type, &cr, &cg, &cb);
-                fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.22f, cr, cg, cb, 1.0f);
-                ring_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.24f, scale * 0.05f, C_INK_R);
+                float c = sx + scale * 0.5f;
+                float d = sy + scale * 0.5f;
+                float rad = scale * 0.36f;
+                int shape = item_icon_shape(o->item_type);
+                if (shape == 1) {
+                    fill_rect(c - rad, d - rad, rad * 2.0f, rad * 2.0f, cr, cg, cb, 1.0f);
+                } else if (shape == 2) {
+                    ring_circle(c, d, rad, scale * 0.16f, cr, cg, cb, 1.0f);
+                } else if (shape == 3) {
+                    fill_circle(c, d, rad, cr, cg, cb, 1.0f);
+                    ring_circle(c, d, rad, scale * 0.1f, C_INK_R);
+                } else {
+                    fill_circle(c, d, rad, cr, cg, cb, 1.0f);
+                }
                 break;
             }
             case OBJ_LIGHT: {

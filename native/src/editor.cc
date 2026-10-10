@@ -36,6 +36,8 @@ static struct {
     int place_horizontal;
     int selected;
     int section_selected;
+    int sec_grab;
+    float sec_dx, sec_dy;
     int drag_obj;
     int drag_dx, drag_dy;
     int wall_selected;
@@ -210,13 +212,23 @@ static void save_level(void) {
         snprintf(ed.status, sizeof(ed.status), "serialize overflow");
         return;
     }
-    FILE* f = fopen(ed.path, "wb");
+    char tmp[600];
+    snprintf(tmp, sizeof(tmp), "%s.tmp", ed.path);
+    FILE* f = fopen(tmp, "wb");
     if (!f) {
         snprintf(ed.status, sizeof(ed.status), "cannot write %s", ed.path);
         return;
     }
-    fwrite(buf, 1, (size_t)n, f);
-    fclose(f);
+    size_t wrote = fwrite(buf, 1, (size_t)n, f);
+    if (fclose(f) != 0 || wrote != (size_t)n) {
+        snprintf(ed.status, sizeof(ed.status), "write failed for %s", ed.path);
+        return;
+    }
+    remove(ed.path);
+    if (rename(tmp, ed.path) != 0) {
+        snprintf(ed.status, sizeof(ed.status), "cannot replace %s", ed.path);
+        return;
+    }
     ed.dirty = false;
     snprintf(ed.status, sizeof(ed.status), "saved %s (%d bytes)", ed.path, n);
 }
@@ -229,6 +241,7 @@ static void add_object(int kind, int x, int y) {
     memset(o, 0, sizeof(*o));
     o->id = ed.level.obj_count;
     o->kind = (obj_kind_t)kind;
+    o->discover_state = -1;
     o->x = x;
     o->y = y;
     o->item_type = ed.place_item;
@@ -469,17 +482,6 @@ static void draw_map(void) {
             fill_rect(sx, sy, ed.scale, ed.scale, 0.06f, 0.09f, 0.16f, 1.0f);
         }
     }
-    for (int i = 0; i < ed.level.section_count; i++) {
-        section_t* s = &ed.level.sections[i];
-        fill_rect(view_x((float)s->x), view_y((float)s->y), s->w * ed.scale, s->h * ed.scale,
-                  0.15f, 0.3f, 0.5f, 0.25f);
-        if (i == ed.section_selected) {
-            draw_line(view_x((float)s->x), view_y((float)s->y), view_x((float)(s->x + s->w)), view_y((float)s->y), 2.0f, 1, 1, 0, 1);
-            draw_line(view_x((float)(s->x + s->w)), view_y((float)s->y), view_x((float)(s->x + s->w)), view_y((float)(s->y + s->h)), 2.0f, 1, 1, 0, 1);
-            draw_line(view_x((float)(s->x + s->w)), view_y((float)(s->y + s->h)), view_x((float)s->x), view_y((float)(s->y + s->h)), 2.0f, 1, 1, 0, 1);
-            draw_line(view_x((float)s->x), view_y((float)(s->y + s->h)), view_x((float)s->x), view_y((float)s->y), 2.0f, 1, 1, 0, 1);
-        }
-    }
     for (int i = 0; i < ed.level.wall_count; i++) {
         wall_seg_t* w = &ed.level.walls[i];
         draw_line(view_x((float)w->x0), view_y((float)w->y0), view_x((float)w->x1), view_y((float)w->y1),
@@ -509,8 +511,16 @@ static void draw_map(void) {
         if (o->kind == OBJ_ITEM) {
             float r, g, b;
             item_color_rgb(o->item_type, &r, &g, &b);
-            fill_circle(cx, cy, scale * 0.24f, 0.118f, 0.118f, 0.118f, 1.0f);
-            fill_circle(cx, cy, scale * 0.22f, r, g, b, 1.0f);
+            float rad = scale * 0.36f;
+            int shape = item_icon_shape(o->item_type);
+            if (shape == 1) {
+                fill_rect(cx - rad, cy - rad, rad * 2.0f, rad * 2.0f, r, g, b, 1.0f);
+            } else if (shape == 2) {
+                fill_circle(cx, cy, rad, r, g, b, 1.0f);
+                fill_circle(cx, cy, rad * 0.55f, 0.06f, 0.09f, 0.16f, 1.0f);
+            } else {
+                fill_circle(cx, cy, rad, r, g, b, 1.0f);
+            }
         } else if (o->kind == OBJ_DOOR) {
             float r, g, b;
             door_color_rgb(o->state, &r, &g, &b);
@@ -556,6 +566,27 @@ static void draw_map(void) {
             draw_line(cx - size, cy + size, cx - size, cy - size, 2.0f, 1, 1, 1, 1);
         }
     }
+    // sections draw over everything
+    for (int i = 0; i < ed.level.section_count; i++) {
+        section_t* s = &ed.level.sections[i];
+        float rx = view_x((float)s->x);
+        float ry = view_y((float)s->y);
+        float rw = s->w * ed.scale;
+        float rh = s->h * ed.scale;
+        fill_rect(rx, ry, rw, rh, 0.15f, 0.3f, 0.5f, 0.25f);
+        if (i == ed.section_selected) {
+            draw_line(rx, ry, rx + rw, ry, 2.0f, 1, 1, 0, 1);
+            draw_line(rx + rw, ry, rx + rw, ry + rh, 2.0f, 1, 1, 0, 1);
+            draw_line(rx + rw, ry + rh, rx, ry + rh, 2.0f, 1, 1, 0, 1);
+            draw_line(rx, ry + rh, rx, ry, 2.0f, 1, 1, 0, 1);
+            fill_rect(rx + rw - 5, ry + rh - 5, 10, 10, 1, 1, 0, 1);
+        } else {
+            draw_line(rx, ry, rx + rw, ry, 1.5f, 0.4f, 0.75f, 1, 0.9f);
+            draw_line(rx + rw, ry, rx + rw, ry + rh, 1.5f, 0.4f, 0.75f, 1, 0.9f);
+            draw_line(rx + rw, ry + rh, rx, ry + rh, 1.5f, 0.4f, 0.75f, 1, 0.9f);
+            draw_line(rx, ry + rh, rx, ry, 1.5f, 0.4f, 0.75f, 1, 0.9f);
+        }
+    }
     if (ed.wall_active) {
         float sx = view_x(ed.wall_x);
         float sy = view_y(ed.wall_y);
@@ -573,6 +604,7 @@ static void new_level(void) {
     ed.level.start_y = rows / 2;
     ed.selected = -1;
     ed.section_selected = -1;
+    ed.sec_grab = 0;
     ed.wall_active = false;
     ed.drag_obj = -1;
     ed.drag_dx = 0;
@@ -679,8 +711,14 @@ static void ui_properties(void) {
         changed |= ImGui::InputText("name", o->name, LEVEL_MAX_NAME);
         if (o->kind == OBJ_DOOR) {
             changed |= ImGui::Checkbox("horizontal", (bool*)&o->horizontal);
-            const char* states[4] = { "unknown", "locked", "unlocked", "unopenable" };
-            changed |= ImGui::Combo("state", &o->state, states, 4);
+            const char* states[3] = { "unknown", "locked", "unlocked" };
+            changed |= ImGui::Combo("state", &o->state, states, 3);
+            int discover = o->discover_state < 0 ? 0 : o->discover_state;
+            const char* discovers[3] = { "auto", "locked", "unlocked" };
+            if (ImGui::Combo("discovers", &discover, discovers, 3)) {
+                o->discover_state = discover == 0 ? -1 : discover;
+                changed = true;
+            }
             changed |= ImGui::Checkbox("open", (bool*)&o->open);
             changed |= ImGui::InputInt("key_id", &o->key_id);
             changed |= ImGui::InputInt("span", &o->span);
@@ -781,12 +819,38 @@ static void handle_input(void) {
                 if (ed.selected >= 0) {
                     ed.wall_selected = -1;
                     ed.wall_drag = -1;
+                    ed.section_selected = -1;
+                    ed.sec_grab = 0;
                     ed.drag_dx = (int)floorf(wx) - ed.level.objs[ed.selected].x;
                     ed.drag_dy = (int)floorf(wy) - ed.level.objs[ed.selected].y;
                 } else {
                     pick_wall(wx, wy);
                     ed.drag_dx = 0;
                     ed.drag_dy = 0;
+                    if (ed.wall_selected >= 0) {
+                        ed.section_selected = -1;
+                        ed.sec_grab = 0;
+                    } else {
+                        ed.section_selected = -1;
+                        ed.sec_grab = 0;
+                        for (int si = ed.level.section_count - 1; si >= 0; si--) {
+                            section_t* s = &ed.level.sections[si];
+                            float rx = (float)s->x, ry = (float)s->y;
+                            float rw = (float)s->w, rh = (float)s->h;
+                            if (fabsf(wx - (rx + rw)) <= 0.6f && fabsf(wy - (ry + rh)) <= 0.6f) {
+                                ed.section_selected = si;
+                                ed.sec_grab = 2;
+                                break;
+                            }
+                            if (wx >= rx && wx <= rx + rw && wy >= ry && wy <= ry + rh) {
+                                ed.section_selected = si;
+                                ed.sec_grab = 1;
+                                ed.sec_dx = wx - rx;
+                                ed.sec_dy = wy - ry;
+                                break;
+                            }
+                        }
+                    }
                 }
                 ed.drag_obj = ed.selected;
             } else if (ed.tool == TOOL_PLACE) {
@@ -817,6 +881,33 @@ static void handle_input(void) {
                 }
             } else {
                 ed.drag_obj = -1;
+            }
+        }
+        // dragging a section moves it, or resizes it from the corner handle
+        if (ed.sec_grab && ed.section_selected >= 0 && ed.section_selected < ed.level.section_count) {
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                section_t* s = &ed.level.sections[ed.section_selected];
+                if (ed.sec_grab == 1) {
+                    int nx = (int)floorf(wx - ed.sec_dx + 0.5f);
+                    int ny = (int)floorf(wy - ed.sec_dy + 0.5f);
+                    if (nx != s->x || ny != s->y) {
+                        s->x = nx;
+                        s->y = ny;
+                        ed.dirty = true;
+                    }
+                } else {
+                    int nw = (int)floorf(wx + 0.5f) - s->x;
+                    int nh = (int)floorf(wy + 0.5f) - s->y;
+                    if (nw < 1) nw = 1;
+                    if (nh < 1) nh = 1;
+                    if (nw != s->w || nh != s->h) {
+                        s->w = nw;
+                        s->h = nh;
+                        ed.dirty = true;
+                    }
+                }
+            } else {
+                ed.sec_grab = 0;
             }
         }
         // dragging a selected wall endpoint snaps it to the grid
@@ -904,6 +995,7 @@ static void init(void) {
     ed.place_horizontal = 1;
     ed.selected = -1;
     ed.section_selected = -1;
+    ed.sec_grab = 0;
     ed.drag_obj = -1;
     ed.drag_dx = 0;
     ed.drag_dy = 0;

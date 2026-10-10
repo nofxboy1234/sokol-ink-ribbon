@@ -126,7 +126,11 @@ bool doors_update(float dt) {
                 dr.discovered[i] = 1;
                 dr.discovered_count++;
                 if (o->state == DOOR_UNKNOWN) {
-                    o->state = o->key_id > 0 ? DOOR_LOCKED : DOOR_UNLOCKED;
+                    if (o->discover_state == DOOR_LOCKED || o->discover_state == DOOR_UNLOCKED) {
+                        o->state = (door_state_t)o->discover_state;
+                    } else {
+                        o->state = o->key_id > 0 ? DOOR_LOCKED : DOOR_UNLOCKED;
+                    }
                 }
                 changed = true;
             }

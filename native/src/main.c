@@ -25,6 +25,8 @@
 #include "webexport.h"
 #include "levels.h"
 
+#include "dbgui/dbgui.h"
+
 #include <math.h>
 #include <string.h>
 
@@ -115,6 +117,7 @@ static void init(void) {
     });
     sgl_setup(&(sgl_desc_t){ .logger.func = slog_func });
     render_init();
+    _dbgui_setup();
 
     if (!level_from_json(&app.level, embed_level_01_json)) {
         level_init(&app.level);
@@ -157,9 +160,6 @@ static void frame(void) {
         camera_update(dt);
         reveal_sections();
 
-        if (items_update()) {
-            bump_revision();
-        }
         if (doors_update(dt)) {
             bump_revision();
         }
@@ -175,6 +175,7 @@ static void frame(void) {
     }
     update_hover();
 
+    _dbgui_update();
     render_scene(app.hover_x, app.hover_y, &app.preview);
 
     sg_begin_pass(&(sg_pass){
@@ -182,11 +183,13 @@ static void frame(void) {
         .swapchain = sglue_swapchain(),
     });
     sgl_draw();
+    _dbgui_draw();
     sg_end_pass();
     sg_commit();
 }
 
 static void cleanup(void) {
+    _dbgui_shutdown();
     render_shutdown();
     sgl_shutdown();
     sg_shutdown();
@@ -198,6 +201,9 @@ static void click_at(sapp_mousebutton button) {
 }
 
 static void event(const sapp_event* e) {
+    if (_dbgui_event_with_retval(e)) {
+        return;
+    }
     switch (e->type) {
         case SAPP_EVENTTYPE_RESIZED:
             camera_set_viewport(sapp_width(), sapp_height());

@@ -1,6 +1,7 @@
 #include "interact.h"
 #include "grid.h"
 #include "inventory.h"
+#include "items.h"
 #include "level.h"
 #include "player.h"
 
@@ -53,6 +54,11 @@ bool interact_at(int x, int y) {
         obj_t* o = &in.level->objs[i];
         if (o->x != x || o->y != y) {
             continue;
+        }
+        if (o->kind == OBJ_ITEM) {
+            // picking an item up only happens on an explicit click
+            items_take(i);
+            return true;
         }
         if (o->kind == OBJ_SWITCH) {
             toggle_group(o->group_id);
