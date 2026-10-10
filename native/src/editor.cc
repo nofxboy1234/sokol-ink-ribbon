@@ -33,9 +33,11 @@ static struct {
     int tool;
     int place_kind;
     int place_item;
+    int place_horizontal;
     int selected;
     int section_selected;
     int drag_obj;
+    int drag_dx, drag_dy;
     int wall_selected;
     int wall_drag;
     bool wall_active;
@@ -232,6 +234,9 @@ static void add_object(int kind, int x, int y) {
     o->item_type = ed.place_item;
     o->radius = 4.0f;
     o->state = (kind == OBJ_LIGHT) ? 1 : 0;
+    if (kind == OBJ_DOOR) {
+        o->span = 3;
+    }
     snprintf(o->name, LEVEL_MAX_NAME, "%s", obj_kind_name(o->kind));
     ed.selected = ed.level.obj_count - 1;
     ed.dirty = true;
@@ -249,13 +254,44 @@ static void delete_selected(void) {
     ed.dirty = true;
 }
 
+// Centre of a door's bar: along the span, on the wall line it sits on.
+static void door_center(const obj_t* o, float* dcx, float* dcy) {
+    float s = (float)(o->span > 0 ? o->span : 1);
+    if (o->horizontal) {
+        *dcx = (float)o->x + s * 0.5f;
+        *dcy = (float)o->y;
+    } else {
+        *dcx = (float)o->x;
+        *dcy = (float)o->y + s * 0.5f;
+    }
+}
+
 static void pick_object(float wx, float wy) {
     ed.selected = -1;
     float best = 1.0f;
     for (int i = 0; i < ed.level.obj_count; i++) {
-        float dx = (float)ed.level.objs[i].x + 0.5f - wx;
-        float dy = (float)ed.level.objs[i].y + 0.5f - wy;
-        float d = sqrtf(dx * dx + dy * dy);
+        obj_t* o = &ed.level.objs[i];
+        float d;
+        if (o->kind == OBJ_DOOR) {
+            float s = (float)(o->span > 0 ? o->span : 1);
+            float minx, maxx, miny, maxy;
+            if (o->horizontal) {
+                minx = (float)o->x;
+                maxx = (float)o->x + s;
+                miny = maxy = (float)o->y;
+            } else {
+                minx = maxx = (float)o->x;
+                miny = (float)o->y;
+                maxy = (float)o->y + s;
+            }
+            float qx = wx < minx ? minx : (wx > maxx ? maxx : wx);
+            float qy = wy < miny ? miny : (wy > maxy ? maxy : wy);
+            d = sqrtf((wx - qx) * (wx - qx) + (wy - qy) * (wy - qy));
+        } else {
+            float dx = (float)o->x + 0.5f - wx;
+            float dy = (float)o->y + 0.5f - wy;
+            d = sqrtf(dx * dx + dy * dy);
+        }
         if (d < best) {
             best = d;
             ed.selected = i;
@@ -320,6 +356,55 @@ static void delete_wall(void) {
     ed.wall_selected = -1;
     ed.wall_drag = -1;
     ed.dirty = true;
+}
+
+// 1 = horizontal wall under the cursor, 0 = vertical, -1 = neither.
+static int wall_orientation_at(float wx, float wy) {
+    int hy = (int)floorf(wy + 0.5f);
+    int vx = (int)floorf(wx + 0.5f);
+    bool horiz = false, vert = false;
+    for (int i = 0; i < ed.level.wall_count; i++) {
+        wall_seg_t* w = &ed.level.walls[i];
+        if (w->y0 == w->y1) {
+            int x0 = w->x0 < w->x1 ? w->x0 : w->x1;
+            int x1 = w->x0 < w->x1 ? w->x1 : w->x0;
+            if (w->y0 == hy && wx >= (float)x0 - 0.5f && wx <= (float)x1 + 0.5f) {
+                horiz = true;
+            }
+        } else {
+            int y0 = w->y0 < w->y1 ? w->y0 : w->y1;
+            int y1 = w->y0 < w->y1 ? w->y1 : w->y0;
+            if (w->x0 == vx && wy >= (float)y0 - 0.5f && wy <= (float)y1 + 0.5f) {
+                vert = true;
+            }
+        }
+    }
+    if (horiz && !vert) {
+        return 1;
+    }
+    if (vert && !horiz) {
+        return 0;
+    }
+    return -1;
+}
+
+// Place a door centred on the nearest wall line (or the current orientation).
+static void place_door(float wx, float wy) {
+    int orient = wall_orientation_at(wx, wy);
+    int horiz = orient >= 0 ? orient : ed.place_horizontal;
+    int span = 3;
+    int px, py;
+    if (horiz) {
+        py = (int)floorf(wy + 0.5f);
+        px = (int)floorf(wx - span * 0.5f + 0.5f);
+    } else {
+        px = (int)floorf(wx + 0.5f);
+        py = (int)floorf(wy - span * 0.5f + 0.5f);
+    }
+    add_object(OBJ_DOOR, px, py);
+    obj_t* o = &ed.level.objs[ed.level.obj_count - 1];
+    o->horizontal = horiz;
+    o->span = span;
 }
 
 static void wall_click(float wx, float wy) {
@@ -400,6 +485,12 @@ static void draw_map(void) {
         float cx = view_x((float)o->x + 0.5f);
         float cy = view_y((float)o->y + 0.5f);
         float scale = ed.scale;
+        if (o->kind == OBJ_DOOR) {
+            float dcx, dcy;
+            door_center(o, &dcx, &dcy);
+            cx = view_x(dcx);
+            cy = view_y(dcy);
+        }
         if (o->kind == OBJ_ITEM) {
             float r, g, b;
             item_color_rgb(o->item_type, &r, &g, &b);
@@ -411,9 +502,17 @@ static void draw_map(void) {
             float span = scale * (o->span > 0 ? o->span : 1);
             float th = scale * 0.85f;
             if (o->horizontal) {
-                fill_rect(cx - scale * 0.5f, cy - th * 0.5f, span, th, r, g, b, 1.0f);
+                fill_rect(cx - span * 0.5f, cy - th * 0.5f, span, th, r, g, b, 1.0f);
+                if (!o->open) {
+                    fill_rect(cx - span * 0.5f, cy - th * 0.5f - scale * 0.03f, span, scale * 0.03f, 0.118f, 0.118f, 0.118f, 1.0f);
+                    fill_rect(cx - span * 0.5f, cy + th * 0.5f, span, scale * 0.03f, 0.118f, 0.118f, 0.118f, 1.0f);
+                }
             } else {
-                fill_rect(cx - th * 0.5f, cy - scale * 0.5f, th, span, r, g, b, 1.0f);
+                fill_rect(cx - th * 0.5f, cy - span * 0.5f, th, span, r, g, b, 1.0f);
+                if (!o->open) {
+                    fill_rect(cx - th * 0.5f - scale * 0.03f, cy - span * 0.5f, scale * 0.03f, span, 0.118f, 0.118f, 0.118f, 1.0f);
+                    fill_rect(cx + th * 0.5f, cy - span * 0.5f, scale * 0.03f, span, 0.118f, 0.118f, 0.118f, 1.0f);
+                }
             }
         } else {
             float r = 0.6f, g = 0.6f, b = 0.6f;
@@ -461,6 +560,8 @@ static void new_level(void) {
     ed.section_selected = -1;
     ed.wall_active = false;
     ed.drag_obj = -1;
+    ed.drag_dx = 0;
+    ed.drag_dy = 0;
     ed.wall_selected = -1;
     ed.wall_drag = -1;
     ed.dirty = true;
@@ -665,20 +766,28 @@ static void handle_input(void) {
                 if (ed.selected >= 0) {
                     ed.wall_selected = -1;
                     ed.wall_drag = -1;
+                    ed.drag_dx = (int)floorf(wx) - ed.level.objs[ed.selected].x;
+                    ed.drag_dy = (int)floorf(wy) - ed.level.objs[ed.selected].y;
                 } else {
                     pick_wall(wx, wy);
+                    ed.drag_dx = 0;
+                    ed.drag_dy = 0;
                 }
                 ed.drag_obj = ed.selected;
             } else if (ed.tool == TOOL_PLACE) {
-                add_object(ed.place_kind, (int)floorf(wx), (int)floorf(wy));
+                if (ed.place_kind == OBJ_DOOR) {
+                    place_door(wx, wy);
+                } else {
+                    add_object(ed.place_kind, (int)floorf(wx), (int)floorf(wy));
+                }
             }
         }
         // dragging a selected object moves it to the cell under the cursor
         if (ed.drag_obj >= 0 && ed.drag_obj < ed.level.obj_count) {
             if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
                 obj_t* o = &ed.level.objs[ed.drag_obj];
-                int nx = (int)floorf(wx);
-                int ny = (int)floorf(wy);
+                int nx = (int)floorf(wx) - ed.drag_dx;
+                int ny = (int)floorf(wy) - ed.drag_dy;
                 if (nx != o->x || ny != o->y) {
                     o->x = nx;
                     o->y = ny;
@@ -738,6 +847,17 @@ static void handle_input(void) {
                 delete_selected();
             }
         }
+        // R rotates a door: the selected one if there is one, else the next placed
+        if (ImGui::IsKeyPressed(ImGuiKey_R)) {
+            if (ed.selected >= 0 && ed.selected < ed.level.obj_count &&
+                ed.level.objs[ed.selected].kind == OBJ_DOOR) {
+                obj_t* o = &ed.level.objs[ed.selected];
+                o->horizontal = !o->horizontal;
+                ed.dirty = true;
+            } else if (ed.tool == TOOL_PLACE && ed.place_kind == OBJ_DOOR) {
+                ed.place_horizontal = !ed.place_horizontal;
+            }
+        }
     }
 }
 
@@ -758,9 +878,12 @@ static void init(void) {
     ed.tool = TOOL_SELECT;
     ed.place_kind = OBJ_DOOR;
     ed.place_item = ITEM_HERB;
+    ed.place_horizontal = 1;
     ed.selected = -1;
     ed.section_selected = -1;
     ed.drag_obj = -1;
+    ed.drag_dx = 0;
+    ed.drag_dy = 0;
     ed.wall_selected = -1;
     ed.wall_drag = -1;
     ed.wall_active = false;
