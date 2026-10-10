@@ -39,6 +39,17 @@ bool items_taken(int object_index) {
     return it.taken[object_index] != 0;
 }
 
+// True if the item object with this id has been collected (used by links).
+bool items_taken_by_id(int id) {
+    const level_t* lv = grid_level();
+    for (int i = 0; i < lv->obj_count; i++) {
+        if (lv->objs[i].id == id && lv->objs[i].kind == OBJ_ITEM && it.taken[i]) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int items_taken_count(void) {
     return it.taken_count;
 }

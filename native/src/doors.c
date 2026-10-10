@@ -1,6 +1,7 @@
 #include "doors.h"
 #include "grid.h"
 #include "inventory.h"
+#include "items.h"
 #include "level.h"
 #include "player.h"
 
@@ -91,7 +92,7 @@ bool doors_interact(int x, int y) {
         if (!is_door(o) || o->x != x || o->y != y) {
             continue;
         }
-        if (o->state == DOOR_LOCKED && key_available(o)) {
+        if (o->state == DOOR_LOCKED && (key_available(o) || items_taken_by_id(o->link_id))) {
             o->state = DOOR_UNLOCKED;
             o->open = 1;
             dr.discovered[i] = 1;

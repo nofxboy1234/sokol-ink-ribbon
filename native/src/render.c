@@ -159,10 +159,16 @@ static void draw_objects(void) {
                 break;
             }
             case OBJ_LIGHT: {
+                float lx = sx + scale * 0.5f;
+                float ly = sy + scale * 0.5f;
                 if (o->state) {
-                    fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.14f, C_YELLOW_R);
+                    fill_circle(lx, ly, scale * 0.60f, 0.949f, 1.0f, 0.0f, 0.18f);
+                    fill_circle(lx, ly, scale * 0.40f, 0.949f, 1.0f, 0.0f, 0.35f);
+                    fill_circle(lx, ly, scale * 0.30f, 1.0f, 0.95f, 0.2f, 1.0f);
+                    ring_circle(lx, ly, scale * 0.33f, scale * 0.06f, C_INK_R);
                 } else {
-                    fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.14f, C_GRAY_R);
+                    fill_circle(lx, ly, scale * 0.30f, C_GRAY_R);
+                    ring_circle(lx, ly, scale * 0.33f, scale * 0.06f, C_INK_R);
                 }
                 break;
             }

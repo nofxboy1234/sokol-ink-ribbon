@@ -24,6 +24,7 @@ enum {
     TOOL_SELECT = 0,
     TOOL_WALL,
     TOOL_PLACE,
+    TOOL_LINK,
 };
 
 static struct {
@@ -42,6 +43,7 @@ static struct {
     int drag_dx, drag_dy;
     int wall_selected;
     int wall_drag;
+    int link_src;
     bool wall_active;
     float wall_x, wall_y;
     float cam_x, cam_y, scale;
@@ -328,6 +330,7 @@ static float point_seg_dist(float px, float py, float ax, float ay, float bx, fl
 static void pick_wall(float wx, float wy) {
     ed.wall_selected = -1;
     ed.wall_drag = -1;
+    ed.link_src = 0;
     float best = 0.6f;
     for (int i = 0; i < ed.level.wall_count; i++) {
         wall_seg_t* w = &ed.level.walls[i];
@@ -368,6 +371,7 @@ static void delete_wall(void) {
     ed.level.wall_count--;
     ed.wall_selected = -1;
     ed.wall_drag = -1;
+    ed.link_src = 0;
     ed.dirty = true;
 }
 
@@ -539,10 +543,19 @@ static void draw_map(void) {
                     fill_rect(cx + th * 0.5f, cy - span * 0.5f, scale * 0.03f, span, 0.118f, 0.118f, 0.118f, 1.0f);
                 }
             }
+        } else if (o->kind == OBJ_LIGHT) {
+            if (o->state) {
+                fill_circle(cx, cy, scale * 0.55f, 0.949f, 1.0f, 0.0f, 0.18f);
+                fill_circle(cx, cy, scale * 0.35f, 0.949f, 1.0f, 0.0f, 0.35f);
+                fill_circle(cx, cy, scale * 0.33f, 0.118f, 0.118f, 0.118f, 1.0f);
+                fill_circle(cx, cy, scale * 0.28f, 1.0f, 0.95f, 0.2f, 1.0f);
+            } else {
+                fill_circle(cx, cy, scale * 0.33f, 0.118f, 0.118f, 0.118f, 1.0f);
+                fill_circle(cx, cy, scale * 0.28f, 0.616f, 0.616f, 0.616f, 1.0f);
+            }
         } else {
             float r = 0.6f, g = 0.6f, b = 0.6f;
             switch (o->kind) {
-                case OBJ_LIGHT: r = 1.0f; g = 0.85f; b = 0.3f; break;
                 case OBJ_SWITCH: r = 0.95f; g = 1.0f; b = 0.0f; break;
                 case OBJ_TYPEWRITER: r = 0.118f; g = 0.118f; b = 0.118f; break;
                 case OBJ_FILE: r = 0.95f; g = 0.95f; b = 0.9f; break;
@@ -566,6 +579,28 @@ static void draw_map(void) {
             draw_line(cx - size, cy + size, cx - size, cy - size, 2.0f, 1, 1, 1, 1);
         }
     }
+    if (ed.link_src > 0) {
+        for (int j = 0; j < ed.level.obj_count; j++) {
+            if (ed.level.objs[j].id == ed.link_src) {
+                float ax = view_x((float)ed.level.objs[j].x + 0.5f);
+                float ay = view_y((float)ed.level.objs[j].y + 0.5f);
+                fill_circle(ax, ay, ed.scale * 0.5f, 1.0f, 0.5f, 0.0f, 0.6f);
+            }
+        }
+    }
+    for (int i = 0; i < ed.level.obj_count; i++) {
+        obj_t* o = &ed.level.objs[i];
+        if (o->link_id <= 0) {
+            continue;
+        }
+        for (int j = 0; j < ed.level.obj_count; j++) {
+            if (ed.level.objs[j].id == o->link_id) {
+                draw_line(view_x((float)ed.level.objs[j].x + 0.5f), view_y((float)ed.level.objs[j].y + 0.5f),
+                          view_x((float)o->x + 0.5f), view_y((float)o->y + 0.5f), 2.0f, 1.0f, 0.5f, 0.0f, 0.9f);
+                break;
+            }
+        }
+    }
     // sections draw over everything
     for (int i = 0; i < ed.level.section_count; i++) {
         section_t* s = &ed.level.sections[i];
@@ -573,7 +608,6 @@ static void draw_map(void) {
         float ry = view_y((float)s->y);
         float rw = s->w * ed.scale;
         float rh = s->h * ed.scale;
-        fill_rect(rx, ry, rw, rh, 0.15f, 0.3f, 0.5f, 0.25f);
         if (i == ed.section_selected) {
             draw_line(rx, ry, rx + rw, ry, 2.0f, 1, 1, 0, 1);
             draw_line(rx + rw, ry, rx + rw, ry + rh, 2.0f, 1, 1, 0, 1);
@@ -611,6 +645,7 @@ static void new_level(void) {
     ed.drag_dy = 0;
     ed.wall_selected = -1;
     ed.wall_drag = -1;
+    ed.link_src = 0;
     ed.dirty = true;
     snprintf(ed.status, sizeof(ed.status), "new empty level (%dx%d)", cols, rows);
 }
@@ -667,6 +702,16 @@ static void ui_toolbar(void) {
     ImGui::RadioButton("Select", &ed.tool, TOOL_SELECT);
     ImGui::RadioButton("Wall line", &ed.tool, TOOL_WALL);
     ImGui::RadioButton("Place", &ed.tool, TOOL_PLACE);
+    ImGui::RadioButton("Link", &ed.tool, TOOL_LINK);
+    if (ImGui::Button("Light")) {
+        ed.tool = TOOL_PLACE;
+        ed.place_kind = OBJ_LIGHT;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Switch")) {
+        ed.tool = TOOL_PLACE;
+        ed.place_kind = OBJ_SWITCH;
+    }
     if (ed.tool == TOOL_PLACE) {
         const char* kinds[OBJ_KIND_COUNT];
         for (int i = 0; i < OBJ_KIND_COUNT; i++) {
@@ -742,6 +787,7 @@ static void ui_properties(void) {
         } else if (o->kind == OBJ_FILE || o->kind == OBJ_SAFE) {
             changed |= ImGui::InputInt("code", &o->code);
         }
+        changed |= ImGui::InputInt("link", &o->link_id);
         ed.dirty |= changed;
         if (ImGui::Button("Delete")) {
             delete_selected();
@@ -859,6 +905,20 @@ static void handle_input(void) {
                 } else {
                     add_object(ed.place_kind, (int)floorf(wx), (int)floorf(wy));
                 }
+            } else if (ed.tool == TOOL_LINK) {
+                pick_object(wx, wy);
+                if (ed.selected >= 0) {
+                    obj_t* o = &ed.level.objs[ed.selected];
+                    if (ed.link_src == 0) {
+                        ed.link_src = o->id;
+                    } else if (o->id != ed.link_src) {
+                        o->link_id = ed.link_src;
+                        ed.link_src = 0;
+                        ed.dirty = true;
+                    } else {
+                        ed.link_src = 0;
+                    }
+                }
             }
         }
         // dragging a selected object moves it to the cell under the cursor
@@ -936,6 +996,7 @@ static void handle_input(void) {
         }
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             ed.wall_active = false;
+            ed.link_src = 0;
         }
         // [ and ] cycle the object kind, , and . cycle the item type
         if (ed.tool == TOOL_PLACE) {
@@ -1001,6 +1062,7 @@ static void init(void) {
     ed.drag_dy = 0;
     ed.wall_selected = -1;
     ed.wall_drag = -1;
+    ed.link_src = 0;
     ed.wall_active = false;
     ed.dirty = false;
     resolve_level_path();

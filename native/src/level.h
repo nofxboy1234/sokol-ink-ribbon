@@ -66,6 +66,7 @@ typedef struct {
     int discover_state;
     int open;
     int key_id;
+    int link_id;
     float auto_close;
     int breakable;
     int item_type;

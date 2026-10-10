@@ -84,6 +84,9 @@ bool interact_at(int x, int y) {
             return true;
         }
         if (o->kind == OBJ_FUSEBOX && !in.goal) {
+            if (o->link_id > 0 && !items_taken_by_id(o->link_id)) {
+                return true;
+            }
             in.goal = true;
             return true;
         }

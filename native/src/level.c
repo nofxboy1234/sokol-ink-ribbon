@@ -189,7 +189,6 @@ void item_color_rgb(int item, float* r, float* g, float* b) {
 // Icon style from ref/map.kra: 0 circle, 1 square, 2 hollow ring, 3 circle + ink ring.
 int item_icon_shape(int item) {
     switch (item) {
-        case ITEM_BOTTLE: return 1;
         case ITEM_LIGHTER: return 1;
         case ITEM_SCREWDRIVER: return 2;
         case ITEM_INK_RIBBON: return 3;
@@ -271,6 +270,7 @@ static void parse_objects(const char* js, const jsmntok_t* t, level_t* lv, int a
             if (o->span < 1) o->span = 1;
             if ((v = obj_find(js, t, i, "open")) >= 0) o->open = tok_bool(js, &t[v], false) ? 1 : 0;
             if ((v = obj_find(js, t, i, "key_id")) >= 0) o->key_id = tok_int(js, &t[v], 0);
+            if ((v = obj_find(js, t, i, "link")) >= 0) o->link_id = tok_int(js, &t[v], 0);
             if ((v = obj_find(js, t, i, "auto_close")) >= 0) o->auto_close = tok_float(js, &t[v], 0.0f);
             if ((v = obj_find(js, t, i, "breakable")) >= 0) o->breakable = tok_bool(js, &t[v], false) ? 1 : 0;
             if ((v = obj_find(js, t, i, "group_id")) >= 0) o->group_id = tok_int(js, &t[v], 0);
@@ -418,6 +418,9 @@ int level_to_json(const level_t* lv, char* out, int cap) {
             n = ap(out, cap, n, ", \"climbable\": %s", o->climbable ? "true" : "false");
         } else if (o->kind == OBJ_FILE || o->kind == OBJ_SAFE) {
             n = ap(out, cap, n, ", \"code\": %d", o->code);
+        }
+        if (o->link_id > 0) {
+            n = ap(out, cap, n, ", \"link\": %d", o->link_id);
         }
         if (o->name[0]) {
             n = ap(out, cap, n, ", \"name\": ");
