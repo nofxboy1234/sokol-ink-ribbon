@@ -57,6 +57,21 @@ static void screen_to_world(float sx, float sy, float* wx, float* wy) {
     *wy = (sy - sapp_heightf() * 0.5f) / ed.scale + ed.cam_y;
 }
 
+// Fit the whole level into the part of the window the floating panels leave free.
+static void fit_view(void) {
+    float left = 280.0f;
+    float right = sapp_widthf() - 340.0f;
+    float top = 44.0f;
+    float bottom = sapp_heightf() - 12.0f;
+    float fit_x = (right - left) / (ed.level.cols + 2.0f);
+    float fit_y = (bottom - top) / (ed.level.rows + 2.0f);
+    ed.scale = fit_x < fit_y ? fit_x : fit_y;
+    float area_cx = (left + right) * 0.5f;
+    float area_cy = (top + bottom) * 0.5f;
+    ed.cam_x = ed.level.cols * 0.5f - (area_cx - sapp_widthf() * 0.5f) / ed.scale;
+    ed.cam_y = ed.level.rows * 0.5f - (area_cy - sapp_heightf() * 0.5f) / ed.scale;
+}
+
 static void fill_rect(float x, float y, float w, float h, float r, float g, float b, float a) {
     sgl_begin_quads();
     sgl_c4f(r, g, b, a);
@@ -303,9 +318,53 @@ static void draw_map(void) {
     }
 }
 
+static void new_level(void) {
+    int cols = ed.level.cols > 0 ? ed.level.cols : 99;
+    int rows = ed.level.rows > 0 ? ed.level.rows : 86;
+    level_init(&ed.level);
+    ed.level.cols = cols;
+    ed.level.rows = rows;
+    ed.level.start_x = cols / 2;
+    ed.level.start_y = rows / 2;
+    ed.selected = -1;
+    ed.section_selected = -1;
+    ed.wall_active = false;
+    ed.drag_obj = -1;
+    ed.dirty = true;
+    snprintf(ed.status, sizeof(ed.status), "new empty level (%dx%d)", cols, rows);
+}
+
+static void add_section(void) {
+    if (ed.level.section_count >= LEVEL_MAX_SECTIONS) {
+        return;
+    }
+    section_t* s = &ed.level.sections[ed.level.section_count];
+    memset(s, 0, sizeof(*s));
+    snprintf(s->name, LEVEL_MAX_NAME, "section %02d", ed.level.section_count + 1);
+    s->x = 0;
+    s->y = 0;
+    s->w = 10;
+    s->h = 10;
+    ed.section_selected = ed.level.section_count;
+    ed.level.section_count++;
+    ed.dirty = true;
+}
+
+static void delete_section(void) {
+    if (ed.section_selected < 0 || ed.section_selected >= ed.level.section_count) {
+        return;
+    }
+    for (int i = ed.section_selected; i < ed.level.section_count - 1; i++) {
+        ed.level.sections[i] = ed.level.sections[i + 1];
+    }
+    ed.level.section_count--;
+    ed.section_selected = -1;
+    ed.dirty = true;
+}
+
 static void ui_toolbar(void) {
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(260, 260), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(260, 300), ImGuiCond_FirstUseEver);
     ImGui::Begin("Tools");
     if (ImGui::Button("Save")) {
         save_level();
@@ -313,6 +372,14 @@ static void ui_toolbar(void) {
     ImGui::SameLine();
     if (ImGui::Button("Reload")) {
         load_level();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("New")) {
+        new_level();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Fit")) {
+        fit_view();
     }
     ImGui::Separator();
     ImGui::Text("Tool");
@@ -335,6 +402,13 @@ static void ui_toolbar(void) {
     }
     ImGui::Separator();
     ImGui::Text("Sections");
+    if (ImGui::Button("Add")) {
+        add_section();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Delete")) {
+        delete_section();
+    }
     for (int i = 0; i < ed.level.section_count; i++) {
         if (ImGui::Selectable(ed.level.sections[i].name, i == ed.section_selected)) {
             ed.section_selected = i;
@@ -397,8 +471,10 @@ static void ui_properties(void) {
         ed.dirty |= changed;
     } else {
         ImGui::TextUnformatted("Nothing selected");
-        ImGui::Text("Start");
+        ImGui::Text("Level");
         bool changed = false;
+        changed |= ImGui::InputText("name", ed.level.name, LEVEL_MAX_NAME);
+        ImGui::Text("Start");
         changed |= ImGui::InputInt("start x", &ed.level.start_x);
         changed |= ImGui::InputInt("start y", &ed.level.start_y);
         changed |= ImGui::InputInt("cols", &ed.level.cols);
@@ -464,6 +540,23 @@ static void handle_input(void) {
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             ed.wall_active = false;
         }
+        // [ and ] cycle the object kind, , and . cycle the item type
+        if (ed.tool == TOOL_PLACE) {
+            if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket)) {
+                ed.place_kind = (ed.place_kind + OBJ_KIND_COUNT - 1) % OBJ_KIND_COUNT;
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_RightBracket)) {
+                ed.place_kind = (ed.place_kind + 1) % OBJ_KIND_COUNT;
+            }
+            if (ed.place_kind == OBJ_ITEM) {
+                if (ImGui::IsKeyPressed(ImGuiKey_Comma)) {
+                    ed.place_item = (ed.place_item + ITEM_COUNT - 1) % ITEM_COUNT;
+                }
+                if (ImGui::IsKeyPressed(ImGuiKey_Period)) {
+                    ed.place_item = (ed.place_item + 1) % ITEM_COUNT;
+                }
+            }
+        }
         if (ImGui::IsKeyPressed(ImGuiKey_Delete)) {
             delete_selected();
         }
@@ -491,12 +584,10 @@ static void init(void) {
     ed.section_selected = -1;
     ed.drag_obj = -1;
     ed.wall_active = false;
-    ed.cam_x = 32.0f;
-    ed.cam_y = 24.0f;
-    ed.scale = 16.0f;
     ed.dirty = false;
     snprintf(ed.path, sizeof(ed.path), "src/level_01.json");
     load_level();
+    fit_view();
 }
 
 static void frame(void) {

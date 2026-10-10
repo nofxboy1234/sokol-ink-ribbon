@@ -14,6 +14,7 @@ extern "C" {
 typedef enum {
     OBJ_DOOR = 0,
     OBJ_ITEM,
+    OBJ_FUSEBOX,
     OBJ_LIGHT,
     OBJ_SWITCH,
     OBJ_TYPEWRITER,
@@ -22,7 +23,6 @@ typedef enum {
     OBJ_OBSTACLE,
     OBJ_MOVABLE,
     OBJ_OPENABLE,
-    OBJ_FUSEBOX,
     OBJ_START,
     OBJ_GOAL,
     OBJ_KIND_COUNT,
