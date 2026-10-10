@@ -36,6 +36,8 @@ static struct {
     int selected;
     int section_selected;
     int drag_obj;
+    int wall_selected;
+    int wall_drag;
     bool wall_active;
     float wall_x, wall_y;
     float cam_x, cam_y, scale;
@@ -261,6 +263,65 @@ static void pick_object(float wx, float wy) {
     }
 }
 
+static float point_seg_dist(float px, float py, float ax, float ay, float bx, float by) {
+    float dx = bx - ax;
+    float dy = by - ay;
+    float len2 = dx * dx + dy * dy;
+    float t = len2 > 0.0f ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0.0f;
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    float qx = ax + t * dx;
+    float qy = ay + t * dy;
+    return sqrtf((px - qx) * (px - qx) + (py - qy) * (py - qy));
+}
+
+// Select a wall endpoint (for dragging) or a wall body (for deletion).
+static void pick_wall(float wx, float wy) {
+    ed.wall_selected = -1;
+    ed.wall_drag = -1;
+    float best = 0.6f;
+    for (int i = 0; i < ed.level.wall_count; i++) {
+        wall_seg_t* w = &ed.level.walls[i];
+        float d0 = sqrtf((w->x0 - wx) * (w->x0 - wx) + (w->y0 - wy) * (w->y0 - wy));
+        float d1 = sqrtf((w->x1 - wx) * (w->x1 - wx) + (w->y1 - wy) * (w->y1 - wy));
+        if (d0 < best) {
+            best = d0;
+            ed.wall_selected = i;
+            ed.wall_drag = 0;
+        }
+        if (d1 < best) {
+            best = d1;
+            ed.wall_selected = i;
+            ed.wall_drag = 1;
+        }
+    }
+    if (ed.wall_selected >= 0) {
+        return;
+    }
+    best = 0.45f;
+    for (int i = 0; i < ed.level.wall_count; i++) {
+        wall_seg_t* w = &ed.level.walls[i];
+        float d = point_seg_dist(wx, wy, (float)w->x0, (float)w->y0, (float)w->x1, (float)w->y1);
+        if (d < best) {
+            best = d;
+            ed.wall_selected = i;
+        }
+    }
+}
+
+static void delete_wall(void) {
+    if (ed.wall_selected < 0 || ed.wall_selected >= ed.level.wall_count) {
+        return;
+    }
+    for (int i = ed.wall_selected; i < ed.level.wall_count - 1; i++) {
+        ed.level.walls[i] = ed.level.walls[i + 1];
+    }
+    ed.level.wall_count--;
+    ed.wall_selected = -1;
+    ed.wall_drag = -1;
+    ed.dirty = true;
+}
+
 static void wall_click(float wx, float wy) {
     int px = (int)floorf(wx + 0.5f);
     int py = (int)floorf(wy + 0.5f);
@@ -324,6 +385,16 @@ static void draw_map(void) {
         draw_line(view_x((float)w->x0), view_y((float)w->y0), view_x((float)w->x1), view_y((float)w->y1),
                   3.0f, 0.5f, 0.75f, 1.0f, 0.95f);
     }
+    if (ed.wall_selected >= 0 && ed.wall_selected < ed.level.wall_count) {
+        wall_seg_t* w = &ed.level.walls[ed.wall_selected];
+        float ax = view_x((float)w->x0);
+        float ay = view_y((float)w->y0);
+        float bx = view_x((float)w->x1);
+        float by = view_y((float)w->y1);
+        draw_line(ax, ay, bx, by, 4.0f, 1.0f, 1.0f, 0.0f, 1.0f);
+        fill_rect(ax - 4, ay - 4, 8, 8, 1, 1, 0, 1);
+        fill_rect(bx - 4, by - 4, 8, 8, 1, 1, 0, 1);
+    }
     for (int i = 0; i < ed.level.obj_count; i++) {
         obj_t* o = &ed.level.objs[i];
         float cx = view_x((float)o->x + 0.5f);
@@ -338,10 +409,11 @@ static void draw_map(void) {
             float r, g, b;
             door_color_rgb(o->state, &r, &g, &b);
             float span = scale * (o->span > 0 ? o->span : 1);
+            float th = scale * 0.85f;
             if (o->horizontal) {
-                fill_rect(cx - scale * 0.5f, cy - scale * 0.09f, span, scale * 0.18f, r, g, b, 1.0f);
+                fill_rect(cx - scale * 0.5f, cy - th * 0.5f, span, th, r, g, b, 1.0f);
             } else {
-                fill_rect(cx - scale * 0.09f, cy - scale * 0.5f, scale * 0.18f, span, r, g, b, 1.0f);
+                fill_rect(cx - th * 0.5f, cy - scale * 0.5f, th, span, r, g, b, 1.0f);
             }
         } else {
             float r = 0.6f, g = 0.6f, b = 0.6f;
@@ -389,6 +461,8 @@ static void new_level(void) {
     ed.section_selected = -1;
     ed.wall_active = false;
     ed.drag_obj = -1;
+    ed.wall_selected = -1;
+    ed.wall_drag = -1;
     ed.dirty = true;
     snprintf(ed.status, sizeof(ed.status), "new empty level (%dx%d)", cols, rows);
 }
@@ -518,6 +592,18 @@ static void ui_properties(void) {
         if (ImGui::Button("Delete")) {
             delete_selected();
         }
+    } else if (ed.wall_selected >= 0 && ed.wall_selected < ed.level.wall_count) {
+        wall_seg_t* w = &ed.level.walls[ed.wall_selected];
+        ImGui::Text("Wall #%d", ed.wall_selected);
+        bool changed = false;
+        changed |= ImGui::InputInt("x0", &w->x0);
+        changed |= ImGui::InputInt("y0", &w->y0);
+        changed |= ImGui::InputInt("x1", &w->x1);
+        changed |= ImGui::InputInt("y1", &w->y1);
+        ed.dirty |= changed;
+        if (ImGui::Button("Delete")) {
+            delete_wall();
+        }
     } else if (ed.section_selected >= 0 && ed.section_selected < ed.level.section_count) {
         section_t* s = &ed.level.sections[ed.section_selected];
         ImGui::Text("Section %s", s->name);
@@ -576,6 +662,12 @@ static void handle_input(void) {
             } else if (ed.tool == TOOL_SELECT) {
                 pick_object(wx, wy);
                 ed.section_selected = -1;
+                if (ed.selected >= 0) {
+                    ed.wall_selected = -1;
+                    ed.wall_drag = -1;
+                } else {
+                    pick_wall(wx, wy);
+                }
                 ed.drag_obj = ed.selected;
             } else if (ed.tool == TOOL_PLACE) {
                 add_object(ed.place_kind, (int)floorf(wx), (int)floorf(wy));
@@ -594,6 +686,29 @@ static void handle_input(void) {
                 }
             } else {
                 ed.drag_obj = -1;
+            }
+        }
+        // dragging a selected wall endpoint snaps it to the grid
+        if (ed.wall_selected >= 0 && ed.wall_selected < ed.level.wall_count && ed.wall_drag >= 0) {
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                wall_seg_t* w = &ed.level.walls[ed.wall_selected];
+                int nx = (int)floorf(wx + 0.5f);
+                int ny = (int)floorf(wy + 0.5f);
+                if (ed.wall_drag == 0) {
+                    if (w->x0 != nx || w->y0 != ny) {
+                        w->x0 = nx;
+                        w->y0 = ny;
+                        ed.dirty = true;
+                    }
+                } else {
+                    if (w->x1 != nx || w->y1 != ny) {
+                        w->x1 = nx;
+                        w->y1 = ny;
+                        ed.dirty = true;
+                    }
+                }
+            } else {
+                ed.wall_drag = -1;
             }
         }
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
@@ -617,7 +732,11 @@ static void handle_input(void) {
             }
         }
         if (ImGui::IsKeyPressed(ImGuiKey_Delete)) {
-            delete_selected();
+            if (ed.wall_selected >= 0) {
+                delete_wall();
+            } else {
+                delete_selected();
+            }
         }
     }
 }
@@ -642,6 +761,8 @@ static void init(void) {
     ed.selected = -1;
     ed.section_selected = -1;
     ed.drag_obj = -1;
+    ed.wall_selected = -1;
+    ed.wall_drag = -1;
     ed.wall_active = false;
     ed.dirty = false;
     resolve_level_path();

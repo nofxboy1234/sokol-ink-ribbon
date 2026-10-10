@@ -121,19 +121,20 @@ static void draw_objects(void) {
                 float cr, cg, cb;
                 door_color(o, &cr, &cg, &cb);
                 float span = scale * (o->span > 0 ? o->span : 1);
+                float th = scale * 0.85f;
                 if (o->horizontal) {
                     // on the horizontal wall line at the cell's top edge
-                    fill_rect(sx, sy - scale * 0.09f, span, scale * 0.18f, cr, cg, cb, 1.0f);
+                    fill_rect(sx, sy - th * 0.5f, span, th, cr, cg, cb, 1.0f);
                     if (!o->open) {
-                        fill_rect(sx, sy - scale * 0.12f, span, scale * 0.03f, C_INK_R);
-                        fill_rect(sx, sy + scale * 0.09f, span, scale * 0.03f, C_INK_R);
+                        fill_rect(sx, sy - th * 0.5f - scale * 0.03f, span, scale * 0.03f, C_INK_R);
+                        fill_rect(sx, sy + th * 0.5f, span, scale * 0.03f, C_INK_R);
                     }
                 } else {
                     // on the vertical wall line at the cell's left edge
-                    fill_rect(sx - scale * 0.09f, sy, scale * 0.18f, span, cr, cg, cb, 1.0f);
+                    fill_rect(sx - th * 0.5f, sy, th, span, cr, cg, cb, 1.0f);
                     if (!o->open) {
-                        fill_rect(sx - scale * 0.12f, sy, scale * 0.03f, span, C_INK_R);
-                        fill_rect(sx + scale * 0.09f, sy, scale * 0.03f, span, C_INK_R);
+                        fill_rect(sx - th * 0.5f - scale * 0.03f, sy, scale * 0.03f, span, C_INK_R);
+                        fill_rect(sx + th * 0.5f, sy, scale * 0.03f, span, C_INK_R);
                     }
                 }
                 break;
