@@ -17,6 +17,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum {
@@ -43,6 +44,64 @@ static struct {
     bool dirty;
     char status[640];
 } ed;
+
+static int g_argc;
+static char** g_argv;
+
+static bool file_exists(const char* p) {
+    FILE* f = fopen(p, "rb");
+    if (f) {
+        fclose(f);
+        return true;
+    }
+    return false;
+}
+
+static void set_level_path(const char* p) {
+    char real[4096];
+    const char* use = realpath(p, real) ? real : p;
+    size_t n = strlen(use);
+    if (n >= sizeof(ed.path)) {
+        n = sizeof(ed.path) - 1;
+    }
+    memcpy(ed.path, use, n);
+    ed.path[n] = 0;
+}
+
+// Find level_01.json whether the editor is launched from native/ or via
+// "fibs run editor" from a build directory.
+static void resolve_level_path(void) {
+    if (g_argc > 1 && g_argv[1] && g_argv[1][0] && strstr(g_argv[1], ".json")) {
+        set_level_path(g_argv[1]);
+        return;
+    }
+    static const char* candidates[] = {
+        "src/level_01.json",
+        "native/src/level_01.json",
+        "../src/level_01.json",
+    };
+    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
+        if (file_exists(candidates[i])) {
+            set_level_path(candidates[i]);
+            return;
+        }
+    }
+    if (g_argc > 0 && g_argv[0] && strchr(g_argv[0], '/')) {
+        char exe_rel[4096];
+        snprintf(exe_rel, sizeof(exe_rel), "%s", g_argv[0]);
+        char* slash = strrchr(exe_rel, '/');
+        if (slash) {
+            *slash = 0;
+            char cand[4200];
+            snprintf(cand, sizeof(cand), "%s/../../../src/level_01.json", exe_rel);
+            if (file_exists(cand)) {
+                set_level_path(cand);
+                return;
+            }
+        }
+    }
+    snprintf(ed.path, sizeof(ed.path), "src/level_01.json");
+}
 
 static float view_x(float wx) {
     return (wx - ed.cam_x) * ed.scale + sapp_widthf() * 0.5f;
@@ -585,7 +644,7 @@ static void init(void) {
     ed.drag_obj = -1;
     ed.wall_active = false;
     ed.dirty = false;
-    snprintf(ed.path, sizeof(ed.path), "src/level_01.json");
+    resolve_level_path();
     load_level();
     fit_view();
 }
@@ -626,8 +685,8 @@ static void cleanup(void) {
 }
 
 sapp_desc sokol_main(int argc, char* argv[]) {
-    (void)argc;
-    (void)argv;
+    g_argc = argc;
+    g_argv = argv;
     sapp_desc desc = {};
     desc.init_cb = init;
     desc.frame_cb = frame;
