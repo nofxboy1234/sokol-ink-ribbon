@@ -1,123 +1,764 @@
 {
-  "name": "care-center-01",
-  "cols": 99,
-  "rows": 86,
-  "start": [89, 4],
-  "walls": [
-    [91, 50, 91, 60],
-    [13, 46, 13, 85],
-    [42, 18, 42, 36],
-    [42, 38, 42, 40],
-    [7, 18, 7, 19],
-    [7, 40, 7, 71],
-    [7, 78, 7, 85],
-    [20, 19, 20, 31],
-    [0, 18, 0, 25],
-    [26, 18, 26, 21],
-    [99, 0, 99, 15],
-    [66, 40, 66, 43],
-    [98, 15, 98, 67],
-    [93, 17, 93, 36],
-    [83, 0, 83, 17],
-    [21, 31, 21, 40],
-    [55, 46, 55, 49],
-    [6, 24, 6, 32],
-    [41, 36, 41, 38],
-    [78, 36, 78, 43],
-    [34, 38, 34, 40],
-    [24, 21, 24, 25],
-    [77, 60, 77, 63],
-    [77, 66, 77, 67],
-    [12, 31, 12, 32],
-    [69, 48, 69, 49],
-    [90, 49, 90, 50],
-    [66, 67, 98, 67],
-    [0, 18, 7, 18],
-    [26, 18, 42, 18],
-    [26, 36, 36, 36],
-    [41, 36, 42, 36],
-    [78, 36, 93, 36],
-    [7, 19, 20, 19],
-    [83, 17, 93, 17],
-    [7, 40, 14, 40],
-    [21, 40, 34, 40],
-    [42, 40, 66, 40],
-    [24, 25, 27, 25],
-    [66, 43, 89, 43],
-    [13, 46, 55, 46],
-    [83, 0, 99, 0],
-    [91, 57, 93, 57],
-    [96, 57, 98, 57],
-    [90, 50, 91, 50],
-    [4, 71, 7, 71],
-    [7, 85, 13, 85],
-    [55, 49, 69, 49],
-    [89, 49, 90, 49],
-    [77, 60, 91, 60],
-    [4, 78, 7, 78],
-    [12, 31, 18, 31],
-    [14, 38, 18, 38],
-    [34, 38, 38, 38],
-    [41, 38, 42, 38],
-    [24, 21, 26, 21],
-    [98, 15, 99, 15],
-    [93, 17, 94, 17],
-    [97, 17, 98, 17]
+ "name": "care-center-01",
+ "cols": 99,
+ "rows": 86,
+ "start": [
+  89,
+  4
+ ],
+ "walls": [
+  [
+   91,
+   50,
+   91,
+   60
   ],
-  "sections": [
-    { "name": "section 01", "x": 80, "y": 0, "w": 19, "h": 18 },
-    { "name": "section 02", "x": 88, "y": 16, "w": 11, "h": 26 },
-    { "name": "section 03", "x": 0, "y": 16, "w": 20, "h": 16 },
-    { "name": "section 04", "x": 4, "y": 22, "w": 16, "h": 18 },
-    { "name": "section 05", "x": 12, "y": 36, "w": 14, "h": 9 },
-    { "name": "section 06", "x": 2, "y": 40, "w": 48, "h": 6 },
-    { "name": "section 07", "x": 48, "y": 40, "w": 51, "h": 6 },
-    { "name": "section 08", "x": 50, "y": 44, "w": 49, "h": 25 },
-    { "name": "section 09", "x": 3, "y": 44, "w": 11, "h": 44 },
-    { "name": "section 10", "x": 16, "y": 36, "w": 30, "h": 9 },
-    { "name": "section 11", "x": 0, "y": 30, "w": 22, "h": 12 },
-    { "name": "section 12", "x": 76, "y": 34, "w": 23, "h": 12 },
-    { "name": "section 13", "x": 40, "y": 44, "w": 14, "h": 25 }
+  [
+   55,
+   46,
+   55,
+   67
   ],
-  "objects": [
-    { "kind": "door", "id": 1, "x": 18, "y": 38, "horizontal": 1, "span": 3, "state": "locked", "open": false, "key_id": 0, "auto_close": 0.00, "breakable": false, "name": "door" },
-    { "kind": "door", "id": 2, "x": 70, "y": 48, "horizontal": 1, "span": 3, "state": "locked", "open": false, "key_id": 0, "auto_close": 0.00, "breakable": false, "name": "door" },
-    { "kind": "door", "id": 3, "x": 94, "y": 17, "horizontal": 1, "span": 3, "state": "unlocked", "open": true, "key_id": 0, "auto_close": 0.00, "breakable": false, "name": "door" },
-    { "kind": "door", "id": 4, "x": 18, "y": 31, "horizontal": 1, "span": 3, "state": "unlocked", "open": true, "key_id": 0, "auto_close": 0.00, "breakable": false, "name": "door" },
-    { "kind": "door", "id": 5, "x": 38, "y": 37, "horizontal": 1, "span": 3, "state": "unlocked", "open": false, "key_id": 0, "auto_close": 0.00, "breakable": false, "name": "door" },
-    { "kind": "door", "id": 6, "x": 76, "y": 63, "horizontal": 0, "span": 3, "state": "unlocked", "open": false, "key_id": 0, "auto_close": 0.00, "breakable": false, "name": "door" },
-    { "kind": "door", "id": 7, "x": 93, "y": 57, "horizontal": 1, "span": 3, "state": "unknown", "open": false, "key_id": 0, "auto_close": 0.00, "breakable": false, "name": "door" },
-    { "kind": "item", "id": 8, "x": 1, "y": 23, "item": "lighter", "name": "item" },
-    { "kind": "item", "id": 9, "x": 1, "y": 21, "item": "fuse", "name": "item" },
-    { "kind": "item", "id": 10, "x": 68, "y": 63, "item": "injector", "name": "item" },
-    { "kind": "item", "id": 11, "x": 86, "y": 59, "item": "screwdriver", "name": "item" },
-    { "kind": "item", "id": 12, "x": 10, "y": 20, "item": "ink_ribbon", "name": "item" },
-    { "kind": "item", "id": 13, "x": 86, "y": 49, "item": "ink_ribbon", "name": "item" },
-    { "kind": "item", "id": 14, "x": 79, "y": 49, "item": "herb", "name": "item" },
-    { "kind": "item", "id": 15, "x": 80, "y": 49, "item": "coin", "name": "item" },
-    { "kind": "item", "id": 16, "x": 8, "y": 30, "item": "bottle", "name": "item" },
-    { "kind": "item", "id": 17, "x": 81, "y": 37, "item": "bottle", "name": "item" },
-    { "kind": "item", "id": 18, "x": 88, "y": 63, "item": "bottle", "name": "item" },
-    { "kind": "item", "id": 19, "x": 10, "y": 84, "item": "cherub_key", "name": "item" },
-    { "kind": "fusebox", "id": 20, "x": 7, "y": 69, "name": "fusebox" },
-    { "kind": "light", "id": 21, "x": 90, "y": 8, "radius": 4.00, "state": 1, "group_id": 0, "breakable": false, "name": "light" },
-    { "kind": "light", "id": 22, "x": 12, "y": 24, "radius": 4.00, "state": 1, "group_id": 0, "breakable": false, "name": "light" },
-    { "kind": "light", "id": 23, "x": 23, "y": 42, "radius": 4.00, "state": 1, "group_id": 0, "breakable": false, "name": "light" },
-    { "kind": "light", "id": 24, "x": 49, "y": 42, "radius": 4.00, "state": 1, "group_id": 0, "breakable": false, "name": "light" },
-    { "kind": "light", "id": 25, "x": 85, "y": 63, "radius": 4.00, "state": 1, "group_id": 0, "breakable": false, "name": "light" },
-    { "kind": "switch", "id": 26, "x": 92, "y": 16, "group_id": 0, "name": "switch" },
-    { "kind": "switch", "id": 27, "x": 13, "y": 30, "group_id": 0, "name": "switch" },
-    { "kind": "switch", "id": 28, "x": 36, "y": 36, "group_id": 0, "name": "switch" },
-    { "kind": "switch", "id": 29, "x": 91, "y": 58, "group_id": 0, "name": "switch" },
-    { "kind": "typewriter", "id": 30, "x": 19, "y": 24, "name": "typewriter" },
-    { "kind": "obstacle", "id": 31, "x": 19, "y": 22, "climbable": false, "name": "obstacle" },
-    { "kind": "obstacle", "id": 32, "x": 85, "y": 59, "climbable": false, "name": "obstacle" },
-    { "kind": "movable", "id": 33, "x": 79, "y": 51, "name": "movable" },
-    { "kind": "openable", "id": 34, "x": 1, "y": 21, "name": "openable" },
-    { "kind": "openable", "id": 35, "x": 9, "y": 30, "name": "openable" },
-    { "kind": "openable", "id": 36, "x": 79, "y": 49, "name": "openable" },
-    { "kind": "openable", "id": 37, "x": 86, "y": 49, "name": "openable" },
-    { "kind": "openable", "id": 38, "x": 10, "y": 84, "name": "openable" },
-    { "kind": "start", "id": 39, "x": 89, "y": 4, "name": "Grace start" }
+  [
+   13,
+   46,
+   13,
+   85
+  ],
+  [
+   42,
+   18,
+   42,
+   36
+  ],
+  [
+   42,
+   38,
+   42,
+   40
+  ],
+  [
+   7,
+   18,
+   7,
+   19
+  ],
+  [
+   7,
+   40,
+   7,
+   71
+  ],
+  [
+   7,
+   78,
+   7,
+   85
+  ],
+  [
+   20,
+   19,
+   20,
+   31
+  ],
+  [
+   0,
+   18,
+   0,
+   25
+  ],
+  [
+   26,
+   18,
+   26,
+   21
+  ],
+  [
+   99,
+   0,
+   99,
+   15
+  ],
+  [
+   66,
+   40,
+   66,
+   43
+  ],
+  [
+   98,
+   15,
+   98,
+   67
+  ],
+  [
+   93,
+   17,
+   93,
+   36
+  ],
+  [
+   83,
+   0,
+   83,
+   17
+  ],
+  [
+   21,
+   31,
+   21,
+   40
+  ],
+  [
+   6,
+   24,
+   6,
+   32
+  ],
+  [
+   41,
+   36,
+   41,
+   38
+  ],
+  [
+   77,
+   60,
+   77,
+   67
+  ],
+  [
+   78,
+   36,
+   78,
+   43
+  ],
+  [
+   34,
+   38,
+   34,
+   40
+  ],
+  [
+   24,
+   21,
+   24,
+   25
+  ],
+  [
+   12,
+   31,
+   12,
+   32
+  ],
+  [
+   90,
+   49,
+   90,
+   50
+  ],
+  [
+   55,
+   67,
+   98,
+   67
+  ],
+  [
+   0,
+   18,
+   7,
+   18
+  ],
+  [
+   26,
+   18,
+   42,
+   18
+  ],
+  [
+   26,
+   36,
+   36,
+   36
+  ],
+  [
+   41,
+   36,
+   42,
+   36
+  ],
+  [
+   78,
+   36,
+   93,
+   36
+  ],
+  [
+   7,
+   19,
+   20,
+   19
+  ],
+  [
+   83,
+   17,
+   98,
+   17
+  ],
+  [
+   7,
+   40,
+   14,
+   40
+  ],
+  [
+   21,
+   40,
+   34,
+   40
+  ],
+  [
+   42,
+   40,
+   66,
+   40
+  ],
+  [
+   24,
+   25,
+   27,
+   25
+  ],
+  [
+   66,
+   43,
+   89,
+   43
+  ],
+  [
+   13,
+   46,
+   55,
+   46
+  ],
+  [
+   14,
+   38,
+   21,
+   38
+  ],
+  [
+   34,
+   38,
+   42,
+   38
+  ],
+  [
+   83,
+   0,
+   99,
+   0
+  ],
+  [
+   91,
+   57,
+   98,
+   57
+  ],
+  [
+   90,
+   50,
+   91,
+   50
+  ],
+  [
+   4,
+   71,
+   7,
+   71
+  ],
+  [
+   55,
+   49,
+   90,
+   49
+  ],
+  [
+   7,
+   85,
+   13,
+   85
+  ],
+  [
+   77,
+   60,
+   91,
+   60
+  ],
+  [
+   4,
+   78,
+   7,
+   78
+  ],
+  [
+   12,
+   31,
+   21,
+   31
+  ],
+  [
+   24,
+   21,
+   26,
+   21
+  ],
+  [
+   98,
+   15,
+   99,
+   15
   ]
+ ],
+ "sections": [
+  {
+   "name": "section 01",
+   "x": 80,
+   "y": 0,
+   "w": 19,
+   "h": 18
+  },
+  {
+   "name": "section 02",
+   "x": 88,
+   "y": 16,
+   "w": 11,
+   "h": 26
+  },
+  {
+   "name": "section 03",
+   "x": 0,
+   "y": 16,
+   "w": 20,
+   "h": 16
+  },
+  {
+   "name": "section 04",
+   "x": 4,
+   "y": 22,
+   "w": 16,
+   "h": 18
+  },
+  {
+   "name": "section 05",
+   "x": 12,
+   "y": 36,
+   "w": 14,
+   "h": 9
+  },
+  {
+   "name": "section 06",
+   "x": 2,
+   "y": 40,
+   "w": 48,
+   "h": 6
+  },
+  {
+   "name": "section 07",
+   "x": 48,
+   "y": 40,
+   "w": 51,
+   "h": 6
+  },
+  {
+   "name": "section 08",
+   "x": 50,
+   "y": 44,
+   "w": 49,
+   "h": 25
+  },
+  {
+   "name": "section 09",
+   "x": 3,
+   "y": 44,
+   "w": 11,
+   "h": 44
+  },
+  {
+   "name": "section 10",
+   "x": 16,
+   "y": 36,
+   "w": 30,
+   "h": 9
+  },
+  {
+   "name": "section 11",
+   "x": 0,
+   "y": 30,
+   "w": 22,
+   "h": 12
+  },
+  {
+   "name": "section 12",
+   "x": 76,
+   "y": 34,
+   "w": 23,
+   "h": 12
+  },
+  {
+   "name": "section 13",
+   "x": 40,
+   "y": 44,
+   "w": 14,
+   "h": 25
+  }
+ ],
+ "objects": [
+  {
+   "kind": "door",
+   "id": 1,
+   "x": 18,
+   "y": 38,
+   "horizontal": 1,
+   "span": 3,
+   "state": "locked",
+   "open": false,
+   "key_id": 0,
+   "auto_close": 0.0,
+   "breakable": false,
+   "name": "door"
+  },
+  {
+   "kind": "door",
+   "id": 2,
+   "x": 61,
+   "y": 49,
+   "horizontal": 1,
+   "span": 3,
+   "state": "locked",
+   "open": false,
+   "key_id": 0,
+   "auto_close": 0.0,
+   "breakable": false,
+   "name": "door"
+  },
+  {
+   "kind": "door",
+   "id": 3,
+   "x": 94,
+   "y": 17,
+   "horizontal": 1,
+   "span": 3,
+   "state": "unlocked",
+   "open": true,
+   "key_id": 0,
+   "auto_close": 0.0,
+   "breakable": false,
+   "name": "door"
+  },
+  {
+   "kind": "door",
+   "id": 4,
+   "x": 18,
+   "y": 31,
+   "horizontal": 1,
+   "span": 3,
+   "state": "unlocked",
+   "open": true,
+   "key_id": 0,
+   "auto_close": 0.0,
+   "breakable": false,
+   "name": "door"
+  },
+  {
+   "kind": "door",
+   "id": 5,
+   "x": 38,
+   "y": 37,
+   "horizontal": 1,
+   "span": 3,
+   "state": "unlocked",
+   "open": false,
+   "key_id": 0,
+   "auto_close": 0.0,
+   "breakable": false,
+   "name": "door"
+  },
+  {
+   "kind": "door",
+   "id": 7,
+   "x": 93,
+   "y": 57,
+   "horizontal": 1,
+   "span": 3,
+   "state": "unknown",
+   "open": false,
+   "key_id": 0,
+   "auto_close": 0.0,
+   "breakable": false,
+   "name": "door"
+  },
+  {
+   "kind": "item",
+   "id": 8,
+   "x": 1,
+   "y": 23,
+   "item": "lighter",
+   "name": "item"
+  },
+  {
+   "kind": "item",
+   "id": 9,
+   "x": 1,
+   "y": 21,
+   "item": "fuse",
+   "name": "item"
+  },
+  {
+   "kind": "item",
+   "id": 10,
+   "x": 69,
+   "y": 65,
+   "item": "injector",
+   "name": "item"
+  },
+  {
+   "kind": "item",
+   "id": 11,
+   "x": 86,
+   "y": 59,
+   "item": "screwdriver",
+   "name": "item"
+  },
+  {
+   "kind": "item",
+   "id": 12,
+   "x": 10,
+   "y": 20,
+   "item": "ink_ribbon",
+   "name": "item"
+  },
+  {
+   "kind": "item",
+   "id": 13,
+   "x": 86,
+   "y": 49,
+   "item": "ink_ribbon",
+   "name": "item"
+  },
+  {
+   "kind": "item",
+   "id": 14,
+   "x": 79,
+   "y": 49,
+   "item": "herb",
+   "name": "item"
+  },
+  {
+   "kind": "item",
+   "id": 15,
+   "x": 80,
+   "y": 49,
+   "item": "coin",
+   "name": "item"
+  },
+  {
+   "kind": "item",
+   "id": 16,
+   "x": 8,
+   "y": 30,
+   "item": "bottle",
+   "name": "item"
+  },
+  {
+   "kind": "item",
+   "id": 17,
+   "x": 81,
+   "y": 37,
+   "item": "bottle",
+   "name": "item"
+  },
+  {
+   "kind": "item",
+   "id": 18,
+   "x": 88,
+   "y": 63,
+   "item": "bottle",
+   "name": "item"
+  },
+  {
+   "kind": "item",
+   "id": 19,
+   "x": 10,
+   "y": 84,
+   "item": "cherub_key",
+   "name": "item"
+  },
+  {
+   "kind": "fusebox",
+   "id": 20,
+   "x": 7,
+   "y": 69,
+   "name": "fusebox"
+  },
+  {
+   "kind": "light",
+   "id": 21,
+   "x": 90,
+   "y": 8,
+   "radius": 4.0,
+   "state": 1,
+   "group_id": 0,
+   "breakable": false,
+   "name": "light"
+  },
+  {
+   "kind": "light",
+   "id": 22,
+   "x": 12,
+   "y": 24,
+   "radius": 4.0,
+   "state": 1,
+   "group_id": 0,
+   "breakable": false,
+   "name": "light"
+  },
+  {
+   "kind": "light",
+   "id": 23,
+   "x": 23,
+   "y": 42,
+   "radius": 4.0,
+   "state": 1,
+   "group_id": 0,
+   "breakable": false,
+   "name": "light"
+  },
+  {
+   "kind": "light",
+   "id": 24,
+   "x": 49,
+   "y": 42,
+   "radius": 4.0,
+   "state": 1,
+   "group_id": 0,
+   "breakable": false,
+   "name": "light"
+  },
+  {
+   "kind": "light",
+   "id": 25,
+   "x": 85,
+   "y": 63,
+   "radius": 4.0,
+   "state": 1,
+   "group_id": 0,
+   "breakable": false,
+   "name": "light"
+  },
+  {
+   "kind": "switch",
+   "id": 26,
+   "x": 92,
+   "y": 16,
+   "group_id": 0,
+   "name": "switch"
+  },
+  {
+   "kind": "switch",
+   "id": 27,
+   "x": 13,
+   "y": 30,
+   "group_id": 0,
+   "name": "switch"
+  },
+  {
+   "kind": "switch",
+   "id": 28,
+   "x": 36,
+   "y": 36,
+   "group_id": 0,
+   "name": "switch"
+  },
+  {
+   "kind": "switch",
+   "id": 29,
+   "x": 91,
+   "y": 58,
+   "group_id": 0,
+   "name": "switch"
+  },
+  {
+   "kind": "typewriter",
+   "id": 30,
+   "x": 19,
+   "y": 24,
+   "name": "typewriter"
+  },
+  {
+   "kind": "obstacle",
+   "id": 31,
+   "x": 19,
+   "y": 22,
+   "climbable": false,
+   "name": "obstacle"
+  },
+  {
+   "kind": "obstacle",
+   "id": 32,
+   "x": 85,
+   "y": 59,
+   "climbable": false,
+   "name": "obstacle"
+  },
+  {
+   "kind": "movable",
+   "id": 33,
+   "x": 79,
+   "y": 51,
+   "name": "movable"
+  },
+  {
+   "kind": "openable",
+   "id": 34,
+   "x": 1,
+   "y": 21,
+   "name": "openable"
+  },
+  {
+   "kind": "openable",
+   "id": 35,
+   "x": 9,
+   "y": 30,
+   "name": "openable"
+  },
+  {
+   "kind": "openable",
+   "id": 36,
+   "x": 79,
+   "y": 49,
+   "name": "openable"
+  },
+  {
+   "kind": "openable",
+   "id": 37,
+   "x": 86,
+   "y": 49,
+   "name": "openable"
+  },
+  {
+   "kind": "openable",
+   "id": 38,
+   "x": 10,
+   "y": 84,
+   "name": "openable"
+  },
+  {
+   "kind": "start",
+   "id": 39,
+   "x": 89,
+   "y": 4,
+   "name": "Grace start"
+  }
+ ]
 }

@@ -52,8 +52,6 @@ static struct {
 static int g_argc;
 static char** g_argv;
 
-static void carve_door(int x, int y, int horizontal, int span);
-
 static bool file_exists(const char* p) {
     FILE* f = fopen(p, "rb");
     if (f) {
@@ -196,13 +194,6 @@ static void load_level(void) {
     buf[got] = 0;
     fclose(f);
     if (level_from_json(&ed.level, buf)) {
-        // make sure every door has an opening in the wall it sits on
-        for (int i = 0; i < ed.level.obj_count; i++) {
-            obj_t* o = &ed.level.objs[i];
-            if (o->kind == OBJ_DOOR) {
-                carve_door(o->x, o->y, o->horizontal, o->span > 0 ? o->span : 1);
-            }
-        }
         snprintf(ed.status, sizeof(ed.status), "loaded %s (%d objects, %d walls)", ed.path,
                  ed.level.obj_count, ed.level.wall_count);
     } else {
@@ -397,42 +388,20 @@ static int wall_orientation_at(float wx, float wy) {
     return -1;
 }
 
-// Remove the wall along a door so it is a real opening (the two lines that
-// straddle a door leaf, across its span).
-static void carve_door(int x, int y, int horizontal, int span) {
-    wall_seg_t out[LEVEL_MAX_WALLS];
+// Drop zero-length wall segments (drawn or dragged into a point).
+static void prune_walls(void) {
     int n = 0;
-    int a0, a1, l0, l1;
-    if (horizontal) {
-        a0 = x; a1 = x + span; l0 = y; l1 = y + 1;
-    } else {
-        a0 = y; a1 = y + span; l0 = x; l1 = x + 1;
-    }
     for (int i = 0; i < ed.level.wall_count; i++) {
         wall_seg_t w = ed.level.walls[i];
-        bool is_h = (w.y0 == w.y1);
-        int line = is_h ? w.y0 : w.x0;
-        int sa = is_h ? (w.x0 < w.x1 ? w.x0 : w.x1) : (w.y0 < w.y1 ? w.y0 : w.y1);
-        int sb = is_h ? (w.x0 < w.x1 ? w.x1 : w.x0) : (w.y0 < w.y1 ? w.y1 : w.y0);
-        if (is_h != (horizontal != 0) || !(line == l0 || line == l1) || sb <= a0 || sa >= a1) {
-            if (n < LEVEL_MAX_WALLS) {
-                out[n++] = w;
-            }
+        if (w.x0 == w.x1 && w.y0 == w.y1) {
             continue;
         }
-        if (sa < a0 && n < LEVEL_MAX_WALLS) {
-            out[n++] = is_h ? (wall_seg_t){sa, line, a0, line} : (wall_seg_t){line, sa, line, a0};
-        }
-        if (sb > a1 && n < LEVEL_MAX_WALLS) {
-            out[n++] = is_h ? (wall_seg_t){a1, line, sb, line} : (wall_seg_t){line, a1, line, sb};
-        }
+        ed.level.walls[n++] = w;
     }
-    memcpy(ed.level.walls, out, sizeof(wall_seg_t) * (size_t)n);
-    ed.level.wall_count = n;
-}
-
-static void carve_door_obj(const obj_t* o) {
-    carve_door(o->x, o->y, o->horizontal, o->span > 0 ? o->span : 1);
+    if (n != ed.level.wall_count) {
+        ed.level.wall_count = n;
+        ed.dirty = true;
+    }
 }
 
 // Place a door centred on the nearest wall line (or the current orientation).
@@ -452,7 +421,6 @@ static void place_door(float wx, float wy) {
     obj_t* o = &ed.level.objs[ed.level.obj_count - 1];
     o->horizontal = horiz;
     o->span = span;
-    carve_door_obj(o);
 }
 
 static void wall_click(float wx, float wy) {
@@ -479,8 +447,7 @@ static void wall_click(float wx, float wy) {
         w->y1 = py;
         ed.dirty = true;
     }
-    ed.wall_x = (float)px;
-    ed.wall_y = (float)py;
+    ed.wall_active = false;
 }
 
 static void draw_map(void) {
@@ -849,9 +816,6 @@ static void handle_input(void) {
                     ed.dirty = true;
                 }
             } else {
-                if (o->kind == OBJ_DOOR) {
-                    carve_door_obj(o);
-                }
                 ed.drag_obj = -1;
             }
         }
@@ -876,6 +840,7 @@ static void handle_input(void) {
                 }
             } else {
                 ed.wall_drag = -1;
+                prune_walls();
             }
         }
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
@@ -911,7 +876,6 @@ static void handle_input(void) {
                 ed.level.objs[ed.selected].kind == OBJ_DOOR) {
                 obj_t* o = &ed.level.objs[ed.selected];
                 o->horizontal = !o->horizontal;
-                carve_door_obj(o);
                 ed.dirty = true;
             } else if (ed.tool == TOOL_PLACE && ed.place_kind == OBJ_DOOR) {
                 ed.place_horizontal = !ed.place_horizontal;

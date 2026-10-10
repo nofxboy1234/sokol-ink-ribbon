@@ -76,12 +76,42 @@ static void flood_floor(const level_t* lv) {
     }
 }
 
+// A door sits on a wall line; that piece of the wall must not block the floor,
+// so the door's own state (locked/unlocked) decides passage instead.
+static void clear_door_edges(const level_t* lv) {
+    for (int i = 0; i < lv->obj_count; i++) {
+        const obj_t* o = &lv->objs[i];
+        if (o->kind != OBJ_DOOR) {
+            continue;
+        }
+        int span = o->span > 0 ? o->span : 1;
+        if (o->horizontal) {
+            int y = o->y;
+            for (int k = 0; k < span; k++) {
+                int x = o->x + k;
+                if (y >= 0 && y <= g.rows && x >= 0 && x < g.cols) {
+                    g.hwall[y * g.cols + x] = 0;
+                }
+            }
+        } else {
+            int x = o->x;
+            for (int k = 0; k < span; k++) {
+                int y = o->y + k;
+                if (x >= 0 && x <= g.cols && y >= 0 && y < g.rows) {
+                    g.vwall[y * (g.cols + 1) + x] = 0;
+                }
+            }
+        }
+    }
+}
+
 void grid_init(const level_t* lv) {
     memset(&g, 0, sizeof(g));
     g.level = lv;
     g.cols = lv->cols < GRID_MAX_COLS ? lv->cols : GRID_MAX_COLS;
     g.rows = lv->rows < GRID_MAX_ROWS ? lv->rows : GRID_MAX_ROWS;
     rasterize_walls(lv);
+    clear_door_edges(lv);
     flood_floor(lv);
 }
 
