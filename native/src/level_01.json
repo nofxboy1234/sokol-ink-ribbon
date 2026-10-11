@@ -646,17 +646,6 @@
   },
   {
    "kind": "light",
-   "id": 21,
-   "x": 90,
-   "y": 8,
-   "radius": 4.0,
-   "state": 1,
-   "group_id": 0,
-   "breakable": false,
-   "name": "light"
-  },
-  {
-   "kind": "light",
    "id": 22,
    "x": 12,
    "y": 24,
@@ -698,14 +687,6 @@
    "group_id": 0,
    "breakable": false,
    "name": "light"
-  },
-  {
-   "kind": "switch",
-   "id": 26,
-   "x": 92,
-   "y": 16,
-   "group_id": 0,
-   "name": "switch"
   },
   {
    "kind": "switch",
@@ -830,6 +811,33 @@
    "auto_close": 0.0,
    "breakable": false,
    "name": "door"
+  },
+  {
+   "kind": "light",
+   "id": 39,
+   "x": 90,
+   "y": 8,
+   "radius": 4.0,
+   "state": 1,
+   "group_id": 0,
+   "breakable": false,
+   "name": "light"
+  },
+  {
+   "kind": "switch",
+   "id": 40,
+   "x": 91,
+   "y": 16,
+   "group_id": 0,
+   "name": "switch"
+  },
+  {
+   "kind": "item",
+   "id": 41,
+   "x": 95,
+   "y": 8,
+   "item": "herb",
+   "name": "item"
   }
  ]
 }

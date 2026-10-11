@@ -48,20 +48,34 @@ static struct {
 
 static void bump_revision(void);
 
-// Reveal whole map sections as Grace steps into them (large chunks).
+// Reveal whole map sections as Grace steps into them (large chunks). Sections
+// that overlap the one she entered are part of the same chunk, so reveal them
+// together.
+static bool sections_overlap(const section_t* a, const section_t* b) {
+    return a->x < b->x + b->w && b->x < a->x + a->w &&
+           a->y < b->y + b->h && b->y < a->y + a->h;
+}
+
 static void reveal_sections(void) {
     int px, py;
     player_cell(&px, &py);
     const level_t* lv = grid_level();
     for (int i = 0; i < lv->section_count && i < LEVEL_MAX_SECTIONS; i++) {
-        if (app.section_revealed[i]) {
-            continue;
-        }
         const section_t* s = &lv->sections[i];
         if (px >= s->x && px < s->x + s->w && py >= s->y && py < s->y + s->h) {
-            app.section_revealed[i] = true;
-            grid_reveal_rect(s->x, s->y, s->w, s->h);
-            bump_revision();
+            if (!app.section_revealed[i]) {
+                app.section_revealed[i] = true;
+                grid_reveal_rect(s->x, s->y, s->w, s->h);
+                bump_revision();
+            }
+            for (int j = 0; j < lv->section_count; j++) {
+                if (!app.section_revealed[j] && sections_overlap(s, &lv->sections[j])) {
+                    app.section_revealed[j] = true;
+                    const section_t* o = &lv->sections[j];
+                    grid_reveal_rect(o->x, o->y, o->w, o->h);
+                    bump_revision();
+                }
+            }
         }
     }
 }

@@ -39,6 +39,7 @@ static struct {
     int section_selected;
     int sec_grab;
     float sec_dx, sec_dy;
+    float sec_fx, sec_fy;
     int drag_obj;
     int drag_dx, drag_dy;
     int wall_selected;
@@ -578,7 +579,7 @@ static void draw_map(void) {
             if (ed.level.objs[j].id == ed.link_src) {
                 float ax = view_x((float)ed.level.objs[j].x + 0.5f);
                 float ay = view_y((float)ed.level.objs[j].y + 0.5f);
-                fill_circle(ax, ay, ed.scale * 0.5f, 1.0f, 0.5f, 0.0f, 0.6f);
+                fill_circle(ax, ay, ed.scale * 0.5f, 1.0f, 0.0f, 1.0f, 0.6f);
             }
         }
     }
@@ -590,7 +591,7 @@ static void draw_map(void) {
         for (int j = 0; j < ed.level.obj_count; j++) {
             if (ed.level.objs[j].id == o->link_id) {
                 draw_line(view_x((float)ed.level.objs[j].x + 0.5f), view_y((float)ed.level.objs[j].y + 0.5f),
-                          view_x((float)o->x + 0.5f), view_y((float)o->y + 0.5f), 2.0f, 1.0f, 0.5f, 0.0f, 0.9f);
+                          view_x((float)o->x + 0.5f), view_y((float)o->y + 0.5f), 2.0f, 1.0f, 0.0f, 1.0f, 0.95f);
                 break;
             }
         }
@@ -608,6 +609,9 @@ static void draw_map(void) {
                 draw_line(rx + rw, ry, rx + rw, ry + rh, 2.5f, 1.0f, 0.75f, 0.1f, 1);
                 draw_line(rx + rw, ry + rh, rx, ry + rh, 2.5f, 1.0f, 0.75f, 0.1f, 1);
                 draw_line(rx, ry + rh, rx, ry, 2.5f, 1.0f, 0.75f, 0.1f, 1);
+                fill_rect(rx - 5, ry - 5, 10, 10, 1.0f, 0.55f, 0.0f, 1);
+                fill_rect(rx + rw - 5, ry - 5, 10, 10, 1.0f, 0.55f, 0.0f, 1);
+                fill_rect(rx - 5, ry + rh - 5, 10, 10, 1.0f, 0.55f, 0.0f, 1);
                 fill_rect(rx + rw - 5, ry + rh - 5, 10, 10, 1.0f, 0.55f, 0.0f, 1);
             } else {
                 draw_line(rx, ry, rx + rw, ry, 1.5f, 1.0f, 0.55f, 0.0f, 0.95f);
@@ -881,13 +885,26 @@ static void handle_input(void) {
                         for (int si = ed.level.section_count - 1; si >= 0; si--) {
                             section_t* s = &ed.level.sections[si];
                             float rx = (float)s->x, ry = (float)s->y;
-                            float rw = (float)s->w, rh = (float)s->h;
-                            if (fabsf(wx - (rx + rw)) <= 0.6f && fabsf(wy - (ry + rh)) <= 0.6f) {
+                            float x1 = (float)(s->x + s->w), y1 = (float)(s->y + s->h);
+                            const float cx[4] = { rx, x1, rx, x1 };
+                            const float cy[4] = { ry, ry, y1, y1 };
+                            const float fx[4] = { x1, rx, x1, rx };
+                            const float fy[4] = { y1, y1, ry, ry };
+                            int hit = -1;
+                            for (int c = 0; c < 4; c++) {
+                                if (fabsf(wx - cx[c]) <= 0.6f && fabsf(wy - cy[c]) <= 0.6f) {
+                                    hit = c;
+                                    break;
+                                }
+                            }
+                            if (hit >= 0) {
                                 ed.section_selected = si;
                                 ed.sec_grab = 2;
+                                ed.sec_fx = fx[hit];
+                                ed.sec_fy = fy[hit];
                                 break;
                             }
-                            if (wx >= rx && wx <= rx + rw && wy >= ry && wy <= ry + rh) {
+                            if (wx >= rx && wx <= x1 && wy >= ry && wy <= y1) {
                                 ed.section_selected = si;
                                 ed.sec_grab = 1;
                                 ed.sec_dx = wx - rx;
@@ -955,11 +972,19 @@ static void handle_input(void) {
                         ed.dirty = true;
                     }
                 } else {
-                    int nw = (int)floorf(wx + 0.5f) - s->x;
-                    int nh = (int)floorf(wy + 0.5f) - s->y;
+                    int mx = (int)floorf(wx + 0.5f);
+                    int my = (int)floorf(wy + 0.5f);
+                    int fx = (int)ed.sec_fx;
+                    int fy = (int)ed.sec_fy;
+                    int nx = mx < fx ? mx : fx;
+                    int ny = my < fy ? my : fy;
+                    int nw = (mx > fx ? mx : fx) - nx;
+                    int nh = (my > fy ? my : fy) - ny;
                     if (nw < 1) nw = 1;
                     if (nh < 1) nh = 1;
-                    if (nw != s->w || nh != s->h) {
+                    if (s->x != nx || s->y != ny || s->w != nw || s->h != nh) {
+                        s->x = nx;
+                        s->y = ny;
                         s->w = nw;
                         s->h = nh;
                         ed.dirty = true;
@@ -1017,6 +1042,8 @@ static void handle_input(void) {
         if (ImGui::IsKeyPressed(ImGuiKey_Delete)) {
             if (ed.wall_selected >= 0) {
                 delete_wall();
+            } else if (ed.section_selected >= 0) {
+                delete_section();
             } else {
                 delete_selected();
             }
