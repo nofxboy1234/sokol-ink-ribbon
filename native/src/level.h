@@ -60,6 +60,7 @@ typedef struct {
     int id;
     obj_kind_t kind;
     int x, y;
+    int w, h;
     int horizontal;
     int span;
     int state;

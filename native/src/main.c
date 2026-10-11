@@ -26,6 +26,7 @@
 #include "levels.h"
 
 #include "dbgui/dbgui.h"
+#include "tooltip.h"
 
 #include <math.h>
 #include <string.h>
@@ -166,6 +167,66 @@ static void init(void) {
     };
 }
 
+// The interactable whose X marker is under the mouse (shown when Grace is
+// within one cell), used for the hover name popup.
+static const obj_t* hover_interactable(void) {
+    if (app.hover_x < 0 || app.hover_y < 0) {
+        return NULL;
+    }
+    int px, py;
+    player_cell(&px, &py);
+    const level_t* lv = &app.level;
+    int hx = app.hover_x;
+    int hy = app.hover_y;
+    for (int i = lv->obj_count - 1; i >= 0; i--) {
+        const obj_t* o = &lv->objs[i];
+        if (o->kind != OBJ_ITEM && o->kind != OBJ_DOOR && o->kind != OBJ_SWITCH &&
+            o->kind != OBJ_TYPEWRITER && o->kind != OBJ_FUSEBOX &&
+            o->kind != OBJ_FILE && o->kind != OBJ_SAFE && o->kind != OBJ_OPENABLE) {
+            continue;
+        }
+        if (!grid_is_revealed(o->x, o->y)) {
+            continue;
+        }
+        if (o->kind == OBJ_ITEM && items_taken(i)) {
+            continue;
+        }
+        if (o->kind == OBJ_ITEM && openable_covers_closed(o->x, o->y)) {
+            continue;
+        }
+        if (o->kind == OBJ_OPENABLE && o->open) {
+            continue;
+        }
+        bool covered = false;
+        if (o->kind == OBJ_OPENABLE) {
+            int w = o->w > 0 ? o->w : 1;
+            int h = o->h > 0 ? o->h : 1;
+            covered = hx >= o->x && hx < o->x + w && hy >= o->y && hy < o->y + h;
+        } else if (o->kind == OBJ_DOOR) {
+            int span = o->span > 0 ? o->span : 1;
+            covered = o->horizontal
+                ? (hy == o->y && hx >= o->x && hx < o->x + span)
+                : (hx == o->x && hy >= o->y && hy < o->y + span);
+        } else {
+            covered = (o->x == hx && o->y == hy);
+        }
+        if (!covered) {
+            continue;
+        }
+        int ex = (o->kind == OBJ_OPENABLE) ? o->x + (o->w > 0 ? o->w : 1) - 1 : o->x;
+        int ey = (o->kind == OBJ_OPENABLE) ? o->y + (o->h > 0 ? o->h : 1) - 1 : o->y;
+        int nx = px < o->x ? o->x : (px > ex ? ex : px);
+        int ny = py < o->y ? o->y : (py > ey ? ey : py);
+        int dx = nx - px;
+        int dy = ny - py;
+        int adx = dx < 0 ? -dx : dx;
+        int ady = dy < 0 ? -dy : dy;
+        int d = adx > ady ? adx : ady;
+        return d <= 1 ? o : NULL;
+    }
+    return NULL;
+}
+
 static void frame(void) {
     const float dt = (float)sapp_frame_duration();
     if (!app.paused) {
@@ -191,6 +252,12 @@ static void frame(void) {
 
     _dbgui_update();
     render_scene(app.hover_x, app.hover_y, &app.preview);
+
+    const obj_t* hl = hover_interactable();
+    if (hl) {
+        const char* name = hl->name[0] ? hl->name : obj_kind_name(hl->kind);
+        game_tooltip(name, app.mouse_x + 14.0f, app.mouse_y + 14.0f);
+    }
 
     sg_begin_pass(&(sg_pass){
         .action = app.pass_action,

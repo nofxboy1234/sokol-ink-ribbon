@@ -1,6 +1,7 @@
 #include "render.h"
 #include "camera.h"
 #include "grid.h"
+#include "interact.h"
 #include "items.h"
 #include "level.h"
 #include "player.h"
@@ -114,6 +115,9 @@ static void draw_objects(void) {
         if (o->kind == OBJ_ITEM && items_taken(i)) {
             continue;
         }
+        if (o->kind == OBJ_ITEM && openable_covers_closed(o->x, o->y)) {
+            continue;
+        }
         float sx, sy;
         camera_cell_to_screen((float)o->x, (float)o->y, &sx, &sy);
         switch (o->kind) {
@@ -193,15 +197,27 @@ static void draw_objects(void) {
             case OBJ_SAFE:
                 fill_rect(sx + scale * 0.25f, sy + scale * 0.25f, scale * 0.5f, scale * 0.5f, C_GRAY_R);
                 break;
-            case OBJ_OBSTACLE:
-                fill_rect(sx + scale * 0.2f, sy + scale * 0.2f, scale * 0.6f, scale * 0.6f, C_GRAY_R);
+            case OBJ_OBSTACLE: {
+                float w = (float)(o->w > 0 ? o->w : 1) * scale;
+                float h = (float)(o->h > 0 ? o->h : 1) * scale;
+                float m = scale * 0.12f;
+                fill_rect(sx + m, sy + m, w - m * 2.0f, h - m * 2.0f, 0.949f, 1.0f, 0.0f, 1.0f);
                 break;
+            }
             case OBJ_MOVABLE:
                 fill_rect(sx + scale * 0.28f, sy + scale * 0.28f, scale * 0.44f, scale * 0.44f, C_GRAY_R);
                 break;
-            case OBJ_OPENABLE:
-                fill_rect(sx + scale * 0.25f, sy + scale * 0.25f, scale * 0.5f, scale * 0.5f, 0.0f, 1.0f, 0.733f, 1.0f);
+            case OBJ_OPENABLE: {
+                float w = (float)(o->w > 0 ? o->w : 1) * scale;
+                float h = (float)(o->h > 0 ? o->h : 1) * scale;
+                float t = scale * 0.12f;
+                float cr = 0.0f, cg = 1.0f, cb = 0.2f;
+                fill_rect(sx, sy, w, t, cr, cg, cb, 1.0f);
+                fill_rect(sx, sy + h - t, w, t, cr, cg, cb, 1.0f);
+                fill_rect(sx, sy, t, h, cr, cg, cb, 1.0f);
+                fill_rect(sx + w - t, sy, t, h, cr, cg, cb, 1.0f);
                 break;
+            }
             case OBJ_FUSEBOX:
                 fill_rect(sx + scale * 0.25f, sy + scale * 0.25f, scale * 0.5f, scale * 0.5f, C_INK_R);
                 fill_rect(sx + scale * 0.35f, sy + scale * 0.35f, scale * 0.3f, scale * 0.3f, C_YELLOW_R);
@@ -224,17 +240,28 @@ static void draw_discovery_markers(void) {
         const obj_t* o = &lv->objs[i];
         if (o->kind != OBJ_ITEM && o->kind != OBJ_DOOR && o->kind != OBJ_SWITCH &&
             o->kind != OBJ_TYPEWRITER && o->kind != OBJ_FUSEBOX &&
-            o->kind != OBJ_FILE && o->kind != OBJ_SAFE) {
+            o->kind != OBJ_FILE && o->kind != OBJ_SAFE && o->kind != OBJ_OPENABLE) {
             continue;
         }
         if (o->kind == OBJ_ITEM && items_taken(i)) {
             continue;
         }
-        if (!grid_is_revealed(o->x, o->y)) {
+        if (o->kind == OBJ_ITEM && openable_covers_closed(o->x, o->y)) {
             continue;
         }
-        int dx = o->x - px;
-        int dy = o->y - py;
+        if (o->kind == OBJ_OPENABLE && o->open) {
+            continue;
+        }
+        bool rect = (o->kind == OBJ_OPENABLE || o->kind == OBJ_OBSTACLE);
+        int ex = rect ? o->x + (o->w > 0 ? o->w : 1) - 1 : o->x;
+        int ey = rect ? o->y + (o->h > 0 ? o->h : 1) - 1 : o->y;
+        int nx = px < o->x ? o->x : (px > ex ? ex : px);
+        int ny = py < o->y ? o->y : (py > ey ? ey : py);
+        if (!grid_is_revealed(nx, ny)) {
+            continue;
+        }
+        int dx = nx - px;
+        int dy = ny - py;
         int adx = dx < 0 ? -dx : dx;
         int ady = dy < 0 ? -dy : dy;
         int d = adx > ady ? adx : ady;
@@ -242,9 +269,10 @@ static void draw_discovery_markers(void) {
             continue;
         }
         float sx, sy;
-        camera_cell_to_screen((float)o->x, (float)o->y, &sx, &sy);
-        float cx = sx + scale * 0.5f;
-        float cy = sy + scale * 0.5f;
+        camera_cell_to_screen((float)o->x + (rect ? 0.5f * (float)(o->w > 0 ? o->w : 1) : 0.5f),
+                              (float)o->y + (rect ? 0.5f * (float)(o->h > 0 ? o->h : 1) : 0.5f), &sx, &sy);
+        float cx = sx;
+        float cy = sy;
         if (d <= 1) {
             fill_circle(cx, cy, scale * 0.34f, C_INK_R);
             float e = scale * 0.18f;

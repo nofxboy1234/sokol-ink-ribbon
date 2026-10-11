@@ -9,6 +9,9 @@ bool interact_at(int x, int y);
 
 bool obstacles_block_cell(int x, int y);
 
+// True if a closed openable covers this cell (so its contents stay hidden).
+bool openable_covers_closed(int x, int y);
+
 bool lighter_on(void);
 void lighter_toggle(void);
 

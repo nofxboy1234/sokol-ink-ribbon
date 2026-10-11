@@ -45,6 +45,8 @@ static struct {
     float sec_fx, sec_fy;
     int drag_obj;
     int drag_dx, drag_dy;
+    int obj_grab;
+    float obj_fx, obj_fy;
     int wall_selected;
     int wall_drag;
     int link_src;
@@ -304,11 +306,17 @@ static void add_object(int kind, int x, int y) {
     o->discover_state = -1;
     o->x = x;
     o->y = y;
+    o->w = 1;
+    o->h = 1;
     o->item_type = ed.place_item;
     o->radius = 4.0f;
     o->state = (kind == OBJ_LIGHT) ? 1 : 0;
     if (kind == OBJ_DOOR) {
         o->span = 3;
+    }
+    if (kind == OBJ_OPENABLE || kind == OBJ_OBSTACLE) {
+        o->w = 2;
+        o->h = 2;
     }
     snprintf(o->name, LEVEL_MAX_NAME, "%s", obj_kind_name(o->kind));
     ed.selected = ed.level.obj_count - 1;
@@ -352,6 +360,13 @@ static void pick_object(float wx, float wy) {
                 ? (cy == o->y && cx >= o->x && cx < o->x + span)
                 : (cx == o->x && cy >= o->y && cy < o->y + span);
             if (hit) {
+                ed.selected = i;
+                return;
+            }
+        } else if (o->kind == OBJ_OBSTACLE || o->kind == OBJ_OPENABLE) {
+            int w = o->w > 0 ? o->w : 1;
+            int h = o->h > 0 ? o->h : 1;
+            if (cx >= o->x && cx < o->x + w && cy >= o->y && cy < o->y + h) {
                 ed.selected = i;
                 return;
             }
@@ -676,6 +691,26 @@ static void draw_map(void) {
                 fill_circle(cx, cy, scale * 0.33f, 0.118f, 0.118f, 0.118f, 1.0f);
                 fill_circle(cx, cy, scale * 0.28f, 0.616f, 0.616f, 0.616f, 1.0f);
             }
+        } else if (o->kind == OBJ_OBSTACLE || o->kind == OBJ_OPENABLE) {
+            float rx = view_x((float)o->x);
+            float ry = view_y((float)o->y);
+            float rw = (float)(o->w > 0 ? o->w : 1) * scale;
+            float rh = (float)(o->h > 0 ? o->h : 1) * scale;
+            if (o->kind == OBJ_OBSTACLE) {
+                fill_rect(rx, ry, rw, rh, 0.949f, 1.0f, 0.0f, 1.0f);
+            } else {
+                float t = scale * 0.12f;
+                fill_rect(rx, ry, rw, t, 0.0f, 1.0f, 0.2f, 1.0f);
+                fill_rect(rx, ry + rh - t, rw, t, 0.0f, 1.0f, 0.2f, 1.0f);
+                fill_rect(rx, ry, t, rh, 0.0f, 1.0f, 0.2f, 1.0f);
+                fill_rect(rx + rw - t, ry, t, rh, 0.0f, 1.0f, 0.2f, 1.0f);
+            }
+        if (i == ed.selected && o->kind != OBJ_OBSTACLE && o->kind != OBJ_OPENABLE) {
+                fill_rect(rx - 5, ry - 5, 10, 10, 1.0f, 0.55f, 0.0f, 1.0f);
+                fill_rect(rx + rw - 5, ry - 5, 10, 10, 1.0f, 0.55f, 0.0f, 1.0f);
+                fill_rect(rx - 5, ry + rh - 5, 10, 10, 1.0f, 0.55f, 0.0f, 1.0f);
+                fill_rect(rx + rw - 5, ry + rh - 5, 10, 10, 1.0f, 0.55f, 0.0f, 1.0f);
+            }
         } else {
             float r = 0.6f, g = 0.6f, b = 0.6f;
             switch (o->kind) {
@@ -934,7 +969,13 @@ static void ui_properties(void) {
         } else if (o->kind == OBJ_SWITCH) {
             changed |= ImGui::InputInt("group_id", &o->group_id);
         } else if (o->kind == OBJ_OBSTACLE) {
+            changed |= ImGui::InputInt("w", &o->w);
+            changed |= ImGui::InputInt("h", &o->h);
             changed |= ImGui::Checkbox("climbable", (bool*)&o->climbable);
+        } else if (o->kind == OBJ_OPENABLE) {
+            changed |= ImGui::InputInt("w", &o->w);
+            changed |= ImGui::InputInt("h", &o->h);
+            changed |= ImGui::Checkbox("open", (bool*)&o->open);
         } else if (o->kind == OBJ_FILE || o->kind == OBJ_SAFE) {
             changed |= ImGui::InputInt("code", &o->code);
         }
@@ -1014,13 +1055,38 @@ static void handle_input(void) {
                 pick_object(wx, wy);
                 ed.section_selected = -1;
                 if (ed.selected >= 0) {
+                    obj_t* o = &ed.level.objs[ed.selected];
                     ed.wall_selected = -1;
                     ed.wall_drag = -1;
                     ed.section_selected = -1;
                     ed.sec_grab = 0;
                     ed.link_selected = -1;
-                    ed.drag_dx = (int)floorf(wx) - ed.level.objs[ed.selected].x;
-                    ed.drag_dy = (int)floorf(wy) - ed.level.objs[ed.selected].y;
+                    ed.obj_grab = 0;
+                    if (o->kind == OBJ_OBSTACLE || o->kind == OBJ_OPENABLE) {
+                        float rx = (float)o->x, ry = (float)o->y;
+                        float x1 = (float)(o->x + (o->w > 0 ? o->w : 1));
+                        float y1 = (float)(o->y + (o->h > 0 ? o->h : 1));
+                        const float ccx[4] = { rx, x1, rx, x1 };
+                        const float ccy[4] = { ry, ry, y1, y1 };
+                        const float cfx[4] = { x1, rx, x1, rx };
+                        const float cfy[4] = { y1, y1, ry, ry };
+                        for (int c = 0; c < 4; c++) {
+                            if (fabsf(wx - ccx[c]) <= 0.6f && fabsf(wy - ccy[c]) <= 0.6f) {
+                                ed.obj_grab = 2;
+                                ed.obj_fx = cfx[c];
+                                ed.obj_fy = cfy[c];
+                                break;
+                            }
+                        }
+                        if (ed.obj_grab == 0) {
+                            ed.obj_grab = 1;
+                        }
+                    }
+                    ed.drag_dx = (int)floorf(wx) - o->x;
+                    ed.drag_dy = (int)floorf(wy) - o->y;
+                    if (ed.obj_grab == 2) {
+                        ed.drag_obj = -1;
+                    }
                 } else {
                     pick_wall(wx, wy);
                     ed.drag_dx = 0;
@@ -1070,7 +1136,7 @@ static void handle_input(void) {
                     }
                 }
                 }
-                ed.drag_obj = ed.selected;
+                ed.drag_obj = (ed.obj_grab == 2) ? -1 : ed.selected;
             } else if (ed.tool == TOOL_PLACE) {
                 if (ed.place_kind == OBJ_DOOR) {
                     place_door(wx, wy);
@@ -1115,6 +1181,31 @@ static void handle_input(void) {
                 }
             } else {
                 ed.drag_obj = -1;
+            }
+        }
+        // resizing a rectangle object (obstacle/openable) from a corner
+        if (ed.obj_grab == 2 && ed.selected >= 0 && ed.selected < ed.level.obj_count) {
+            obj_t* o = &ed.level.objs[ed.selected];
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                int mx = (int)floorf(wx + 0.5f);
+                int my = (int)floorf(wy + 0.5f);
+                int fx = (int)ed.obj_fx;
+                int fy = (int)ed.obj_fy;
+                int nx = mx < fx ? mx : fx;
+                int ny = my < fy ? my : fy;
+                int nw = (mx > fx ? mx : fx) - nx;
+                int nh = (my > fy ? my : fy) - ny;
+                if (nw < 1) nw = 1;
+                if (nh < 1) nh = 1;
+                if (o->x != nx || o->y != ny || o->w != nw || o->h != nh) {
+                    o->x = nx;
+                    o->y = ny;
+                    o->w = nw;
+                    o->h = nh;
+                    ed.dirty = true;
+                }
+            } else {
+                ed.obj_grab = 0;
             }
         }
         // dragging a section moves it, or resizes it from the corner handle

@@ -16,6 +16,8 @@ static struct {
     bool goal;
 } in;
 
+static bool rect_covers(const obj_t* o, int x, int y);
+
 void interact_init(void) {
     memset(&in, 0, sizeof(in));
     in.level = (level_t*)grid_level();
@@ -52,12 +54,19 @@ bool interact_at(int x, int y) {
     }
     for (int i = 0; i < in.level->obj_count; i++) {
         obj_t* o = &in.level->objs[i];
-        if (o->x != x || o->y != y) {
+        bool covered = (o->kind == OBJ_OPENABLE || o->kind == OBJ_OBSTACLE)
+            ? rect_covers(o, x, y)
+            : (o->x == x && o->y == y);
+        if (!covered) {
             continue;
         }
         if (o->kind == OBJ_ITEM) {
             // picking an item up only happens on an explicit click
             items_take(i);
+            return true;
+        }
+        if (o->kind == OBJ_OPENABLE && !o->open) {
+            o->open = 1;
             return true;
         }
         if (o->kind == OBJ_SWITCH) {
@@ -94,10 +103,30 @@ bool interact_at(int x, int y) {
     return false;
 }
 
+static bool rect_covers(const obj_t* o, int x, int y) {
+    int w = o->w > 0 ? o->w : 1;
+    int h = o->h > 0 ? o->h : 1;
+    return x >= o->x && x < o->x + w && y >= o->y && y < o->y + h;
+}
+
 bool obstacles_block_cell(int x, int y) {
     for (int i = 0; i < in.level->obj_count; i++) {
         const obj_t* o = &in.level->objs[i];
-        if (o->kind == OBJ_OBSTACLE && o->x == x && o->y == y && !o->climbable) {
+        if (o->kind == OBJ_OBSTACLE && !o->climbable && rect_covers(o, x, y)) {
+            return true;
+        }
+        if (o->kind == OBJ_OPENABLE && !o->open && rect_covers(o, x, y)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// True if a closed openable covers this cell (its contents are hidden).
+bool openable_covers_closed(int x, int y) {
+    for (int i = 0; i < in.level->obj_count; i++) {
+        const obj_t* o = &in.level->objs[i];
+        if (o->kind == OBJ_OPENABLE && !o->open && rect_covers(o, x, y)) {
             return true;
         }
     }

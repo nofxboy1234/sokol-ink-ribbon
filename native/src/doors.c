@@ -94,7 +94,7 @@ bool doors_interact(int x, int y) {
         }
         if (o->state == DOOR_LOCKED && (key_available(o) || items_taken_by_id(o->link_id))) {
             o->state = DOOR_UNLOCKED;
-            o->open = 1;
+            o->open = 0;
             dr.discovered[i] = 1;
             return true;
         }

@@ -265,6 +265,10 @@ static void parse_objects(const char* js, const jsmntok_t* t, level_t* lv, int a
             if ((v = obj_find(js, t, i, "id")) >= 0) o->id = tok_int(js, &t[v], o->id);
             if ((v = obj_find(js, t, i, "x")) >= 0) o->x = tok_int(js, &t[v], 0);
             if ((v = obj_find(js, t, i, "y")) >= 0) o->y = tok_int(js, &t[v], 0);
+            o->w = (v = obj_find(js, t, i, "w")) >= 0 ? tok_int(js, &t[v], 1) : 1;
+            o->h = (v = obj_find(js, t, i, "h")) >= 0 ? tok_int(js, &t[v], 1) : 1;
+            if (o->w < 1) o->w = 1;
+            if (o->h < 1) o->h = 1;
             if ((v = obj_find(js, t, i, "horizontal")) >= 0) o->horizontal = tok_int(js, &t[v], 0);
             o->span = (v = obj_find(js, t, i, "span")) >= 0 ? tok_int(js, &t[v], 1) : 1;
             if (o->span < 1) o->span = 1;
@@ -435,7 +439,11 @@ int level_to_json(const level_t* lv, char* out, int cap) {
         } else if (o->kind == OBJ_SWITCH) {
             n = ap(out, cap, n, ", \"group_id\": %d", o->group_id);
         } else if (o->kind == OBJ_OBSTACLE) {
-            n = ap(out, cap, n, ", \"climbable\": %s", o->climbable ? "true" : "false");
+            n = ap(out, cap, n, ", \"w\": %d, \"h\": %d, \"climbable\": %s",
+                   o->w, o->h, o->climbable ? "true" : "false");
+        } else if (o->kind == OBJ_OPENABLE) {
+            n = ap(out, cap, n, ", \"w\": %d, \"h\": %d, \"open\": %s",
+                   o->w, o->h, o->open ? "true" : "false");
         } else if (o->kind == OBJ_FILE || o->kind == OBJ_SAFE) {
             n = ap(out, cap, n, ", \"code\": %d", o->code);
         }
