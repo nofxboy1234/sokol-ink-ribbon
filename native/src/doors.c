@@ -1,5 +1,6 @@
 #include "doors.h"
 #include "grid.h"
+#include "interact.h"
 #include "inventory.h"
 #include "items.h"
 #include "level.h"
@@ -80,16 +81,16 @@ static bool key_available(const obj_t* o) {
 
 bool doors_interact(int x, int y) {
     level_t* lv = dr.level;
-    int px, py;
-    player_cell(&px, &py);
-    int adx = x > px ? x - px : px - x;
-    int ady = y > py ? y - py : py - y;
-    if (adx > 1 || ady > 1) {
-        return false;
-    }
     for (int i = 0; i < lv->obj_count; i++) {
         obj_t* o = &lv->objs[i];
-        if (!is_door(o) || o->x != x || o->y != y) {
+        if (!is_door(o)) {
+            continue;
+        }
+        int span = o->span > 0 ? o->span : 1;
+        bool covered = o->horizontal
+            ? ((y == o->y || y == o->y - 1) && x >= o->x && x < o->x + span)
+            : ((x == o->x || x == o->x - 1) && y >= o->y && y < o->y + span);
+        if (!covered || interact_distance(i) > 1) {
             continue;
         }
         if (o->state == DOOR_LOCKED && (key_available(o) || items_taken_by_id(o->link_id))) {

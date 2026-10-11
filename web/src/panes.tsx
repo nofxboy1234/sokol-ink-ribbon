@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ITEM_NAMES,
+  SAVE_SLOTS,
   craftRecipe,
   gameReset,
+  loadGame,
   readFiles,
   readReplay,
   runElapsedMs,
+  saveGame,
+  saveTimeMs,
+  saveUsed,
   setLighter,
 } from "./wasmBridge";
 import { useElapsed, useGameState } from "./GameState";
@@ -210,6 +215,51 @@ export function PauseMenu({ open, onClose }: { open: boolean; onClose: () => voi
         </button>
         <button type="button" className="pause-item" onClick={onClose}>
           Resume
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Save/Load menu in the same style as the pause menu (ref/map.kra "Load menu").
+export function SaveLoadMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+  if (!open) {
+    return null;
+  }
+  const slots = Array.from({ length: SAVE_SLOTS }, (_, i) => i);
+  return (
+    <div className="pause-overlay" onClick={onClose}>
+      <div className="save-menu" onClick={(event) => event.stopPropagation()}>
+        <div className="save-title">Save / Load</div>
+        {slots.map((slot) => (
+          <div key={slot} className="save-row">
+            <span className="save-slot">Slot {slot + 1}</span>
+            <span className="save-data">{saveUsed(slot) ? formatMs(saveTimeMs(slot)) : "NO DATA"}</span>
+            <button
+              type="button"
+              className="pause-item save-btn"
+              onClick={() => {
+                saveGame(slot);
+                onClose();
+              }}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              className="pause-item save-btn"
+              disabled={!saveUsed(slot)}
+              onClick={() => {
+                loadGame(slot);
+                onClose();
+              }}
+            >
+              Load
+            </button>
+          </div>
+        ))}
+        <button type="button" className="pause-item" onClick={onClose}>
+          Close
         </button>
       </div>
     </div>

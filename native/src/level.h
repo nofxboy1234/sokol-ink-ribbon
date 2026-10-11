@@ -97,6 +97,7 @@ int level_to_json(const level_t* lv, char* out, int cap);
 const char* obj_kind_name(obj_kind_t kind);
 obj_kind_t obj_kind_from_name(const char* name);
 const char* item_name(item_t item);
+const char* item_display_name(int item);
 item_t item_from_name(const char* name);
 const char* door_state_name(int state);
 int door_state_from_name(const char* name);

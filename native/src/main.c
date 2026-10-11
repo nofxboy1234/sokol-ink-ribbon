@@ -209,8 +209,8 @@ static const obj_t* hover_interactable(void) {
         } else if (o->kind == OBJ_DOOR) {
             int span = o->span > 0 ? o->span : 1;
             covered = o->horizontal
-                ? (hy == o->y && hx >= o->x && hx < o->x + span)
-                : (hx == o->x && hy >= o->y && hy < o->y + span);
+                ? (hy >= o->y - 1 && hy <= o->y && hx >= o->x && hx < o->x + span)
+                : (hx >= o->x - 1 && hx <= o->x && hy >= o->y && hy < o->y + span);
         } else {
             covered = (o->x == hx && o->y == hy);
         }
@@ -222,37 +222,23 @@ static const obj_t* hover_interactable(void) {
     return NULL;
 }
 
-// Extra dear-imgui UI drawn inside the dbgui frame (tooltip + save menu).
+// Extra dear-imgui UI drawn inside the dbgui frame (the hover tooltip).
 void _dbgui_extra(void) {
     const obj_t* hl = hover_interactable();
     if (hl) {
         const char* name = hl->name[0] ? hl->name : obj_kind_name(hl->kind);
         if (hl->kind == OBJ_ITEM) {
-            name = item_name((item_t)hl->item_type);
+            name = item_display_name(hl->item_type);
+        } else if (hl->kind == OBJ_DOOR) {
+            if (hl->state == DOOR_UNLOCKED) {
+                name = hl->open ? "close" : "open";
+            } else if (hl->state == DOOR_LOCKED) {
+                name = "unlock";
+            } else {
+                name = "open";
+            }
         }
         game_tooltip(name, app.mouse_x + 14.0f, app.mouse_y + 14.0f);
-    }
-    if (interact_take_save_menu()) {
-        app.save_menu = true;
-        bump_revision();
-    }
-    double times[SAVE_SLOTS];
-    unsigned char used[SAVE_SLOTS];
-    for (int i = 0; i < SAVE_SLOTS; i++) {
-        used[i] = savegame_used(i) ? 1 : 0;
-        times[i] = savegame_time(i);
-    }
-    int act = game_save_menu(&app.save_menu, times, used, SAVE_SLOTS);
-    if (act > 0 && act < 100) {
-        savegame_save(act - 1, app.elapsed);
-        bump_revision();
-    } else if (act >= 100) {
-        double e = 0.0;
-        if (savegame_load(act - 100, &e)) {
-            app.elapsed = e;
-            camera_follow(player_x(), player_y());
-            bump_revision();
-        }
     }
 }
 
@@ -511,4 +497,33 @@ WEB_EXPORT double run_elapsed_ms(void) {
 
 WEB_EXPORT void set_paused(int paused) {
     app.paused = paused != 0;
+}
+
+WEB_EXPORT int take_save_menu(void) {
+    return interact_take_save_menu() ? 1 : 0;
+}
+
+WEB_EXPORT void save_game(int slot) {
+    if (savegame_save(slot, app.elapsed)) {
+        bump_revision();
+    }
+}
+
+WEB_EXPORT int load_game(int slot) {
+    double e = 0.0;
+    if (savegame_load(slot, &e)) {
+        app.elapsed = e;
+        camera_follow(player_x(), player_y());
+        bump_revision();
+        return 1;
+    }
+    return 0;
+}
+
+WEB_EXPORT int save_used(int slot) {
+    return savegame_used(slot) ? 1 : 0;
+}
+
+WEB_EXPORT double save_time(int slot) {
+    return savegame_time(slot);
 }

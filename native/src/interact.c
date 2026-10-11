@@ -67,6 +67,22 @@ bool interact_at(int x, int y) {
             return true;
         }
         if (o->kind == OBJ_OPENABLE && !o->open) {
+            if (o->link_id > 0) {
+                int keytype = -1;
+                for (int k = 0; k < in.level->obj_count; k++) {
+                    const obj_t* s = &in.level->objs[k];
+                    if (s->id == o->link_id && s->kind == OBJ_ITEM) {
+                        keytype = s->item_type;
+                        break;
+                    }
+                }
+                if (keytype >= 0) {
+                    if (!inventory_has(keytype)) {
+                        return true; // needs the linked key
+                    }
+                    inventory_remove(keytype);
+                }
+            }
             o->open = 1;
             return true;
         }
@@ -123,6 +139,15 @@ int interact_distance(int object_index) {
     if (o->kind == OBJ_OPENABLE || o->kind == OBJ_OBSTACLE) {
         ex = o->x + (o->w > 0 ? o->w : 1) - 1;
         ey = o->y + (o->h > 0 ? o->h : 1) - 1;
+    } else if (o->kind == OBJ_DOOR) {
+        int span = o->span > 0 ? o->span : 1;
+        if (o->horizontal) {
+            ex = o->x + span - 1;
+            ey = o->y;
+        } else {
+            ex = o->x;
+            ey = o->y + span - 1;
+        }
     }
     int nx = px < o->x ? o->x : (px > ex ? ex : px);
     int ny = py < o->y ? o->y : (py > ey ? ey : py);

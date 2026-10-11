@@ -31,6 +31,11 @@ export type EmscriptenModule = {
   _replay_x?: (index: number) => number;
   _replay_y?: (index: number) => number;
   _set_paused?: (paused: number) => void;
+  _take_save_menu?: () => number;
+  _save_game?: (slot: number) => void;
+  _load_game?: (slot: number) => number;
+  _save_used?: (slot: number) => number;
+  _save_time?: (slot: number) => number;
   UTF8ToString?: (ptr: number) => string;
 };
 
@@ -154,6 +159,28 @@ export function gameReset(): void {
 
 export function setPaused(paused: boolean): void {
   module()?._set_paused?.(paused ? 1 : 0);
+}
+
+export const SAVE_SLOTS = 6;
+
+export function takeSaveMenu(): boolean {
+  return (module()?._take_save_menu?.() ?? 0) !== 0;
+}
+
+export function saveGame(slot: number): void {
+  module()?._save_game?.(slot);
+}
+
+export function loadGame(slot: number): boolean {
+  return (module()?._load_game?.(slot) ?? 0) !== 0;
+}
+
+export function saveUsed(slot: number): boolean {
+  return (module()?._save_used?.(slot) ?? 0) !== 0;
+}
+
+export function saveTimeMs(slot: number): number {
+  return module()?._save_time?.(slot) ?? 0;
 }
 
 export function craftRecipe(index: number): boolean {

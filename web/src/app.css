@@ -169,6 +169,43 @@ body > div {
   border-bottom: 0;
 }
 
+.save-menu {
+  display: flex;
+  flex-direction: column;
+  width: 360px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+
+.save-title {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.save-row {
+  display: grid;
+  grid-template-columns: 64px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.save-row:last-child {
+  border-bottom: 0;
+}
+
+.save-btn {
+  border: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+  padding: 3px 10px;
+}
+
+.save-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .file-empty {
   color: var(--ink);
 }

@@ -157,6 +157,21 @@ item_t item_from_name(const char* name) {
     return ITEM_HERB;
 }
 
+const char* item_display_name(int item) {
+    switch (item) {
+        case ITEM_BOTTLE: return "Empty Bottle";
+        case ITEM_COIN: return "Antique Coin";
+        case ITEM_HERB: return "Green Herb";
+        case ITEM_INK_RIBBON: return "Ink Ribbon";
+        case ITEM_SCREWDRIVER: return "Screwdriver";
+        case ITEM_INJECTOR: return "Med Injector";
+        case ITEM_FUSE: return "Fuse";
+        case ITEM_LIGHTER: return "Lighter";
+        case ITEM_CHERUB_KEY: return "Cherub Key";
+        default: return "Item";
+    }
+}
+
 const char* door_state_name(int state) {
     static const char* names[3] = { "unknown", "locked", "unlocked" };
     return (state >= 0 && state < 3) ? names[state] : "unknown";

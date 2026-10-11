@@ -12,8 +12,9 @@ import {
   LighterButton,
   PauseMenu,
   RunPanel,
+  SaveLoadMenu,
 } from "../src/panes";
-import { setPaused as setGamePaused } from "../src/wasmBridge";
+import { setPaused as setGamePaused, takeSaveMenu } from "../src/wasmBridge";
 
 type Tab = "items" | "crafting" | "files";
 
@@ -26,6 +27,7 @@ const TABS: { id: Tab; label: string }[] = [
 export default function HomePage() {
   const [tab, setTab] = useState<Tab>("items");
   const [paused, setPaused] = useState(false);
+  const [saveMenu, setSaveMenu] = useState(false);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -37,9 +39,19 @@ export default function HomePage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // A typewriter click in the canvas opens the save/load menu.
   useEffect(() => {
-    setGamePaused(paused);
-  }, [paused]);
+    const id = setInterval(() => {
+      if (takeSaveMenu()) {
+        setSaveMenu(true);
+      }
+    }, 150);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    setGamePaused(paused || saveMenu);
+  }, [paused, saveMenu]);
 
   return (
     <>
@@ -81,6 +93,7 @@ export default function HomePage() {
           </section>
         </main>
         <PauseMenu open={paused} onClose={() => setPaused(false)} />
+        <SaveLoadMenu open={saveMenu} onClose={() => setSaveMenu(false)} />
       </GameStateProvider>
     </>
   );

@@ -265,8 +265,9 @@ static void draw_discovery_markers(void) {
             continue;
         }
         bool rect = (o->kind == OBJ_OPENABLE || o->kind == OBJ_OBSTACLE);
-        int ex = rect ? o->x + (o->w > 0 ? o->w : 1) - 1 : o->x;
-        int ey = rect ? o->y + (o->h > 0 ? o->h : 1) - 1 : o->y;
+        int span = o->span > 0 ? o->span : 1;
+        int ex = rect ? o->x + (o->w > 0 ? o->w : 1) - 1 : (o->kind == OBJ_DOOR && o->horizontal ? o->x + span - 1 : o->x);
+        int ey = rect ? o->y + (o->h > 0 ? o->h : 1) - 1 : (o->kind == OBJ_DOOR && !o->horizontal ? o->y + span - 1 : o->y);
         int nx = px < o->x ? o->x : (px > ex ? ex : px);
         int ny = py < o->y ? o->y : (py > ey ? ey : py);
         if (!grid_is_revealed(nx, ny)) {
@@ -276,9 +277,20 @@ static void draw_discovery_markers(void) {
         if (d > 4) {
             continue;
         }
+        // marker position: rect centre, or the door midpoint on Grace's side
+        float mwx = (float)o->x + (rect ? 0.5f * (float)(o->w > 0 ? o->w : 1) : 0.5f);
+        float mwy = (float)o->y + (rect ? 0.5f * (float)(o->h > 0 ? o->h : 1) : 0.5f);
+        if (o->kind == OBJ_DOOR) {
+            if (o->horizontal) {
+                mwx = (float)o->x + span * 0.5f;
+                mwy = py < o->y ? (float)o->y - 0.5f : (float)o->y + 0.5f;
+            } else {
+                mwy = (float)o->y + span * 0.5f;
+                mwx = px < o->x ? (float)o->x - 0.5f : (float)o->x + 0.5f;
+            }
+        }
         float sx, sy;
-        camera_cell_to_screen((float)o->x + (rect ? 0.5f * (float)(o->w > 0 ? o->w : 1) : 0.5f),
-                              (float)o->y + (rect ? 0.5f * (float)(o->h > 0 ? o->h : 1) : 0.5f), &sx, &sy);
+        camera_cell_to_screen(mwx, mwy, &sx, &sy);
         float cx = sx;
         float cy = sy;
         if (d <= 1) {
