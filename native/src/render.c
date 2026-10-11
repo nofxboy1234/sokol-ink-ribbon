@@ -394,6 +394,6 @@ void render_scene(int hover_x, int hover_y, const path_t* path) {
     {
         float px, py;
         camera_cell_to_screen(player_x(), player_y(), &px, &py);
-        fill_circle(px, py, scale * 0.68f, C_PURPLE_R);
+        fill_circle(px, py, scale * 0.51f, C_PURPLE_R);
     }
 }
