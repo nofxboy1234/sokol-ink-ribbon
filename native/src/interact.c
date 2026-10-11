@@ -14,9 +14,11 @@ static struct {
     int file_count;
     int saves;
     bool goal;
+    bool save_menu;
 } in;
 
 static bool rect_covers(const obj_t* o, int x, int y);
+int interact_distance(int object_index);
 
 void interact_init(void) {
     memset(&in, 0, sizeof(in));
@@ -45,19 +47,18 @@ static bool file_found(int obj_index) {
 }
 
 bool interact_at(int x, int y) {
-    int px, py;
-    player_cell(&px, &py);
-    int adx = x > px ? x - px : px - x;
-    int ady = y > py ? y - py : py - y;
-    if (adx > 1 || ady > 1) {
-        return false;
-    }
     for (int i = 0; i < in.level->obj_count; i++) {
         obj_t* o = &in.level->objs[i];
         bool covered = (o->kind == OBJ_OPENABLE || o->kind == OBJ_OBSTACLE)
             ? rect_covers(o, x, y)
             : (o->x == x && o->y == y);
         if (!covered) {
+            continue;
+        }
+        if (o->kind == OBJ_ITEM && openable_covers_closed(o->x, o->y)) {
+            continue;
+        }
+        if (interact_distance(i) > 1) {
             continue;
         }
         if (o->kind == OBJ_ITEM) {
@@ -74,11 +75,8 @@ bool interact_at(int x, int y) {
             return true;
         }
         if (o->kind == OBJ_TYPEWRITER) {
-            if (inventory_has(ITEM_INK_RIBBON)) {
-                in.saves++;
-                return true;
-            }
-            return false;
+            in.save_menu = true;
+            return true;
         }
         if (o->kind == OBJ_FILE && !file_found(i)) {
             if (in.file_count < LEVEL_MAX_OBJECTS) {
@@ -107,6 +105,56 @@ static bool rect_covers(const obj_t* o, int x, int y) {
     int w = o->w > 0 ? o->w : 1;
     int h = o->h > 0 ? o->h : 1;
     return x >= o->x && x < o->x + w && y >= o->y && y < o->y + h;
+}
+
+// Chebyshev distance from Grace to an object; for an item sitting on an
+// obstacle/openable, the support's edge counts too (so she can reach items
+// on top of a table she is standing against).
+int interact_distance(int object_index) {
+    const level_t* lv = in.level;
+    if (object_index < 0 || object_index >= lv->obj_count) {
+        return 99;
+    }
+    const obj_t* o = &lv->objs[object_index];
+    int px, py;
+    player_cell(&px, &py);
+    int ex = o->x;
+    int ey = o->y;
+    if (o->kind == OBJ_OPENABLE || o->kind == OBJ_OBSTACLE) {
+        ex = o->x + (o->w > 0 ? o->w : 1) - 1;
+        ey = o->y + (o->h > 0 ? o->h : 1) - 1;
+    }
+    int nx = px < o->x ? o->x : (px > ex ? ex : px);
+    int ny = py < o->y ? o->y : (py > ey ? ey : py);
+    int dx = nx - px;
+    int dy = ny - py;
+    int adx = dx < 0 ? -dx : dx;
+    int ady = dy < 0 ? -dy : dy;
+    int d = adx > ady ? adx : ady;
+    if (o->kind == OBJ_ITEM) {
+        for (int k = 0; k < lv->obj_count; k++) {
+            const obj_t* s = &lv->objs[k];
+            if (s->kind != OBJ_OPENABLE && s->kind != OBJ_OBSTACLE) {
+                continue;
+            }
+            if (!rect_covers(s, o->x, o->y)) {
+                continue;
+            }
+            int sex = s->x + (s->w > 0 ? s->w : 1) - 1;
+            int sey = s->y + (s->h > 0 ? s->h : 1) - 1;
+            int snx = px < s->x ? s->x : (px > sex ? sex : px);
+            int sny = py < s->y ? s->y : (py > sey ? sey : py);
+            int sdx = snx - px;
+            int sdy = sny - py;
+            int sadx = sdx < 0 ? -sdx : sdx;
+            int sady = sdy < 0 ? -sdy : sdy;
+            int sd = sadx > sady ? sadx : sady;
+            if (sd < d) {
+                d = sd;
+            }
+        }
+    }
+    return d;
 }
 
 bool obstacles_block_cell(int x, int y) {
@@ -165,4 +213,30 @@ int saves_made(void) {
 
 bool goal_met(void) {
     return in.goal;
+}
+
+bool interact_take_save_menu(void) {
+    bool open = in.save_menu;
+    in.save_menu = false;
+    return open;
+}
+
+void interact_export(bool* lighter, int* saves, bool* goal, int* file_count, int* file_obj) {
+    *lighter = in.lighter;
+    *saves = in.saves;
+    *goal = in.goal;
+    *file_count = in.file_count;
+    for (int i = 0; i < in.file_count; i++) {
+        file_obj[i] = in.file_obj[i];
+    }
+}
+
+void interact_restore(bool lighter, int saves, bool goal, int file_count, const int* file_obj) {
+    in.lighter = lighter;
+    in.saves = saves;
+    in.goal = goal;
+    in.file_count = file_count < 0 ? 0 : file_count;
+    for (int i = 0; i < in.file_count; i++) {
+        in.file_obj[i] = file_obj[i];
+    }
 }

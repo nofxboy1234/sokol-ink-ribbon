@@ -104,11 +104,14 @@ static void door_color(const obj_t* o, float* cr, float* cg, float* cb) {
     door_color_rgb(o->state, cr, cg, cb);
 }
 
-static void draw_objects(void) {
+static void draw_objects_pass(int item_pass) {
     const level_t* lv = grid_level();
     float scale = camera_cell_px();
     for (int i = 0; i < lv->obj_count; i++) {
         const obj_t* o = &lv->objs[i];
+        if ((o->kind == OBJ_ITEM) != (item_pass != 0)) {
+            continue;
+        }
         if (!grid_is_revealed(o->x, o->y)) {
             continue;
         }
@@ -188,7 +191,7 @@ static void draw_objects(void) {
                 fill_rect(sx + scale * 0.3f, sy + scale * 0.3f, scale * 0.4f, scale * 0.4f, C_YELLOW_R);
                 break;
             case OBJ_TYPEWRITER:
-                fill_rect(sx + scale * 0.25f, sy + scale * 0.3f, scale * 0.5f, scale * 0.4f, C_DARK_R);
+                fill_rect(sx + scale * 0.28f, sy + scale * 0.28f, scale * 0.44f, scale * 0.44f, C_MAGENTA_R);
                 break;
             case OBJ_FILE:
                 fill_rect(sx + scale * 0.3f, sy + scale * 0.25f, scale * 0.4f, scale * 0.5f, 1.0f, 1.0f, 1.0f, 1.0f);
@@ -200,8 +203,11 @@ static void draw_objects(void) {
             case OBJ_OBSTACLE: {
                 float w = (float)(o->w > 0 ? o->w : 1) * scale;
                 float h = (float)(o->h > 0 ? o->h : 1) * scale;
-                float m = scale * 0.12f;
-                fill_rect(sx + m, sy + m, w - m * 2.0f, h - m * 2.0f, 0.949f, 1.0f, 0.0f, 1.0f);
+                float t = scale * 0.12f;
+                fill_rect(sx, sy, w, t, C_INK_R);
+                fill_rect(sx, sy + h - t, w, t, C_INK_R);
+                fill_rect(sx, sy, t, h, C_INK_R);
+                fill_rect(sx + w - t, sy, t, h, C_INK_R);
                 break;
             }
             case OBJ_MOVABLE:
@@ -224,11 +230,17 @@ static void draw_objects(void) {
                 break;
             case OBJ_GOAL:
                 fill_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.3f, C_MAGENTA_R);
-                break;
+                 break;
             default:
                 break;
         }
     }
+}
+
+// Non-items first, items on top (so items sit above obstacles/openables).
+static void draw_objects(void) {
+    draw_objects_pass(0);
+    draw_objects_pass(1);
 }
 
 static void draw_discovery_markers(void) {
@@ -260,11 +272,7 @@ static void draw_discovery_markers(void) {
         if (!grid_is_revealed(nx, ny)) {
             continue;
         }
-        int dx = nx - px;
-        int dy = ny - py;
-        int adx = dx < 0 ? -dx : dx;
-        int ady = dy < 0 ? -dy : dy;
-        int d = adx > ady ? adx : ady;
+        int d = interact_distance(i);
         if (d > 4) {
             continue;
         }

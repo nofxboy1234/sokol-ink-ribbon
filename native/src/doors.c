@@ -168,3 +168,17 @@ bool doors_update(float dt) {
 int doors_discovered_count(void) {
     return dr.discovered_count;
 }
+
+// After loading a save, mark doors whose state is already known as discovered.
+void doors_restore_from_level(void) {
+    level_t* lv = dr.level;
+    dr.discovered_count = 0;
+    for (int i = 0; i < lv->obj_count; i++) {
+        obj_t* o = &lv->objs[i];
+        dr.discovered[i] = 0;
+        if (o->kind == OBJ_DOOR && o->state != DOOR_UNKNOWN) {
+            dr.discovered[i] = 1;
+            dr.discovered_count++;
+        }
+    }
+}

@@ -412,7 +412,6 @@ static void pick_wall(float wx, float wy) {
     ed.wall_drag = -1;
     ed.link_src = 0;
     ed.link_selected = -1;
-    ed.show_sections = true;
     float best = 0.6f;
     for (int i = 0; i < ed.level.wall_count; i++) {
         wall_seg_t* w = &ed.level.walls[i];
@@ -489,7 +488,6 @@ static void delete_wall(void) {
     ed.wall_drag = -1;
     ed.link_src = 0;
     ed.link_selected = -1;
-    ed.show_sections = true;
     ed.dirty = true;
 }
 
@@ -635,8 +633,12 @@ static void draw_map(void) {
         fill_rect(ax - 4, ay - 4, 8, 8, 1, 1, 0, 1);
         fill_rect(bx - 4, by - 4, 8, 8, 1, 1, 0, 1);
     }
+    for (int pass = 0; pass < 2; pass++) {
     for (int i = 0; i < ed.level.obj_count; i++) {
         obj_t* o = &ed.level.objs[i];
+        if ((o->kind == OBJ_ITEM) != (pass == 1)) {
+            continue;
+        }
         float cx = view_x((float)o->x + 0.5f);
         float cy = view_y((float)o->y + 0.5f);
         float scale = ed.scale;
@@ -697,7 +699,11 @@ static void draw_map(void) {
             float rw = (float)(o->w > 0 ? o->w : 1) * scale;
             float rh = (float)(o->h > 0 ? o->h : 1) * scale;
             if (o->kind == OBJ_OBSTACLE) {
-                fill_rect(rx, ry, rw, rh, 0.949f, 1.0f, 0.0f, 1.0f);
+                float t = scale * 0.12f;
+                fill_rect(rx, ry, rw, t, 0.5f, 0.75f, 1.0f, 1.0f);
+                fill_rect(rx, ry + rh - t, rw, t, 0.5f, 0.75f, 1.0f, 1.0f);
+                fill_rect(rx, ry, t, rh, 0.5f, 0.75f, 1.0f, 1.0f);
+                fill_rect(rx + rw - t, ry, t, rh, 0.5f, 0.75f, 1.0f, 1.0f);
             } else {
                 float t = scale * 0.12f;
                 fill_rect(rx, ry, rw, t, 0.0f, 1.0f, 0.2f, 1.0f);
@@ -715,7 +721,7 @@ static void draw_map(void) {
             float r = 0.6f, g = 0.6f, b = 0.6f;
             switch (o->kind) {
                 case OBJ_SWITCH: r = 0.95f; g = 1.0f; b = 0.0f; break;
-                case OBJ_TYPEWRITER: r = 0.118f; g = 0.118f; b = 0.118f; break;
+                case OBJ_TYPEWRITER: r = 1.0f; g = 0.0f; b = 0.416f; break;
                 case OBJ_FILE: r = 0.95f; g = 0.95f; b = 0.9f; break;
                 case OBJ_SAFE: r = 0.616f; g = 0.616f; b = 0.616f; break;
                 case OBJ_OBSTACLE: r = 0.5f; g = 0.45f; b = 0.4f; break;
@@ -736,6 +742,7 @@ static void draw_map(void) {
             draw_line(cx + size, cy + size, cx - size, cy + size, 2.0f, 1, 1, 1, 1);
             draw_line(cx - size, cy + size, cx - size, cy - size, 2.0f, 1, 1, 1, 1);
         }
+    }
     }
     if (ed.link_src > 0) {
         for (int j = 0; j < ed.level.obj_count; j++) {

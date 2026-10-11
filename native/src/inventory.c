@@ -55,3 +55,10 @@ bool inventory_has(int item_type) {
     }
     return false;
 }
+
+void inventory_set(int count, const int* slots) {
+    inv.count = count < 0 ? 0 : (count > INV_SLOTS ? INV_SLOTS : count);
+    for (int i = 0; i < INV_SLOTS; i++) {
+        inv.slots[i] = i < inv.count ? slots[i] : -1;
+    }
+}

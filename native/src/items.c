@@ -53,3 +53,19 @@ bool items_taken_by_id(int id) {
 int items_taken_count(void) {
     return it.taken_count;
 }
+
+void items_export(unsigned char* out, int cap) {
+    for (int i = 0; i < cap && i < LEVEL_MAX_OBJECTS; i++) {
+        out[i] = it.taken[i];
+    }
+}
+
+void items_import(const unsigned char* in, int cap) {
+    it.taken_count = 0;
+    for (int i = 0; i < LEVEL_MAX_OBJECTS; i++) {
+        it.taken[i] = (i < cap && in[i]) ? 1 : 0;
+        if (it.taken[i]) {
+            it.taken_count++;
+        }
+    }
+}

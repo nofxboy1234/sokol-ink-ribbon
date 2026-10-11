@@ -45,6 +45,10 @@ void player_init(int x, int y) {
     replay_record();
 }
 
+void player_set_cell(int x, int y) {
+    player_init(x, y);
+}
+
 void player_move_to(int x, int y, player_move_t mode) {
     int cx, cy;
     player_cell(&cx, &cy);

@@ -22,6 +22,7 @@
 #include "pathfind.h"
 #include "player.h"
 #include "render.h"
+#include "savegame.h"
 #include "webexport.h"
 #include "levels.h"
 
@@ -44,6 +45,7 @@ static struct {
     unsigned int revision;
     double elapsed;
     bool paused;
+    bool save_menu;
     bool section_revealed[LEVEL_MAX_SECTIONS];
 } app;
 
@@ -144,6 +146,7 @@ static void init(void) {
     doors_init();
     interact_init();
     health_init();
+    savegame_init();
     camera_init();
     camera_set_viewport(sapp_width(), sapp_height());
     camera_follow(player_x(), player_y());
@@ -159,6 +162,7 @@ static void init(void) {
     app.revision = 0;
     app.elapsed = 0.0;
     app.paused = false;
+    app.save_menu = false;
     app.pass_action = (sg_pass_action){
         .colors[0] = {
             .load_action = SG_LOADACTION_CLEAR,
@@ -213,16 +217,7 @@ static const obj_t* hover_interactable(void) {
         if (!covered) {
             continue;
         }
-        int ex = (o->kind == OBJ_OPENABLE) ? o->x + (o->w > 0 ? o->w : 1) - 1 : o->x;
-        int ey = (o->kind == OBJ_OPENABLE) ? o->y + (o->h > 0 ? o->h : 1) - 1 : o->y;
-        int nx = px < o->x ? o->x : (px > ex ? ex : px);
-        int ny = py < o->y ? o->y : (py > ey ? ey : py);
-        int dx = nx - px;
-        int dy = ny - py;
-        int adx = dx < 0 ? -dx : dx;
-        int ady = dy < 0 ? -dy : dy;
-        int d = adx > ady ? adx : ady;
-        return d <= 1 ? o : NULL;
+        return interact_distance(i) <= 1 ? o : NULL;
     }
     return NULL;
 }
@@ -251,6 +246,31 @@ static void frame(void) {
     update_hover();
 
     _dbgui_update();
+
+    if (interact_take_save_menu()) {
+        app.save_menu = true;
+        bump_revision();
+    }
+    {
+        double times[SAVE_SLOTS];
+        unsigned char used[SAVE_SLOTS];
+        for (int i = 0; i < SAVE_SLOTS; i++) {
+            used[i] = savegame_used(i) ? 1 : 0;
+            times[i] = savegame_time(i);
+        }
+        int act = game_save_menu(&app.save_menu, times, used, SAVE_SLOTS);
+        if (act > 0 && act < 100) {
+            savegame_save(act - 1, app.elapsed);
+            bump_revision();
+        } else if (act >= 100) {
+            double e = 0.0;
+            if (savegame_load(act - 100, &e)) {
+                app.elapsed = e;
+                camera_follow(player_x(), player_y());
+                bump_revision();
+            }
+        }
+    }
     render_scene(app.hover_x, app.hover_y, &app.preview);
 
     const obj_t* hl = hover_interactable();

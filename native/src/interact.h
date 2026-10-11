@@ -9,6 +9,9 @@ bool interact_at(int x, int y);
 
 bool obstacles_block_cell(int x, int y);
 
+// Chebyshev distance from Grace to an object (support-aware for items).
+int interact_distance(int object_index);
+
 // True if a closed openable covers this cell (so its contents stay hidden).
 bool openable_covers_closed(int x, int y);
 
@@ -22,3 +25,8 @@ int file_code_at(int index);
 int saves_made(void);
 
 bool goal_met(void);
+
+// Save/load state.
+bool interact_take_save_menu(void);
+void interact_export(bool* lighter, int* saves, bool* goal, int* file_count, int* file_obj);
+void interact_restore(bool lighter, int saves, bool goal, int file_count, const int* file_obj);
