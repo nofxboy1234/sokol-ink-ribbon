@@ -227,20 +227,37 @@ export function SaveLoadMenu({ open, onClose }: { open: boolean; onClose: () => 
   if (!open) {
     return null;
   }
-  const slots = Array.from({ length: SAVE_SLOTS }, (_, i) => i);
+  // Remount fresh each time the menu opens. saveUsed/saveTimeMs read mutable
+  // wasm state that React can't observe, so the React Compiler would otherwise
+  // memoize the reads and show stale slot data after a save.
+  return <SaveLoadSlots onClose={onClose} />;
+}
+
+type SaveSlotInfo = { index: number; used: boolean; time: number };
+
+function SaveLoadSlots({ onClose }: { onClose: () => void }) {
+  const slots = useMemo<SaveSlotInfo[]>(
+    () =>
+      Array.from({ length: SAVE_SLOTS }, (_, index) => ({
+        index,
+        used: saveUsed(index),
+        time: saveTimeMs(index),
+      })),
+    [],
+  );
   return (
     <div className="pause-overlay" onClick={onClose}>
       <div className="save-menu" onClick={(event) => event.stopPropagation()}>
         <div className="save-title">Save / Load</div>
         {slots.map((slot) => (
-          <div key={slot} className="save-row">
-            <span className="save-slot">Slot {slot + 1}</span>
-            <span className="save-data">{saveUsed(slot) ? formatMs(saveTimeMs(slot)) : "NO DATA"}</span>
+          <div key={slot.index} className="save-row">
+            <span className="save-slot">Slot {slot.index + 1}</span>
+            <span className="save-data">{slot.used ? formatMs(slot.time) : "NO DATA"}</span>
             <button
               type="button"
               className="pause-item save-btn"
               onClick={() => {
-                saveGame(slot);
+                saveGame(slot.index);
                 onClose();
               }}
             >
@@ -249,9 +266,9 @@ export function SaveLoadMenu({ open, onClose }: { open: boolean; onClose: () => 
             <button
               type="button"
               className="pause-item save-btn"
-              disabled={!saveUsed(slot)}
+              disabled={!slot.used}
               onClick={() => {
-                loadGame(slot);
+                loadGame(slot.index);
                 onClose();
               }}
             >
