@@ -31,13 +31,19 @@ export default function HomePage() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setPaused((value) => !value);
+      if (event.key !== "Escape") {
+        return;
       }
+      // Escape closes the save/load menu first, then toggles the pause menu.
+      if (saveMenu) {
+        setSaveMenu(false);
+        return;
+      }
+      setPaused((value) => !value);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [saveMenu]);
 
   // A typewriter click in the canvas opens the save/load menu.
   useEffect(() => {
