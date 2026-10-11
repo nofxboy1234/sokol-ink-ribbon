@@ -222,6 +222,40 @@ static const obj_t* hover_interactable(void) {
     return NULL;
 }
 
+// Extra dear-imgui UI drawn inside the dbgui frame (tooltip + save menu).
+void _dbgui_extra(void) {
+    const obj_t* hl = hover_interactable();
+    if (hl) {
+        const char* name = hl->name[0] ? hl->name : obj_kind_name(hl->kind);
+        if (hl->kind == OBJ_ITEM) {
+            name = item_name((item_t)hl->item_type);
+        }
+        game_tooltip(name, app.mouse_x + 14.0f, app.mouse_y + 14.0f);
+    }
+    if (interact_take_save_menu()) {
+        app.save_menu = true;
+        bump_revision();
+    }
+    double times[SAVE_SLOTS];
+    unsigned char used[SAVE_SLOTS];
+    for (int i = 0; i < SAVE_SLOTS; i++) {
+        used[i] = savegame_used(i) ? 1 : 0;
+        times[i] = savegame_time(i);
+    }
+    int act = game_save_menu(&app.save_menu, times, used, SAVE_SLOTS);
+    if (act > 0 && act < 100) {
+        savegame_save(act - 1, app.elapsed);
+        bump_revision();
+    } else if (act >= 100) {
+        double e = 0.0;
+        if (savegame_load(act - 100, &e)) {
+            app.elapsed = e;
+            camera_follow(player_x(), player_y());
+            bump_revision();
+        }
+    }
+}
+
 static void frame(void) {
     const float dt = (float)sapp_frame_duration();
     if (!app.paused) {
@@ -246,38 +280,7 @@ static void frame(void) {
     update_hover();
 
     _dbgui_update();
-
-    if (interact_take_save_menu()) {
-        app.save_menu = true;
-        bump_revision();
-    }
-    {
-        double times[SAVE_SLOTS];
-        unsigned char used[SAVE_SLOTS];
-        for (int i = 0; i < SAVE_SLOTS; i++) {
-            used[i] = savegame_used(i) ? 1 : 0;
-            times[i] = savegame_time(i);
-        }
-        int act = game_save_menu(&app.save_menu, times, used, SAVE_SLOTS);
-        if (act > 0 && act < 100) {
-            savegame_save(act - 1, app.elapsed);
-            bump_revision();
-        } else if (act >= 100) {
-            double e = 0.0;
-            if (savegame_load(act - 100, &e)) {
-                app.elapsed = e;
-                camera_follow(player_x(), player_y());
-                bump_revision();
-            }
-        }
-    }
     render_scene(app.hover_x, app.hover_y, &app.preview);
-
-    const obj_t* hl = hover_interactable();
-    if (hl) {
-        const char* name = hl->name[0] ? hl->name : obj_kind_name(hl->kind);
-        game_tooltip(name, app.mouse_x + 14.0f, app.mouse_y + 14.0f);
-    }
 
     sg_begin_pass(&(sg_pass){
         .action = app.pass_action,

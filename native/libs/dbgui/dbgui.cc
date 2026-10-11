@@ -17,6 +17,13 @@
 
 extern "C" {
 
+// optional hook so the app can add its own UI inside the imgui frame
+#if defined(__GNUC__)
+extern void _dbgui_extra(void) __attribute__((weak));
+#else
+extern void _dbgui_extra(void);
+#endif
+
 void _dbgui_setup(void) {
     // setup debug inspection header(s)
     sappimgui_setup();
@@ -47,6 +54,9 @@ void _dbgui_update(void) {
     }
     sappimgui_draw();
     sgimgui_draw();
+    if (_dbgui_extra) {
+        _dbgui_extra();
+    }
     simgui_flush();
 }
 

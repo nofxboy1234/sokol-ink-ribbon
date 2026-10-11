@@ -93,9 +93,24 @@ bool doors_interact(int x, int y) {
             continue;
         }
         if (o->state == DOOR_LOCKED && (key_available(o) || items_taken_by_id(o->link_id))) {
+            int key = o->key_id;
             o->state = DOOR_UNLOCKED;
             o->open = 0;
             dr.discovered[i] = 1;
+            if (key > 0 && key_available(o)) {
+                // drop the key once no locked door needs it any more
+                bool needed = false;
+                for (int k = 0; k < lv->obj_count; k++) {
+                    const obj_t* d = &lv->objs[k];
+                    if (is_door(d) && d->state == DOOR_LOCKED && d->key_id == key) {
+                        needed = true;
+                        break;
+                    }
+                }
+                if (!needed) {
+                    inventory_remove(key);
+                }
+            }
             return true;
         }
         if (o->state == DOOR_UNLOCKED) {

@@ -351,6 +351,14 @@ static void pick_object(float wx, float wy) {
     int cx = (int)floorf(wx);
     int cy = (int)floorf(wy);
     ed.selected = -1;
+    // items win over the obstacle/openable they sit on
+    for (int i = ed.level.obj_count - 1; i >= 0; i--) {
+        const obj_t* o = &ed.level.objs[i];
+        if (o->kind == OBJ_ITEM && o->x == cx && o->y == cy) {
+            ed.selected = i;
+            return;
+        }
+    }
     // exact cell first (topmost), doors included
     for (int i = ed.level.obj_count - 1; i >= 0; i--) {
         const obj_t* o = &ed.level.objs[i];
@@ -717,6 +725,9 @@ static void draw_map(void) {
                 fill_rect(rx - 5, ry + rh - 5, 10, 10, 1.0f, 0.55f, 0.0f, 1.0f);
                 fill_rect(rx + rw - 5, ry + rh - 5, 10, 10, 1.0f, 0.55f, 0.0f, 1.0f);
             }
+        } else if (o->kind == OBJ_START) {
+            float size = scale * 0.6f;
+            fill_rect(cx - size, cy - size, size * 2.0f, size * 2.0f, 0.588f, 0.118f, 1.0f, 1.0f);
         } else {
             float r = 0.6f, g = 0.6f, b = 0.6f;
             switch (o->kind) {
