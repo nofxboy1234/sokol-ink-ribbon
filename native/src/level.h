@@ -24,7 +24,6 @@ typedef enum {
     OBJ_MOVABLE,
     OBJ_OPENABLE,
     OBJ_START,
-    OBJ_GOAL,
     OBJ_KIND_COUNT,
 } obj_kind_t;
 

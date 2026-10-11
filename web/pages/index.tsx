@@ -92,7 +92,14 @@ export default function HomePage() {
             {tab === "files" && <Files />}
           </section>
         </main>
-        <PauseMenu open={paused} onClose={() => setPaused(false)} />
+        <PauseMenu
+          open={paused}
+          onClose={() => setPaused(false)}
+          onLoad={() => {
+            setPaused(false);
+            setSaveMenu(true);
+          }}
+        />
         <SaveLoadMenu open={saveMenu} onClose={() => setSaveMenu(false)} />
       </GameStateProvider>
     </>

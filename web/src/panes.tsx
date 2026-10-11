@@ -186,7 +186,15 @@ export function Files() {
   );
 }
 
-export function PauseMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function PauseMenu({
+  open,
+  onClose,
+  onLoad,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onLoad: () => void;
+}) {
   if (!open) {
     return null;
   }
@@ -203,14 +211,7 @@ export function PauseMenu({ open, onClose }: { open: boolean; onClose: () => voi
         >
           Restart
         </button>
-        <button
-          type="button"
-          className="pause-item"
-          onClick={() => {
-            gameReset();
-            onClose();
-          }}
-        >
+        <button type="button" className="pause-item" onClick={onLoad}>
           Load Game
         </button>
         <button type="button" className="pause-item" onClick={onClose}>

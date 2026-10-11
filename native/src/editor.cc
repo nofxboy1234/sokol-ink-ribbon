@@ -740,7 +740,6 @@ static void draw_map(void) {
                 case OBJ_OPENABLE: r = 0.0f; g = 1.0f; b = 0.733f; break;
                 case OBJ_FUSEBOX: r = 0.95f; g = 0.85f; b = 0.0f; break;
                 case OBJ_START: r = 0.588f; g = 0.118f; b = 1.0f; break;
-                case OBJ_GOAL: r = 1.0f; g = 0.0f; b = 0.416f; break;
                 default: break;
             }
             float size = scale * 0.3f;
