@@ -120,21 +120,29 @@ static void draw_objects(void) {
             case OBJ_DOOR: {
                 float cr, cg, cb;
                 door_color(o, &cr, &cg, &cb);
-                float span = scale * (o->span > 0 ? o->span : 1);
-                float th = scale * 0.85f;
+                // pixel-align the door and use whole-pixel widths so the thin
+                // borders don't flicker while the follow camera interpolates
+                float spanpx = floorf(scale * (o->span > 0 ? o->span : 1) + 0.5f);
+                float th = floorf(scale * 0.85f + 0.5f);
+                if (th < 2.0f) th = 2.0f;
+                if (((int)th & 1) != 0) th += 1.0f;
+                float edge = floorf(scale * 0.08f + 0.5f);
+                if (edge < 1.0f) edge = 1.0f;
+                float lx = floorf(sx + 0.5f);
+                float ly = floorf(sy + 0.5f);
                 if (o->horizontal) {
                     // on the horizontal wall line at the cell's top edge
-                    fill_rect(sx, sy - th * 0.5f, span, th, cr, cg, cb, 1.0f);
+                    fill_rect(lx, ly - th * 0.5f, spanpx, th, cr, cg, cb, 1.0f);
                     if (!o->open) {
-                        fill_rect(sx, sy - th * 0.5f - scale * 0.03f, span, scale * 0.03f, C_INK_R);
-                        fill_rect(sx, sy + th * 0.5f, span, scale * 0.03f, C_INK_R);
+                        fill_rect(lx, ly - th * 0.5f - edge, spanpx, edge, C_INK_R);
+                        fill_rect(lx, ly + th * 0.5f, spanpx, edge, C_INK_R);
                     }
                 } else {
                     // on the vertical wall line at the cell's left edge
-                    fill_rect(sx - th * 0.5f, sy, th, span, cr, cg, cb, 1.0f);
+                    fill_rect(lx - th * 0.5f, ly, th, spanpx, cr, cg, cb, 1.0f);
                     if (!o->open) {
-                        fill_rect(sx - th * 0.5f - scale * 0.03f, sy, scale * 0.03f, span, C_INK_R);
-                        fill_rect(sx + th * 0.5f, sy, scale * 0.03f, span, C_INK_R);
+                        fill_rect(lx - th * 0.5f - edge, ly, edge, spanpx, C_INK_R);
+                        fill_rect(lx + th * 0.5f, ly, edge, spanpx, C_INK_R);
                     }
                 }
                 break;

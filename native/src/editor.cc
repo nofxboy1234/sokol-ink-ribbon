@@ -531,17 +531,21 @@ static void draw_map(void) {
             door_color_rgb(o->state, &r, &g, &b);
             float span = scale * (o->span > 0 ? o->span : 1);
             float th = scale * 0.85f;
+            float edge = scale * 0.08f;
+            if (edge < 1.0f) {
+                edge = 1.0f;
+            }
             if (o->horizontal) {
                 fill_rect(cx - span * 0.5f, cy - th * 0.5f, span, th, r, g, b, 1.0f);
                 if (!o->open) {
-                    fill_rect(cx - span * 0.5f, cy - th * 0.5f - scale * 0.03f, span, scale * 0.03f, 0.118f, 0.118f, 0.118f, 1.0f);
-                    fill_rect(cx - span * 0.5f, cy + th * 0.5f, span, scale * 0.03f, 0.118f, 0.118f, 0.118f, 1.0f);
+                    fill_rect(cx - span * 0.5f, cy - th * 0.5f - edge, span, edge, 0.118f, 0.118f, 0.118f, 1.0f);
+                    fill_rect(cx - span * 0.5f, cy + th * 0.5f, span, edge, 0.118f, 0.118f, 0.118f, 1.0f);
                 }
             } else {
                 fill_rect(cx - th * 0.5f, cy - span * 0.5f, th, span, r, g, b, 1.0f);
                 if (!o->open) {
-                    fill_rect(cx - th * 0.5f - scale * 0.03f, cy - span * 0.5f, scale * 0.03f, span, 0.118f, 0.118f, 0.118f, 1.0f);
-                    fill_rect(cx + th * 0.5f, cy - span * 0.5f, scale * 0.03f, span, 0.118f, 0.118f, 0.118f, 1.0f);
+                    fill_rect(cx - th * 0.5f - edge, cy - span * 0.5f, edge, span, 0.118f, 0.118f, 0.118f, 1.0f);
+                    fill_rect(cx + th * 0.5f, cy - span * 0.5f, edge, span, 0.118f, 0.118f, 0.118f, 1.0f);
                 }
             }
         } else if (o->kind == OBJ_LIGHT) {
