@@ -334,6 +334,26 @@ bool level_from_json(level_t* lv, const char* json) {
     if ((v = obj_find(json, tokens, 0, "sections")) >= 0) parse_sections(json, tokens, lv, v);
     if ((v = obj_find(json, tokens, 0, "objects")) >= 0) parse_objects(json, tokens, lv, v);
     free(tokens);
+
+    // Give every object a unique id and remap link references so links always
+    // resolve to the object they were made against.
+    int remap[LEVEL_MAX_OBJECTS + 1];
+    for (int i = 0; i <= LEVEL_MAX_OBJECTS; i++) {
+        remap[i] = 0;
+    }
+    for (int i = 0; i < lv->obj_count; i++) {
+        int old = lv->objs[i].id;
+        if (old >= 0 && old <= LEVEL_MAX_OBJECTS && remap[old] == 0) {
+            remap[old] = i + 1;
+        }
+    }
+    for (int i = 0; i < lv->obj_count; i++) {
+        obj_t* o = &lv->objs[i];
+        if (o->link_id > 0) {
+            o->link_id = (o->link_id <= LEVEL_MAX_OBJECTS) ? remap[o->link_id] : 0;
+        }
+        o->id = i + 1;
+    }
     return true;
 }
 

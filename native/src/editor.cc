@@ -243,7 +243,13 @@ static void add_object(int kind, int x, int y) {
     }
     obj_t* o = &ed.level.objs[ed.level.obj_count++];
     memset(o, 0, sizeof(*o));
-    o->id = ed.level.obj_count;
+    int maxid = 0;
+    for (int i = 0; i < ed.level.obj_count; i++) {
+        if (ed.level.objs[i].id > maxid) {
+            maxid = ed.level.objs[i].id;
+        }
+    }
+    o->id = maxid + 1;
     o->kind = (obj_kind_t)kind;
     o->discover_state = -1;
     o->x = x;
