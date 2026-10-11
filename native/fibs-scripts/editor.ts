@@ -10,7 +10,7 @@ export function addEditor(b: Builder) {
         t.setDir('src');
         t.addSources(sources);
         t.addIncludeDirectories({ system: true, dirs: ['../libs'] });
-        t.addDependencies(['sokol-static', 'imgui']);
+        t.addDependencies(['sokol-static', 'imgui', 'stb']);
         if (b.isGcc() || b.isClang()) {
             t.addCompileOptions({ scope: 'private', opts: ['-Wno-unused-function'] });
         }

@@ -15,6 +15,9 @@
 
 #include "level.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,6 +50,14 @@ static struct {
     int link_src;
     int link_selected;
     bool show_sections;
+    bool ref_loaded;
+    bool ref_show;
+    sg_image ref_img;
+    sg_view ref_view;
+    sg_sampler ref_smp;
+    int ref_w, ref_h;
+    char ref_path[512];
+    float ref_x, ref_y, ref_scale, ref_alpha;
     bool wall_active;
     float wall_x, wall_y;
     float cam_x, cam_y, scale;
@@ -238,6 +249,44 @@ static void save_level(void) {
     snprintf(ed.status, sizeof(ed.status), "saved %s (%d bytes)", ed.path, n);
 }
 
+// Load a reference image to trace over (drawn on the lowest visible layer).
+static void load_reference(void) {
+    int w = 0, h = 0, n = 0;
+    unsigned char* px = stbi_load(ed.ref_path, &w, &h, &n, 4);
+    if (!px) {
+        snprintf(ed.status, sizeof(ed.status), "cannot load image %s", ed.ref_path);
+        return;
+    }
+    if (ed.ref_loaded) {
+        sg_destroy_view(ed.ref_view);
+        sg_destroy_image(ed.ref_img);
+    }
+    sg_image_desc id = {};
+    id.width = w;
+    id.height = h;
+    id.pixel_format = SG_PIXELFORMAT_RGBA8;
+    sg_range range = { px, (size_t)w * h * 4 };
+    id.data.mip_levels[0] = range;
+    ed.ref_img = sg_make_image(&id);
+    if (ed.ref_smp.id == 0) {
+        sg_sampler_desc sd = {};
+        sd.min_filter = SG_FILTER_LINEAR;
+        sd.mag_filter = SG_FILTER_LINEAR;
+        sd.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+        sd.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+        ed.ref_smp = sg_make_sampler(&sd);
+    }
+    sg_view_desc vd = {};
+    vd.texture.image = ed.ref_img;
+    ed.ref_view = sg_make_view(&vd);
+    stbi_image_free(px);
+    ed.ref_w = w;
+    ed.ref_h = h;
+    ed.ref_loaded = true;
+    ed.ref_show = true;
+    snprintf(ed.status, sizeof(ed.status), "loaded reference %s (%dx%d)", ed.ref_path, w, h);
+}
+
 static void add_object(int kind, int x, int y) {
     if (ed.level.obj_count >= LEVEL_MAX_OBJECTS) {
         return;
@@ -290,28 +339,44 @@ static void door_center(const obj_t* o, float* dcx, float* dcy) {
     }
 }
 
-// Topmost object whose occupied cell(s) contain (cx, cy). Doors span cells.
-static int obj_at_cell(int cx, int cy) {
+static void pick_object(float wx, float wy) {
+    int cx = (int)floorf(wx);
+    int cy = (int)floorf(wy);
+    ed.selected = -1;
+    // exact cell first (topmost), doors included
     for (int i = ed.level.obj_count - 1; i >= 0; i--) {
         const obj_t* o = &ed.level.objs[i];
         if (o->kind == OBJ_DOOR) {
             int span = o->span > 0 ? o->span : 1;
-            if (o->horizontal) {
-                if (cy == o->y && cx >= o->x && cx < o->x + span) {
-                    return i;
-                }
-            } else if (cx == o->x && cy >= o->y && cy < o->y + span) {
-                return i;
+            bool hit = o->horizontal
+                ? (cy == o->y && cx >= o->x && cx < o->x + span)
+                : (cx == o->x && cy >= o->y && cy < o->y + span);
+            if (hit) {
+                ed.selected = i;
+                return;
             }
         } else if (o->x == cx && o->y == cy) {
-            return i;
+            ed.selected = i;
+            return;
         }
     }
-    return -1;
-}
-
-static void pick_object(float wx, float wy) {
-    ed.selected = obj_at_cell((int)floorf(wx), (int)floorf(wy));
+    // fall back to the door bar itself (sits astride the wall line)
+    for (int i = ed.level.obj_count - 1; i >= 0; i--) {
+        const obj_t* o = &ed.level.objs[i];
+        if (o->kind != OBJ_DOOR) {
+            continue;
+        }
+        int span = o->span > 0 ? o->span : 1;
+        bool hit = o->horizontal
+            ? (wy >= (float)o->y - 0.5f && wy <= (float)o->y + 0.5f &&
+               wx >= (float)o->x && wx <= (float)(o->x + span))
+            : (wx >= (float)o->x - 0.5f && wx <= (float)o->x + 0.5f &&
+               wy >= (float)o->y && wy <= (float)(o->y + span));
+        if (hit) {
+            ed.selected = i;
+            return;
+        }
+    }
 }
 
 static float point_seg_dist(float px, float py, float ax, float ay, float bx, float by) {
@@ -523,6 +588,22 @@ static void draw_map(void) {
             float sy = view_y((float)y);
             fill_rect(sx, sy, ed.scale, ed.scale, 0.06f, 0.09f, 0.16f, 1.0f);
         }
+    }
+    if (ed.ref_loaded && ed.ref_show) {
+        float x0 = view_x(ed.ref_x);
+        float y0 = view_y(ed.ref_y);
+        float x1 = view_x(ed.ref_x + (float)ed.ref_w * ed.ref_scale);
+        float y1 = view_y(ed.ref_y + (float)ed.ref_h * ed.ref_scale);
+        sgl_enable_texture();
+        sgl_texture(ed.ref_view, ed.ref_smp);
+        sgl_begin_quads();
+        sgl_c4f(1.0f, 1.0f, 1.0f, ed.ref_alpha);
+        sgl_v2f_t2f(x0, y0, 0.0f, 0.0f);
+        sgl_v2f_t2f(x1, y0, 1.0f, 0.0f);
+        sgl_v2f_t2f(x1, y1, 1.0f, 1.0f);
+        sgl_v2f_t2f(x0, y1, 0.0f, 1.0f);
+        sgl_end();
+        sgl_disable_texture();
     }
     for (int i = 0; i < ed.level.wall_count; i++) {
         wall_seg_t* w = &ed.level.walls[i];
@@ -795,6 +876,20 @@ static void ui_toolbar(void) {
         if (ImGui::Selectable(ed.level.sections[i].name, i == ed.section_selected)) {
             ed.section_selected = i;
         }
+    }
+    ImGui::Separator();
+    ImGui::Text("Reference image");
+    ImGui::InputText("path", ed.ref_path, sizeof(ed.ref_path));
+    if (ImGui::Button("Load")) {
+        load_reference();
+    }
+    ImGui::SameLine();
+    ImGui::Checkbox("show##ref", &ed.ref_show);
+    if (ed.ref_loaded) {
+        ImGui::DragFloat("ref x", &ed.ref_x, 0.25f);
+        ImGui::DragFloat("ref y", &ed.ref_y, 0.25f);
+        ImGui::DragFloat("ref scale", &ed.ref_scale, 0.001f, 0.001f, 4.0f, "%.4f");
+        ImGui::SliderFloat("opacity", &ed.ref_alpha, 0.0f, 1.0f);
     }
     ImGui::End();
 }
@@ -1157,10 +1252,30 @@ static void init(void) {
     ed.link_src = 0;
     ed.link_selected = -1;
     ed.show_sections = true;
+    ed.ref_loaded = false;
+    ed.ref_show = true;
+    ed.ref_w = 0;
+    ed.ref_h = 0;
+    ed.ref_smp.id = 0;
+    ed.ref_scale = 0.125f;
+    ed.ref_x = -1353.0f * 0.125f;
+    ed.ref_y = -926.0f * 0.125f;
+    ed.ref_alpha = 0.6f;
+    snprintf(ed.ref_path, sizeof(ed.ref_path), "../ref/map.png");
     ed.wall_active = false;
     ed.dirty = false;
     resolve_level_path();
     load_level();
+    {
+        // default the reference image to the repo's ref/map.png
+        char tmp[600];
+        snprintf(tmp, sizeof(tmp), "%s", ed.path);
+        char* sl = strrchr(tmp, '/');
+        if (sl) {
+            *sl = 0;
+            snprintf(ed.ref_path, sizeof(ed.ref_path), "%s/../../ref/map.png", tmp);
+        }
+    }
     fit_view();
 }
 
@@ -1194,6 +1309,13 @@ static void event(const sapp_event* e) {
 }
 
 static void cleanup(void) {
+    if (ed.ref_loaded) {
+        sg_destroy_view(ed.ref_view);
+        sg_destroy_image(ed.ref_img);
+    }
+    if (ed.ref_smp.id != 0) {
+        sg_destroy_sampler(ed.ref_smp);
+    }
     simgui_shutdown();
     sgl_shutdown();
     sg_shutdown();
