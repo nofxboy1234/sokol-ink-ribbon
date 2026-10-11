@@ -589,22 +589,6 @@ static void draw_map(void) {
             fill_rect(sx, sy, ed.scale, ed.scale, 0.06f, 0.09f, 0.16f, 1.0f);
         }
     }
-    if (ed.ref_loaded && ed.ref_show) {
-        float x0 = view_x(ed.ref_x);
-        float y0 = view_y(ed.ref_y);
-        float x1 = view_x(ed.ref_x + (float)ed.ref_w * ed.ref_scale);
-        float y1 = view_y(ed.ref_y + (float)ed.ref_h * ed.ref_scale);
-        sgl_enable_texture();
-        sgl_texture(ed.ref_view, ed.ref_smp);
-        sgl_begin_quads();
-        sgl_c4f(1.0f, 1.0f, 1.0f, ed.ref_alpha);
-        sgl_v2f_t2f(x0, y0, 0.0f, 0.0f);
-        sgl_v2f_t2f(x1, y0, 1.0f, 0.0f);
-        sgl_v2f_t2f(x1, y1, 1.0f, 1.0f);
-        sgl_v2f_t2f(x0, y1, 0.0f, 1.0f);
-        sgl_end();
-        sgl_disable_texture();
-    }
     for (int i = 0; i < ed.level.wall_count; i++) {
         wall_seg_t* w = &ed.level.walls[i];
         draw_line(view_x((float)w->x0), view_y((float)w->y0), view_x((float)w->x1), view_y((float)w->y1),
@@ -983,6 +967,23 @@ static void ui_properties(void) {
     ImGui::End();
 }
 
+// Reference image is drawn through dear-imgui (not the sokol scene), behind
+// the editor windows.
+static void ui_reference(void) {
+    if (!ed.ref_loaded || !ed.ref_show) {
+        return;
+    }
+    ImDrawList* dl = ImGui::GetBackgroundDrawList();
+    ImTextureID tex = (ImTextureID)simgui_imtextureid(ed.ref_view);
+    ImVec2 p0(view_x(ed.ref_x), view_y(ed.ref_y));
+    ImVec2 p1(view_x(ed.ref_x + (float)ed.ref_w * ed.ref_scale),
+              view_y(ed.ref_y + (float)ed.ref_h * ed.ref_scale));
+    int a = (int)(ed.ref_alpha * 255.0f);
+    if (a < 0) a = 0;
+    if (a > 255) a = 255;
+    dl->AddImage(tex, p0, p1, ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, a));
+}
+
 static void handle_input(void) {
     ImGuiIO& io = ImGui::GetIO();
     float wx, wy;
@@ -1291,6 +1292,7 @@ static void frame(void) {
     draw_map();
     ui_toolbar();
     ui_properties();
+    ui_reference();
     ImGui::Render();
     simgui_flush();
 
