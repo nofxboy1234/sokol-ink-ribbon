@@ -45,6 +45,7 @@ static struct {
     int wall_selected;
     int wall_drag;
     int link_src;
+    int link_selected;
     bool show_sections;
     bool wall_active;
     float wall_x, wall_y;
@@ -330,6 +331,7 @@ static void pick_wall(float wx, float wy) {
     ed.wall_selected = -1;
     ed.wall_drag = -1;
     ed.link_src = 0;
+    ed.link_selected = -1;
     ed.show_sections = true;
     float best = 0.6f;
     for (int i = 0; i < ed.level.wall_count; i++) {
@@ -361,6 +363,40 @@ static void pick_wall(float wx, float wy) {
     }
 }
 
+// Select a link line (between a linked object and its source).
+static void pick_link(float wx, float wy) {
+    ed.link_selected = -1;
+    float best = 0.5f;
+    for (int i = 0; i < ed.level.obj_count; i++) {
+        const obj_t* o = &ed.level.objs[i];
+        if (o->link_id <= 0) {
+            continue;
+        }
+        for (int j = 0; j < ed.level.obj_count; j++) {
+            const obj_t* src = &ed.level.objs[j];
+            if (src->id != o->link_id) {
+                continue;
+            }
+            float d = point_seg_dist(wx, wy, (float)src->x + 0.5f, (float)src->y + 0.5f,
+                                     (float)o->x + 0.5f, (float)o->y + 0.5f);
+            if (d < best) {
+                best = d;
+                ed.link_selected = i;
+            }
+            break;
+        }
+    }
+}
+
+static void delete_link(void) {
+    if (ed.link_selected < 0 || ed.link_selected >= ed.level.obj_count) {
+        return;
+    }
+    ed.level.objs[ed.link_selected].link_id = 0;
+    ed.link_selected = -1;
+    ed.dirty = true;
+}
+
 static void delete_wall(void) {
     if (ed.wall_selected < 0 || ed.wall_selected >= ed.level.wall_count) {
         return;
@@ -372,6 +408,7 @@ static void delete_wall(void) {
     ed.wall_selected = -1;
     ed.wall_drag = -1;
     ed.link_src = 0;
+    ed.link_selected = -1;
     ed.show_sections = true;
     ed.dirty = true;
 }
@@ -600,8 +637,13 @@ static void draw_map(void) {
         }
         for (int j = 0; j < ed.level.obj_count; j++) {
             if (ed.level.objs[j].id == o->link_id) {
-                draw_line(view_x((float)ed.level.objs[j].x + 0.5f), view_y((float)ed.level.objs[j].y + 0.5f),
-                          view_x((float)o->x + 0.5f), view_y((float)o->y + 0.5f), 2.0f, 1.0f, 0.0f, 1.0f, 0.95f);
+                if (i == ed.link_selected) {
+                    draw_line(view_x((float)ed.level.objs[j].x + 0.5f), view_y((float)ed.level.objs[j].y + 0.5f),
+                              view_x((float)o->x + 0.5f), view_y((float)o->y + 0.5f), 4.0f, 1.0f, 0.5f, 1.0f, 1.0f);
+                } else {
+                    draw_line(view_x((float)ed.level.objs[j].x + 0.5f), view_y((float)ed.level.objs[j].y + 0.5f),
+                              view_x((float)o->x + 0.5f), view_y((float)o->y + 0.5f), 2.0f, 1.0f, 0.0f, 1.0f, 0.95f);
+                }
                 break;
             }
         }
@@ -656,6 +698,7 @@ static void new_level(void) {
     ed.wall_selected = -1;
     ed.wall_drag = -1;
     ed.link_src = 0;
+    ed.link_selected = -1;
     ed.show_sections = true;
     ed.dirty = true;
     snprintf(ed.status, sizeof(ed.status), "new empty level (%dx%d)", cols, rows);
@@ -880,19 +923,26 @@ static void handle_input(void) {
                     ed.wall_drag = -1;
                     ed.section_selected = -1;
                     ed.sec_grab = 0;
+                    ed.link_selected = -1;
                     ed.drag_dx = (int)floorf(wx) - ed.level.objs[ed.selected].x;
                     ed.drag_dy = (int)floorf(wy) - ed.level.objs[ed.selected].y;
                 } else {
                     pick_wall(wx, wy);
                     ed.drag_dx = 0;
                     ed.drag_dy = 0;
+                    ed.link_selected = -1;
                     if (ed.wall_selected >= 0) {
                         ed.section_selected = -1;
                         ed.sec_grab = 0;
                     } else {
-                        ed.section_selected = -1;
-                        ed.sec_grab = 0;
-                        for (int si = ed.level.section_count - 1; si >= 0; si--) {
+                        pick_link(wx, wy);
+                        if (ed.link_selected >= 0) {
+                            ed.section_selected = -1;
+                            ed.sec_grab = 0;
+                        } else {
+                            ed.section_selected = -1;
+                            ed.sec_grab = 0;
+                            for (int si = ed.level.section_count - 1; si >= 0; si--) {
                             section_t* s = &ed.level.sections[si];
                             float rx = (float)s->x, ry = (float)s->y;
                             float x1 = (float)(s->x + s->w), y1 = (float)(s->y + s->h);
@@ -924,6 +974,7 @@ static void handle_input(void) {
                         }
                     }
                 }
+                }
                 ed.drag_obj = ed.selected;
             } else if (ed.tool == TOOL_PLACE) {
                 if (ed.place_kind == OBJ_DOOR) {
@@ -940,9 +991,11 @@ static void handle_input(void) {
                     } else if (o->id != ed.link_src) {
                         o->link_id = ed.link_src;
                         ed.link_src = 0;
+    ed.link_selected = -1;
                         ed.dirty = true;
                     } else {
                         ed.link_src = 0;
+    ed.link_selected = -1;
                     }
                 }
             }
@@ -1031,6 +1084,7 @@ static void handle_input(void) {
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             ed.wall_active = false;
             ed.link_src = 0;
+    ed.link_selected = -1;
         }
         // [ and ] cycle the object kind, , and . cycle the item type
         if (ed.tool == TOOL_PLACE) {
@@ -1052,6 +1106,8 @@ static void handle_input(void) {
         if (ImGui::IsKeyPressed(ImGuiKey_Delete)) {
             if (ed.wall_selected >= 0) {
                 delete_wall();
+            } else if (ed.link_selected >= 0) {
+                delete_link();
             } else if (ed.section_selected >= 0) {
                 delete_section();
             } else {
@@ -1099,6 +1155,7 @@ static void init(void) {
     ed.wall_selected = -1;
     ed.wall_drag = -1;
     ed.link_src = 0;
+    ed.link_selected = -1;
     ed.show_sections = true;
     ed.wall_active = false;
     ed.dirty = false;

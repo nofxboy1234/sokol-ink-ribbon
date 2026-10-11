@@ -222,7 +222,9 @@ static void draw_discovery_markers(void) {
     player_cell(&px, &py);
     for (int i = 0; i < lv->obj_count; i++) {
         const obj_t* o = &lv->objs[i];
-        if (o->kind != OBJ_ITEM && o->kind != OBJ_DOOR) {
+        if (o->kind != OBJ_ITEM && o->kind != OBJ_DOOR && o->kind != OBJ_SWITCH &&
+            o->kind != OBJ_TYPEWRITER && o->kind != OBJ_FUSEBOX &&
+            o->kind != OBJ_FILE && o->kind != OBJ_SAFE) {
             continue;
         }
         if (o->kind == OBJ_ITEM && items_taken(i)) {
