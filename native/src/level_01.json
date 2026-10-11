@@ -641,8 +641,8 @@
    "id": 20,
    "x": 7,
    "y": 69,
-   "name": "fusebox",
-   "link": 11
+   "link": 11,
+   "name": "fusebox"
   },
   {
    "kind": "light",

@@ -44,6 +44,7 @@ static struct {
     int wall_selected;
     int wall_drag;
     int link_src;
+    bool show_sections;
     bool wall_active;
     float wall_x, wall_y;
     float cam_x, cam_y, scale;
@@ -281,37 +282,28 @@ static void door_center(const obj_t* o, float* dcx, float* dcy) {
     }
 }
 
-static void pick_object(float wx, float wy) {
-    ed.selected = -1;
-    float best = 1.0f;
-    for (int i = 0; i < ed.level.obj_count; i++) {
-        obj_t* o = &ed.level.objs[i];
-        float d;
+// Topmost object whose occupied cell(s) contain (cx, cy). Doors span cells.
+static int obj_at_cell(int cx, int cy) {
+    for (int i = ed.level.obj_count - 1; i >= 0; i--) {
+        const obj_t* o = &ed.level.objs[i];
         if (o->kind == OBJ_DOOR) {
-            float s = (float)(o->span > 0 ? o->span : 1);
-            float minx, maxx, miny, maxy;
+            int span = o->span > 0 ? o->span : 1;
             if (o->horizontal) {
-                minx = (float)o->x;
-                maxx = (float)o->x + s;
-                miny = maxy = (float)o->y;
-            } else {
-                minx = maxx = (float)o->x;
-                miny = (float)o->y;
-                maxy = (float)o->y + s;
+                if (cy == o->y && cx >= o->x && cx < o->x + span) {
+                    return i;
+                }
+            } else if (cx == o->x && cy >= o->y && cy < o->y + span) {
+                return i;
             }
-            float qx = wx < minx ? minx : (wx > maxx ? maxx : wx);
-            float qy = wy < miny ? miny : (wy > maxy ? maxy : wy);
-            d = sqrtf((wx - qx) * (wx - qx) + (wy - qy) * (wy - qy));
-        } else {
-            float dx = (float)o->x + 0.5f - wx;
-            float dy = (float)o->y + 0.5f - wy;
-            d = sqrtf(dx * dx + dy * dy);
-        }
-        if (d < best) {
-            best = d;
-            ed.selected = i;
+        } else if (o->x == cx && o->y == cy) {
+            return i;
         }
     }
+    return -1;
+}
+
+static void pick_object(float wx, float wy) {
+    ed.selected = obj_at_cell((int)floorf(wx), (int)floorf(wy));
 }
 
 static float point_seg_dist(float px, float py, float ax, float ay, float bx, float by) {
@@ -331,6 +323,7 @@ static void pick_wall(float wx, float wy) {
     ed.wall_selected = -1;
     ed.wall_drag = -1;
     ed.link_src = 0;
+    ed.show_sections = true;
     float best = 0.6f;
     for (int i = 0; i < ed.level.wall_count; i++) {
         wall_seg_t* w = &ed.level.walls[i];
@@ -372,6 +365,7 @@ static void delete_wall(void) {
     ed.wall_selected = -1;
     ed.wall_drag = -1;
     ed.link_src = 0;
+    ed.show_sections = true;
     ed.dirty = true;
 }
 
@@ -601,24 +595,26 @@ static void draw_map(void) {
             }
         }
     }
-    // sections draw over everything
-    for (int i = 0; i < ed.level.section_count; i++) {
-        section_t* s = &ed.level.sections[i];
-        float rx = view_x((float)s->x);
-        float ry = view_y((float)s->y);
-        float rw = s->w * ed.scale;
-        float rh = s->h * ed.scale;
-        if (i == ed.section_selected) {
-            draw_line(rx, ry, rx + rw, ry, 2.0f, 1, 1, 0, 1);
-            draw_line(rx + rw, ry, rx + rw, ry + rh, 2.0f, 1, 1, 0, 1);
-            draw_line(rx + rw, ry + rh, rx, ry + rh, 2.0f, 1, 1, 0, 1);
-            draw_line(rx, ry + rh, rx, ry, 2.0f, 1, 1, 0, 1);
-            fill_rect(rx + rw - 5, ry + rh - 5, 10, 10, 1, 1, 0, 1);
-        } else {
-            draw_line(rx, ry, rx + rw, ry, 1.5f, 0.4f, 0.75f, 1, 0.9f);
-            draw_line(rx + rw, ry, rx + rw, ry + rh, 1.5f, 0.4f, 0.75f, 1, 0.9f);
-            draw_line(rx + rw, ry + rh, rx, ry + rh, 1.5f, 0.4f, 0.75f, 1, 0.9f);
-            draw_line(rx, ry + rh, rx, ry, 1.5f, 0.4f, 0.75f, 1, 0.9f);
+    // sections draw over everything (orange outlines only)
+    if (ed.show_sections) {
+        for (int i = 0; i < ed.level.section_count; i++) {
+            section_t* s = &ed.level.sections[i];
+            float rx = view_x((float)s->x);
+            float ry = view_y((float)s->y);
+            float rw = s->w * ed.scale;
+            float rh = s->h * ed.scale;
+            if (i == ed.section_selected) {
+                draw_line(rx, ry, rx + rw, ry, 2.5f, 1.0f, 0.75f, 0.1f, 1);
+                draw_line(rx + rw, ry, rx + rw, ry + rh, 2.5f, 1.0f, 0.75f, 0.1f, 1);
+                draw_line(rx + rw, ry + rh, rx, ry + rh, 2.5f, 1.0f, 0.75f, 0.1f, 1);
+                draw_line(rx, ry + rh, rx, ry, 2.5f, 1.0f, 0.75f, 0.1f, 1);
+                fill_rect(rx + rw - 5, ry + rh - 5, 10, 10, 1.0f, 0.55f, 0.0f, 1);
+            } else {
+                draw_line(rx, ry, rx + rw, ry, 1.5f, 1.0f, 0.55f, 0.0f, 0.95f);
+                draw_line(rx + rw, ry, rx + rw, ry + rh, 1.5f, 1.0f, 0.55f, 0.0f, 0.95f);
+                draw_line(rx + rw, ry + rh, rx, ry + rh, 1.5f, 1.0f, 0.55f, 0.0f, 0.95f);
+                draw_line(rx, ry + rh, rx, ry, 1.5f, 1.0f, 0.55f, 0.0f, 0.95f);
+            }
         }
     }
     if (ed.wall_active) {
@@ -646,6 +642,7 @@ static void new_level(void) {
     ed.wall_selected = -1;
     ed.wall_drag = -1;
     ed.link_src = 0;
+    ed.show_sections = true;
     ed.dirty = true;
     snprintf(ed.status, sizeof(ed.status), "new empty level (%dx%d)", cols, rows);
 }
@@ -728,6 +725,8 @@ static void ui_toolbar(void) {
     }
     ImGui::Separator();
     ImGui::Text("Sections");
+    ImGui::SameLine();
+    ImGui::Checkbox("show", &ed.show_sections);
     if (ImGui::Button("Add")) {
         add_section();
     }
@@ -1063,6 +1062,7 @@ static void init(void) {
     ed.wall_selected = -1;
     ed.wall_drag = -1;
     ed.link_src = 0;
+    ed.show_sections = true;
     ed.wall_active = false;
     ed.dirty = false;
     resolve_level_path();
