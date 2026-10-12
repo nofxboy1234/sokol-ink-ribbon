@@ -110,6 +110,9 @@ bool interact_at(int x, int y) {
             if (o->link_id > 0 && !items_taken_by_id(o->link_id)) {
                 return true;
             }
+            if (inventory_has(ITEM_FUSE)) {
+                inventory_remove(ITEM_FUSE);
+            }
             in.goal = true;
             return true;
         }
