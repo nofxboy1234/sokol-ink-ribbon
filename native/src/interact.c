@@ -188,7 +188,8 @@ bool obstacles_block_cell(int x, int y) {
         if (o->kind == OBJ_OBSTACLE && !o->climbable && rect_covers(o, x, y)) {
             return true;
         }
-        if (o->kind == OBJ_OPENABLE && !o->open && rect_covers(o, x, y)) {
+        // open or closed, the openable's cells stay solid so Grace walks around it
+        if (o->kind == OBJ_OPENABLE && rect_covers(o, x, y)) {
             return true;
         }
     }

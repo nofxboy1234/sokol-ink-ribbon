@@ -22,16 +22,17 @@ export function formatMs(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+// Same colours as item_color_rgb in native/src/level.c.
 const ITEM_COLORS = [
-  "#00ddff",
-  "#f2ff00",
+  "#0008ff",
+  "#bbbbbb",
   "#00ff26",
-  "#1e1e1e",
-  "#9d9d9d",
-  "#ff002a",
-  "#f2ff00",
-  "#ff006a",
-  "#961eff",
+  "#cc0066",
+  "#ff00ee",
+  "#00cc26",
+  "#00ffbb",
+  "#f2f200",
+  "#e60026",
 ];
 
 export function RunPanel() {

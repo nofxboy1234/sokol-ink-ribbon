@@ -1,4 +1,5 @@
 #pragma once
+#include "pathfind.h"
 #include <stdbool.h>
 
 typedef enum {
@@ -9,6 +10,7 @@ typedef enum {
 void player_init(int x, int y);
 void player_set_cell(int x, int y);
 void player_move_to(int x, int y, player_move_t mode);
+const path_t* player_path(void);
 void player_stop(void);
 void player_update(float dt);
 

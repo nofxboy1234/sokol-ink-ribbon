@@ -49,6 +49,10 @@ void player_set_cell(int x, int y) {
     player_init(x, y);
 }
 
+const path_t* player_path(void) {
+    return &p.path;
+}
+
 void player_move_to(int x, int y, player_move_t mode) {
     int cx, cy;
     player_cell(&cx, &cy);

@@ -3,4 +3,4 @@
 
 void render_init(void);
 void render_shutdown(void);
-void render_scene(int hover_x, int hover_y, const path_t* path);
+void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* route);

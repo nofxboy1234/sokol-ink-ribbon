@@ -37,6 +37,8 @@ static struct {
     sg_pass_action pass_action;
     level_t level;
     path_t preview;
+    path_t route;
+    bool targeting;
     float mouse_x, mouse_y;
     int hover_x, hover_y;
     bool ui_captured;
@@ -101,7 +103,7 @@ static void update_hover(void) {
         app.hover_y = cy;
         int px, py;
         player_cell(&px, &py);
-        if (!pathfind(px, py, cx, cy, &app.preview)) {
+        if (!app.targeting || !pathfind(px, py, cx, cy, &app.preview)) {
             app.preview.count = 0;
         }
     } else {
@@ -112,6 +114,11 @@ static void update_hover(void) {
 }
 
 static void handle_click(player_move_t mode) {
+    // The click after a route is chosen only brings the green preview back.
+    if (!app.targeting) {
+        app.targeting = true;
+        return;
+    }
     if (app.hover_x < 0 || app.hover_y < 0) {
         return;
     }
@@ -124,6 +131,13 @@ static void handle_click(player_move_t mode) {
         return;
     }
     player_move_to(app.hover_x, app.hover_y, mode);
+    if (player_is_moving()) {
+        app.route = *player_path();
+        app.targeting = false;
+        app.preview.count = 0;
+    } else {
+        app.route.count = 0;
+    }
     bump_revision();
 }
 
@@ -156,6 +170,8 @@ static void init(void) {
     app.hover_x = -1;
     app.hover_y = -1;
     app.preview.count = 0;
+    app.route.count = 0;
+    app.targeting = true;
     app.ui_captured = false;
     app.last_steps = 0;
     app.last_moving = false;
@@ -239,7 +255,8 @@ void _dbgui_extra(void) {
                 name = "open";
             }
         }
-        game_tooltip(name, app.mouse_x + 14.0f, app.mouse_y + 14.0f);
+        bool alert = hl->kind == OBJ_ITEM && inventory_count() >= INV_SLOTS;
+        game_tooltip(name, app.mouse_x + 14.0f, app.mouse_y + 14.0f, alert);
     }
 }
 
@@ -254,6 +271,15 @@ static void frame(void) {
         if (doors_update(dt)) {
             bump_revision();
         }
+        if (app.route.count > 1 && !player_is_moving()) {
+            int px, py;
+            player_cell(&px, &py);
+            int last = app.route.count - 1;
+            if (px == app.route.x[last] && py == app.route.y[last]) {
+                app.route.count = 0;
+                app.targeting = true;
+            }
+        }
         app.elapsed += (double)dt;
 
         int steps = player_steps_taken();
@@ -267,7 +293,10 @@ static void frame(void) {
     update_hover();
 
     _dbgui_update();
-    render_scene(app.hover_x, app.hover_y, &app.preview);
+    render_scene(app.targeting ? app.hover_x : -1,
+                 app.targeting ? app.hover_y : -1,
+                 app.targeting ? &app.preview : NULL,
+                 &app.route);
 
     sg_begin_pass(&(sg_pass){
         .action = app.pass_action,
@@ -487,6 +516,9 @@ WEB_EXPORT void game_reset(void) {
     reveal_sections();
     app.elapsed = 0.0;
     app.paused = false;
+    app.route.count = 0;
+    app.targeting = true;
+    app.preview.count = 0;
     app.last_steps = 0;
     app.last_moving = false;
     bump_revision();
@@ -505,7 +537,7 @@ WEB_EXPORT int take_save_menu(void) {
 }
 
 WEB_EXPORT void save_game(int slot) {
-    if (savegame_save(slot, app.elapsed)) {
+    if (savegame_save(slot, app.elapsed * 1000.0)) {
         bump_revision();
     }
 }
@@ -513,7 +545,10 @@ WEB_EXPORT void save_game(int slot) {
 WEB_EXPORT int load_game(int slot) {
     double e = 0.0;
     if (savegame_load(slot, &e)) {
-        app.elapsed = e;
+        app.elapsed = e / 1000.0;
+        app.route.count = 0;
+        app.targeting = true;
+        app.preview.count = 0;
         camera_follow(player_x(), player_y());
         bump_revision();
         return 1;

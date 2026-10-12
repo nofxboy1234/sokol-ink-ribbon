@@ -197,6 +197,10 @@ body > div {
   border-bottom: 1px solid var(--ink);
 }
 
+.save-row:hover {
+  background: var(--teal);
+}
+
 .save-row:last-child {
   border-bottom: 0;
 }
@@ -205,6 +209,11 @@ body > div {
   border: 1px solid var(--ink);
   border-bottom: 1px solid var(--ink);
   padding: 3px 10px;
+  background: transparent;
+}
+
+.save-row:hover .save-btn {
+  background: var(--teal);
 }
 
 .save-btn:disabled {

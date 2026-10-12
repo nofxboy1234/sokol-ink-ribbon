@@ -15,6 +15,7 @@
 // Reference palette (ref/map.kra)
 #define C_INK_R 0.118f, 0.118f, 0.118f, 1.0f
 #define C_GREEN_R 0.0f, 1.0f, 0.149f, 1.0f
+#define C_CYAN_R 0.118f, 1.0f, 0.973f, 1.0f
 #define C_YELLOW_R 0.949f, 1.0f, 0.0f, 1.0f
 #define C_MAGENTA_R 1.0f, 0.0f, 0.416f, 1.0f
 #define C_RED_R 1.0f, 0.0f, 0.165f, 1.0f
@@ -303,7 +304,7 @@ static void draw_discovery_markers(void) {
     }
 }
 
-void render_scene(int hover_x, int hover_y, const path_t* path) {
+void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* route) {
     int w = sapp_width();
     int h = sapp_height();
     sgl_defaults();
@@ -389,6 +390,25 @@ void render_scene(int hover_x, int hover_y, const path_t* path) {
             px = cx;
             py = cy;
         }
+    }
+
+    if (route && route->count > 1) {
+        float px, py;
+        camera_cell_to_screen((float)route->x[0] + 0.5f, (float)route->y[0] + 0.5f, &px, &py);
+        for (int i = 1; i < route->count; i++) {
+            float cx, cy;
+            camera_cell_to_screen((float)route->x[i] + 0.5f, (float)route->y[i] + 0.5f, &cx, &cy);
+            thick_line(px, py, cx, cy, 2.0f, C_CYAN_R);
+            px = cx;
+            py = cy;
+        }
+        int last = route->count - 1;
+        float sx, sy;
+        camera_cell_to_screen((float)route->x[last], (float)route->y[last], &sx, &sy);
+        thick_line(sx, sy, sx + scale, sy, 2.0f, C_CYAN_R);
+        thick_line(sx + scale, sy, sx + scale, sy + scale, 2.0f, C_CYAN_R);
+        thick_line(sx + scale, sy + scale, sx, sy + scale, 2.0f, C_CYAN_R);
+        thick_line(sx, sy + scale, sx, sy, 2.0f, C_CYAN_R);
     }
 
     draw_discovery_markers();
