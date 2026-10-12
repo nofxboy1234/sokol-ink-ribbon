@@ -7,6 +7,7 @@
     "prebuild": "npm --prefix .. run build:wasm && npm --prefix .. run copy:wasm",
     "build": "vite build",
     "deploy:cloudflare": "void deploy --platform cloudflare",
+    "prepreview": "void db migrate",
     "preview": "vite preview",
     "test": "playwright test",
     "test:install": "playwright install chromium",

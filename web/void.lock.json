@@ -10,7 +10,15 @@
     "name": "sokol-ink-ribbon",
     "workers_dev": true,
     "preview_urls": true,
-    "routes": []
+    "routes": [],
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "sokol-ink-ribbon-db",
+        "database_id": "59455b8b-1b59-430f-9815-717b00a67162",
+        "migrations_dir": "./db/migrations"
+      }
+    ]
   },
-  "text": "{\n  \"account_id\": \"76f99fa3e4928247aa1b9c1e09cd39cb\",\n  \"name\": \"sokol-ink-ribbon\",\n  \"workers_dev\": true,\n  \"preview_urls\": true,\n  \"routes\": []\n}\n"
+  "text": "{\n  \"account_id\": \"76f99fa3e4928247aa1b9c1e09cd39cb\",\n  \"name\": \"sokol-ink-ribbon\",\n  \"workers_dev\": true,\n  \"preview_urls\": true,\n  \"routes\": [],\n  \"d1_databases\": [\n    {\n      \"binding\": \"DB\",\n      \"database_name\": \"sokol-ink-ribbon-db\",\n      \"database_id\": \"59455b8b-1b59-430f-9815-717b00a67162\",\n      \"migrations_dir\": \"./db/migrations\"\n    }\n  ]\n}\n"
 }

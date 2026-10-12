@@ -171,8 +171,8 @@ static void init(void) {
     };
 }
 
-// The interactable whose X marker is under the mouse (shown when Grace is
-// within one cell), used for the hover name popup.
+// The interactable whose marker is under the mouse, used for the hover name
+// popup. Doors accept a click out to two cells, matching the X popup.
 static const obj_t* hover_interactable(void) {
     if (app.hover_x < 0 || app.hover_y < 0) {
         return NULL;
@@ -217,7 +217,8 @@ static const obj_t* hover_interactable(void) {
         if (!covered) {
             continue;
         }
-        return interact_distance(i) <= 1 ? o : NULL;
+        int reach = o->kind == OBJ_DOOR ? 2 : 1;
+        return interact_distance(i) <= reach ? o : NULL;
     }
     return NULL;
 }

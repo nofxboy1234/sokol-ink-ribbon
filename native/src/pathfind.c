@@ -75,7 +75,7 @@ bool pathfind(int sx, int sy, int tx, int ty, path_t* out) {
             bool blocked = doors_on_edge(cx, cy, nx, ny)
                 ? doors_block_edge(cx, cy, nx, ny)
                 : grid_blocked(cx, cy, nx, ny);
-            if (blocked) {
+            if (blocked || doors_approach_blocked(cx, cy, nx, ny)) {
                 continue;
             }
             int ni = ny * cols + nx;

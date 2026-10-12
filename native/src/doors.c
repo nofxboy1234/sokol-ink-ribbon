@@ -72,6 +72,41 @@ bool doors_block_edge(int ax, int ay, int bx, int by) {
     return false;
 }
 
+// Chebyshev distance from a cell to the door span, matching interact_distance.
+static int cell_door_distance(const obj_t* o, int x, int y) {
+    int span = o->span > 0 ? o->span : 1;
+    int ex = o->horizontal ? o->x + span - 1 : o->x;
+    int ey = o->horizontal ? o->y : o->y + span - 1;
+    int nx = x < o->x ? o->x : (x > ex ? ex : x);
+    int ny = y < o->y ? o->y : (y > ey ? ey : y);
+    int adx = nx > x ? nx - x : x - nx;
+    int ady = ny > y ? ny - y : y - ny;
+    return adx > ady ? adx : ady;
+}
+
+// Locked and unknown doors keep Grace two cells away so her dot does not
+// overlap the slab. Unlocked doors have no such limit: she walks through an
+// open one, and pushes a closed one open by stepping up to it.
+bool doors_approach_blocked(int from_x, int from_y, int to_x, int to_y) {
+    level_t* lv = dr.level;
+    for (int i = 0; i < lv->obj_count; i++) {
+        const obj_t* o = &lv->objs[i];
+        if (!is_door(o) || o->state == DOOR_UNLOCKED) {
+            continue;
+        }
+        int to_d = cell_door_distance(o, to_x, to_y);
+        if (to_d >= 2) {
+            continue;
+        }
+        int from_d = cell_door_distance(o, from_x, from_y);
+        if (from_d < 2 && to_d > from_d) {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
 static bool key_available(const obj_t* o) {
     if (o->key_id <= 0) {
         return false;
@@ -90,7 +125,7 @@ bool doors_interact(int x, int y) {
         bool covered = o->horizontal
             ? ((y == o->y || y == o->y - 1) && x >= o->x && x < o->x + span)
             : ((x == o->x || x == o->x - 1) && y >= o->y && y < o->y + span);
-        if (!covered || interact_distance(i) > 1) {
+        if (!covered || interact_distance(i) > 2) {
             continue;
         }
         if (o->state == DOOR_LOCKED && (key_available(o) || items_taken_by_id(o->link_id))) {

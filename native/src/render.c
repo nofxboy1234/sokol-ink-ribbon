@@ -271,26 +271,28 @@ static void draw_discovery_markers(void) {
             continue;
         }
         int d = interact_distance(i);
+        bool door = o->kind == OBJ_DOOR;
         if (d > 4) {
             continue;
         }
-        // marker position: rect centre, or the door midpoint on Grace's side
+        // marker position: rect centre, or the midpoint of the door slab
         float mwx = (float)o->x + (rect ? 0.5f * (float)(o->w > 0 ? o->w : 1) : 0.5f);
         float mwy = (float)o->y + (rect ? 0.5f * (float)(o->h > 0 ? o->h : 1) : 0.5f);
         if (o->kind == OBJ_DOOR) {
             if (o->horizontal) {
                 mwx = (float)o->x + span * 0.5f;
-                mwy = py < o->y ? (float)o->y - 0.5f : (float)o->y + 0.5f;
+                mwy = (float)o->y;
             } else {
                 mwy = (float)o->y + span * 0.5f;
-                mwx = px < o->x ? (float)o->x - 0.5f : (float)o->x + 0.5f;
+                mwx = (float)o->x;
             }
         }
         float sx, sy;
         camera_cell_to_screen(mwx, mwy, &sx, &sy);
         float cx = sx;
         float cy = sy;
-        if (d <= 1) {
+        // door X appears within two cells; the empty ring still hints out to four
+        if ((door && d <= 2) || d <= 1) {
             fill_circle(cx, cy, scale * 0.34f, C_INK_R);
             float e = scale * 0.18f;
             thick_line(cx - e, cy - e, cx + e, cy + e, scale * 0.09f, 1.0f, 1.0f, 1.0f, 1.0f);
