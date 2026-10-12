@@ -114,11 +114,55 @@ bool doors_approach_blocked(int from_x, int from_y, int to_x, int to_y) {
     return false;
 }
 
-static bool key_available(const obj_t* o) {
-    if (o->key_id <= 0) {
+static int linked_item_type(const obj_t* o) {
+    if (o->link_id <= 0) {
+        return -1;
+    }
+    const level_t* lv = dr.level;
+    for (int k = 0; k < lv->obj_count; k++) {
+        const obj_t* s = &lv->objs[k];
+        if (s->id == o->link_id && s->kind == OBJ_ITEM) {
+            return s->item_type;
+        }
+    }
+    return -1;
+}
+
+// The item type that unlocks this door or openable, or -1 if none does.
+int doors_key_type(const obj_t* o) {
+    if (o->kind == OBJ_DOOR && o->key_id > 0) {
+        return o->key_id;
+    }
+    return linked_item_type(o);
+}
+
+static bool will_be_locked(const obj_t* d) {
+    if (d->state == DOOR_LOCKED) {
+        return true;
+    }
+    if (d->state != DOOR_UNKNOWN) {
         return false;
     }
-    return inventory_has(o->key_id);
+    if (d->discover_state == DOOR_LOCKED) {
+        return true;
+    }
+    return d->discover_state != DOOR_UNLOCKED && d->key_id > 0;
+}
+
+void doors_drop_key_if_done(int item_type) {
+    if (item_type < 0) {
+        return;
+    }
+    const level_t* lv = dr.level;
+    for (int k = 0; k < lv->obj_count; k++) {
+        const obj_t* d = &lv->objs[k];
+        bool waiting = (is_door(d) && will_be_locked(d)) ||
+                       (d->kind == OBJ_OPENABLE && !d->open);
+        if (waiting && doors_key_type(d) == item_type) {
+            return;
+        }
+    }
+    inventory_remove(item_type);
 }
 
 bool doors_interact(int x, int y) {
@@ -135,25 +179,12 @@ bool doors_interact(int x, int y) {
         if (!covered || interact_distance(i) > 2) {
             continue;
         }
-        if (o->state == DOOR_LOCKED && (key_available(o) || items_taken_by_id(o->link_id))) {
-            int key = o->key_id;
+        int key = doors_key_type(o);
+        if (o->state == DOOR_LOCKED && key >= 0 && inventory_has(key)) {
             o->state = DOOR_UNLOCKED;
             o->open = 0;
             dr.discovered[i] = 1;
-            if (key > 0 && key_available(o)) {
-                // drop the key once no locked door needs it any more
-                bool needed = false;
-                for (int k = 0; k < lv->obj_count; k++) {
-                    const obj_t* d = &lv->objs[k];
-                    if (is_door(d) && d->state == DOOR_LOCKED && d->key_id == key) {
-                        needed = true;
-                        break;
-                    }
-                }
-                if (!needed) {
-                    inventory_remove(key);
-                }
-            }
+            doors_drop_key_if_done(key);
             return true;
         }
         if (o->state == DOOR_UNLOCKED) {

@@ -49,7 +49,15 @@ static struct {
     bool paused;
     bool save_menu;
     bool section_revealed[LEVEL_MAX_SECTIONS];
+    bool touch_active;
+    bool touch_moved;
+    float touch_start_x, touch_start_y;
+    float touch_hold;
 } app;
+
+// A long press on the map runs, like a right click.
+#define TOUCH_RUN_HOLD 0.45f
+#define TOUCH_SLOP_PX 14.0f
 
 static void bump_revision(void);
 
@@ -255,13 +263,17 @@ void _dbgui_extra(void) {
                 name = "open";
             }
         }
-        bool alert = hl->kind == OBJ_ITEM && inventory_count() >= INV_SLOTS;
+        bool alert = (hl->kind == OBJ_ITEM && inventory_count() >= INV_SLOTS) ||
+                     (hl->kind == OBJ_TYPEWRITER && !inventory_has(ITEM_INK_RIBBON));
         game_tooltip(name, app.mouse_x + 14.0f, app.mouse_y + 14.0f, alert);
     }
 }
 
 static void frame(void) {
     const float dt = (float)sapp_frame_duration();
+    if (app.touch_active) {
+        app.touch_hold += dt;
+    }
     if (!app.paused) {
         player_update(dt);
         camera_follow(player_x(), player_y());
@@ -340,16 +352,45 @@ static void event(const sapp_event* e) {
             }
             return;
         case SAPP_EVENTTYPE_TOUCHES_BEGAN:
-        case SAPP_EVENTTYPE_TOUCHES_MOVED:
-            if (e->num_touches >= 1) {
-                app.mouse_x = e->touches[0].pos_x;
-                app.mouse_y = e->touches[0].pos_y;
+            if (e->num_touches == 1) {
+                app.touch_active = true;
+                app.touch_moved = false;
+                app.touch_hold = 0.0f;
+                app.touch_start_x = app.mouse_x = e->touches[0].pos_x;
+                app.touch_start_y = app.mouse_y = e->touches[0].pos_y;
+            } else {
+                app.touch_active = false;
             }
             return;
-        case SAPP_EVENTTYPE_TOUCHES_ENDED:
-            if (e->num_touches == 0) {
-                click_at(SAPP_MOUSEBUTTON_LEFT);
+        case SAPP_EVENTTYPE_TOUCHES_MOVED:
+            if (app.touch_active && e->num_touches >= 1) {
+                app.mouse_x = e->touches[0].pos_x;
+                app.mouse_y = e->touches[0].pos_y;
+                float dx = app.mouse_x - app.touch_start_x;
+                float dy = app.mouse_y - app.touch_start_y;
+                if (dx * dx + dy * dy > TOUCH_SLOP_PX * TOUCH_SLOP_PX) {
+                    app.touch_moved = true;
+                }
             }
+            return;
+        case SAPP_EVENTTYPE_TOUCHES_ENDED: {
+            // The lifted finger is still listed, flagged as changed.
+            int held = 0;
+            for (int i = 0; i < e->num_touches; i++) {
+                if (!e->touches[i].changed) {
+                    held++;
+                }
+            }
+            if (held == 0 && app.touch_active && !app.touch_moved) {
+                click_at(app.touch_hold >= TOUCH_RUN_HOLD ? SAPP_MOUSEBUTTON_RIGHT : SAPP_MOUSEBUTTON_LEFT);
+            }
+            if (held == 0) {
+                app.touch_active = false;
+            }
+            return;
+        }
+        case SAPP_EVENTTYPE_TOUCHES_CANCELLED:
+            app.touch_active = false;
             return;
         default:
             return;
@@ -552,10 +593,13 @@ WEB_EXPORT int take_save_menu(void) {
     return interact_take_save_menu() ? 1 : 0;
 }
 
-WEB_EXPORT void save_game(int slot) {
-    if (savegame_save(slot, app.elapsed * 1000.0)) {
-        bump_revision();
+WEB_EXPORT int save_game(int slot) {
+    if (slot < 0 || slot >= SAVE_SLOTS || !inventory_remove(ITEM_INK_RIBBON)) {
+        return 0;
     }
+    savegame_save(slot, app.elapsed * 1000.0);
+    bump_revision();
+    return 1;
 }
 
 WEB_EXPORT int load_game(int slot) {

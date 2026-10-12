@@ -1,4 +1,5 @@
 #include "interact.h"
+#include "doors.h"
 #include "grid.h"
 #include "inventory.h"
 #include "items.h"
@@ -67,23 +68,12 @@ bool interact_at(int x, int y) {
             return true;
         }
         if (o->kind == OBJ_OPENABLE && !o->open) {
-            if (o->link_id > 0) {
-                int keytype = -1;
-                for (int k = 0; k < in.level->obj_count; k++) {
-                    const obj_t* s = &in.level->objs[k];
-                    if (s->id == o->link_id && s->kind == OBJ_ITEM) {
-                        keytype = s->item_type;
-                        break;
-                    }
-                }
-                if (keytype >= 0) {
-                    if (!inventory_has(keytype)) {
-                        return true; // needs the linked key
-                    }
-                    inventory_remove(keytype);
-                }
+            int keytype = doors_key_type(o);
+            if (keytype >= 0 && !inventory_has(keytype)) {
+                return true; // needs the linked key
             }
             o->open = 1;
+            doors_drop_key_if_done(keytype);
             return true;
         }
         if (o->kind == OBJ_SWITCH) {
@@ -91,7 +81,10 @@ bool interact_at(int x, int y) {
             return true;
         }
         if (o->kind == OBJ_TYPEWRITER) {
-            in.save_menu = true;
+            // saving spends an ink ribbon, so the menu only opens with one
+            if (inventory_has(ITEM_INK_RIBBON)) {
+                in.save_menu = true;
+            }
             return true;
         }
         if (o->kind == OBJ_FILE && !file_found(i)) {

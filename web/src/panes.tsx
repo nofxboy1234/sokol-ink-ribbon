@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type PointerEvent,
+} from "react";
 import {
   ITEM_NAMES,
   SAVE_SLOTS,
@@ -107,7 +114,7 @@ const ITEM_TEXT = [
 type ItemAction = "Move" | "Use" | "Discard";
 
 const ITEM_ACTIONS: ItemAction[][] = [
-  ["Discard"],
+  ["Move", "Discard"],
   ["Move", "Discard"],
   ["Move", "Use", "Discard"],
   ["Move", "Discard"],
@@ -171,20 +178,24 @@ export function Inventory() {
   const [movingFrom, setMovingFrom] = useState(-1);
   const [menu, setMenu] = useState<{ index: number; x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  // Touch has no right click, so a long press on a slot opens the menu.
+  const press = useRef<{ timer: number; x: number; y: number; fired: boolean } | null>(null);
 
   useEffect(() => {
     if (!menu) {
       return;
     }
-    const onDown = (event: globalThis.MouseEvent) => {
+    const onDown = (event: globalThis.PointerEvent) => {
       if (menuRef.current?.contains(event.target as Node)) {
         return;
       }
       setMenu(null);
     };
-    window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
+    window.addEventListener("pointerdown", onDown);
+    return () => window.removeEventListener("pointerdown", onDown);
   }, [menu]);
+
+  useEffect(() => () => window.clearTimeout(press.current?.timer), []);
 
   useEffect(() => {
     if (!menu && movingFrom < 0) {
@@ -207,6 +218,10 @@ export function Inventory() {
   const menuActions = menuItem >= 0 ? (ITEM_ACTIONS[menuItem] ?? []) : [];
 
   const onSlotClick = (index: number) => {
+    if (press.current?.fired) {
+      press.current = null;
+      return;
+    }
     if (movingFrom >= 0) {
       if (movingFrom !== index) {
         moveInventorySlot(movingFrom, index);
@@ -218,8 +233,7 @@ export function Inventory() {
     setSelected((inventory[index] ?? -1) >= 0 ? index : -1);
   };
 
-  const onSlotMenu = (event: MouseEvent, index: number) => {
-    event.preventDefault();
+  const openMenu = (index: number, x: number, y: number) => {
     if (movingFrom >= 0) {
       setMovingFrom(-1);
       return;
@@ -232,9 +246,61 @@ export function Inventory() {
     setSelected(index);
     setMenu({
       index,
-      x: Math.min(event.clientX, window.innerWidth - 120),
-      y: Math.min(event.clientY, window.innerHeight - 110),
+      x: Math.min(x, window.innerWidth - 120),
+      y: Math.min(y, window.innerHeight - 110),
     });
+  };
+
+  const onSlotMenu = (event: MouseEvent, index: number) => {
+    event.preventDefault();
+    if (press.current) {
+      // Android also reports a long press as contextmenu; open it only once.
+      window.clearTimeout(press.current.timer);
+      if (press.current.fired) {
+        return;
+      }
+      press.current.fired = true;
+    }
+    openMenu(index, event.clientX, event.clientY);
+  };
+
+  const onSlotPointerDown = (event: PointerEvent, index: number) => {
+    window.clearTimeout(press.current?.timer);
+    press.current = null;
+    if (event.pointerType === "mouse") {
+      return;
+    }
+    const x = event.clientX;
+    const y = event.clientY;
+    const timer = window.setTimeout(() => {
+      if (press.current) {
+        press.current.fired = true;
+      }
+      openMenu(index, x, y);
+    }, 500);
+    press.current = { timer, x, y, fired: false };
+  };
+
+  const onSlotPointerMove = (event: PointerEvent) => {
+    const p = press.current;
+    if (!p || p.fired) {
+      return;
+    }
+    if (Math.hypot(event.clientX - p.x, event.clientY - p.y) > 10) {
+      window.clearTimeout(p.timer);
+      press.current = null;
+    }
+  };
+
+  const onSlotPointerEnd = () => {
+    const p = press.current;
+    if (!p) {
+      return;
+    }
+    window.clearTimeout(p.timer);
+    if (!p.fired) {
+      press.current = null;
+    }
   };
 
   const runAction = (action: ItemAction) => {
@@ -270,13 +336,17 @@ export function Inventory() {
             title={item >= 0 ? ITEM_NAMES[item] : ""}
             onClick={() => onSlotClick(index)}
             onContextMenu={(event) => onSlotMenu(event, index)}
+            onPointerDown={(event) => onSlotPointerDown(event, index)}
+            onPointerMove={onSlotPointerMove}
+            onPointerUp={onSlotPointerEnd}
+            onPointerCancel={onSlotPointerEnd}
           >
             {item >= 0 && <ItemGlyph item={item} />}
             {item >= 0 && <span className="inventory-name">{ITEM_NAMES[item]}</span>}
           </button>
         ))}
       </div>
-      {movingFrom >= 0 && <p className="move-hint">Click a slot</p>}
+      {movingFrom >= 0 && <p className="move-hint">Choose a slot</p>}
       <div className="item-detail">
         {selectedItem >= 0 && (
           <>
@@ -445,7 +515,11 @@ export function SaveLoadMenu({ open, onClose }: { open: boolean; onClose: () => 
 
 type SaveSlotInfo = { index: number; used: boolean; time: number };
 
+const INK_RIBBON = 3;
+
 function SaveLoadSlots({ onClose }: { onClose: () => void }) {
+  const { inventory } = useGameState();
+  const canSave = inventory.includes(INK_RIBBON);
   const slots = useMemo<SaveSlotInfo[]>(
     () =>
       Array.from({ length: SAVE_SLOTS }, (_, index) => ({
@@ -466,6 +540,8 @@ function SaveLoadSlots({ onClose }: { onClose: () => void }) {
             <button
               type="button"
               className="pause-item save-btn"
+              disabled={!canSave}
+              title={canSave ? "Uses one ink ribbon" : "Needs an ink ribbon"}
               onClick={() => {
                 saveGame(slot.index);
                 onClose();

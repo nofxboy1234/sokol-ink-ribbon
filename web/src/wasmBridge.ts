@@ -34,7 +34,7 @@ export type EmscriptenModule = {
   _replay_y?: (index: number) => number;
   _set_paused?: (paused: number) => void;
   _take_save_menu?: () => number;
-  _save_game?: (slot: number) => void;
+  _save_game?: (slot: number) => number;
   _load_game?: (slot: number) => number;
   _save_used?: (slot: number) => number;
   _save_time?: (slot: number) => number;
@@ -168,8 +168,8 @@ export function takeSaveMenu(): boolean {
   return (module()?._take_save_menu?.() ?? 0) !== 0;
 }
 
-export function saveGame(slot: number): void {
-  module()?._save_game?.(slot);
+export function saveGame(slot: number): boolean {
+  return (module()?._save_game?.(slot) ?? 0) !== 0;
 }
 
 export function loadGame(slot: number): boolean {

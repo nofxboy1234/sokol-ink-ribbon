@@ -29,6 +29,12 @@ body > div {
   height: 100%;
 }
 
+/* No double-tap zoom delay on controls. */
+button,
+a {
+  touch-action: manipulation;
+}
+
 .shell {
   display: flex;
   flex-direction: row;
@@ -72,6 +78,11 @@ body > div {
   border: 0;
   outline: none;
   background: var(--paper);
+  /* The game handles taps and long presses itself. */
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .map-canvas-host {
@@ -288,15 +299,24 @@ button.recipe:disabled {
   cursor: pointer;
   font-family: inherit;
   border-radius: 0;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .inventory-slot[data-filled="true"] {
   background: var(--paper);
 }
 
-.inventory-slot:hover,
 .inventory-slot[data-moving="true"] {
   background: var(--teal);
+}
+
+/* Touch screens keep :hover on the last tapped slot, which reads as a selection. */
+@media (hover: hover) {
+  .inventory-slot:hover {
+    background: var(--teal);
+  }
 }
 
 .inventory-slot[data-selected="true"] {
