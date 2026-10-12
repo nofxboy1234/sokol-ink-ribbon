@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ITEM_NAMES,
   SAVE_SLOTS,
@@ -35,18 +35,25 @@ const ITEM_COLORS = [
   "#e60026",
 ];
 
+// The map page unmounts on the way to Records, but the wasm game stays
+// alive, so this has to live outside RunPanel or each visit posts again.
+let goalRunSaved = false;
+
 export function RunPanel() {
   const elapsed = useElapsed();
   const { goalMet } = useGameState();
   const [status, setStatus] = useState("");
-  const savedRef = useRef(false);
 
   // A run saves itself the moment the goal (the fuse box) is activated.
   useEffect(() => {
-    if (!goalMet || savedRef.current) {
+    if (!goalMet) {
+      goalRunSaved = false;
       return;
     }
-    savedRef.current = true;
+    if (goalRunSaved) {
+      return;
+    }
+    goalRunSaved = true;
     const replay = readReplay();
     void (async () => {
       try {
