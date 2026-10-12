@@ -6,6 +6,8 @@
 void inventory_init(void);
 bool inventory_add(int item_type);
 bool inventory_remove(int item_type);
+bool inventory_move(int from, int to);
+bool inventory_clear_slot(int index);
 int inventory_count(void);
 int inventory_slot(int index);
 bool inventory_has(int item_type);

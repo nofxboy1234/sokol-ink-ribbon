@@ -58,7 +58,8 @@ bool savegame_save(int slot, double elapsed_ms) {
     s->elapsed_ms = elapsed_ms;
     player_cell(&s->px, &s->py);
     s->health = health_state();
-    s->inv_count = inventory_count();
+    // Store every cell, including holes left by Move.
+    s->inv_count = INV_SLOTS;
     for (int i = 0; i < INV_SLOTS; i++) {
         s->inv[i] = inventory_slot(i);
     }

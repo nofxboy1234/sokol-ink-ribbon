@@ -87,23 +87,8 @@ body > div {
   border-bottom: 1px solid var(--ink);
 }
 
-.health {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1 1 auto;
-  border: 1px solid var(--ink);
-  padding: 3px 6px;
-}
-
-.health-dot {
-  width: 10px;
-  height: 10px;
-  display: inline-block;
-}
-
-.health-label {
-  font-size: 12px;
+.side-header .records-link {
+  margin-right: auto;
 }
 
 .records-link {
@@ -125,19 +110,6 @@ body > div {
   font-size: 12px;
 }
 
-.lighter {
-  padding: 4px 8px;
-  background: var(--paper);
-  color: var(--ink);
-  border: 1px solid var(--ink);
-  border-radius: 0;
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.lighter[data-on="true"] {
-  background: var(--yellow);
-}
 
 .pause-overlay {
   position: fixed;
@@ -300,9 +272,11 @@ button.recipe:disabled {
 
 .inventory-slot {
   position: relative;
+  z-index: 16;
   aspect-ratio: 1;
   border: 1px solid var(--ink);
   background: var(--paper);
+  color: var(--ink);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -310,25 +284,216 @@ button.recipe:disabled {
   font-size: 9px;
   text-align: center;
   overflow: hidden;
+  padding: 2px;
+  cursor: pointer;
+  font-family: inherit;
+  border-radius: 0;
 }
 
 .inventory-slot[data-filled="true"] {
   background: var(--paper);
 }
 
-.inventory-slot:hover {
+.inventory-slot:hover,
+.inventory-slot[data-moving="true"] {
   background: var(--teal);
 }
 
-.inventory-item {
+.inventory-slot[data-selected="true"] {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.glyph {
   width: 42%;
   height: 42%;
+  display: block;
+  box-sizing: border-box;
+}
+
+.glyph-circle,
+.glyph-ink {
   border-radius: 50%;
+}
+
+.glyph-square {
+  border-radius: 0;
+}
+
+.glyph-ring {
+  border-radius: 50%;
+  border: 2px solid var(--ink);
+  background: transparent;
+}
+
+.glyph-ink {
+  position: relative;
+}
+
+.glyph-hole {
+  position: absolute;
+  inset: 28%;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink);
+  box-sizing: border-box;
 }
 
 .inventory-name {
   margin-top: 2px;
   line-height: 1.05;
+}
+
+.move-hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+}
+
+.item-detail {
+  margin-top: 8px;
+  min-height: 72px;
+  padding: 6px 8px;
+  border: 1px solid var(--ink);
+  box-sizing: border-box;
+}
+
+.item-detail h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.item-detail p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.equip-row {
+  display: grid;
+  grid-template-columns: 1.45fr 0.62fr 1.7fr;
+  gap: 4px;
+  margin-top: 4px;
+  align-items: stretch;
+}
+
+.gun-slot,
+.quick-slot,
+.status-color,
+.status-label,
+.pip {
+  border: 1px solid var(--ink);
+  box-sizing: border-box;
+  background: var(--paper);
+}
+
+.gun-slot {
+  min-height: 74px;
+}
+
+.quick-slots {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 4px;
+}
+
+.quick-slot {
+  min-height: 0;
+}
+
+.quick-slot-btn {
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quick-slot-btn[data-on="true"] {
+  outline: 2px solid var(--ink);
+  outline-offset: -3px;
+}
+
+.lighter-swatch {
+  width: 62%;
+  height: 62%;
+  background: #f2f200;
+  display: block;
+}
+
+.status-stack {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pip-row {
+  display: flex;
+  gap: 6px;
+}
+
+.pip-group {
+  flex: 1;
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pip {
+  flex: 1;
+  height: 16px;
+  min-width: 0;
+}
+
+.status-color {
+  min-height: 22px;
+}
+
+.status-label {
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 1px 0;
+}
+
+.item-menu {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 96px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+
+.item-menu button {
+  padding: 6px 10px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.item-menu button:last-child {
+  border-bottom: 0;
+}
+
+.item-menu button:hover {
+  background: var(--teal);
+}
+
+.move-catch {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
 }
 
 .recipe-list,

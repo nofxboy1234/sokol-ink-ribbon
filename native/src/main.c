@@ -435,6 +435,22 @@ WEB_EXPORT int web_inventory_has(int item_type) {
     return inventory_has(item_type) ? 1 : 0;
 }
 
+WEB_EXPORT int web_inventory_move(int from, int to) {
+    if (!inventory_move(from, to)) {
+        return 0;
+    }
+    bump_revision();
+    return 1;
+}
+
+WEB_EXPORT int web_inventory_clear(int index) {
+    if (!inventory_clear_slot(index)) {
+        return 0;
+    }
+    bump_revision();
+    return 1;
+}
+
 WEB_EXPORT int health_value(void) {
     return health_state();
 }

@@ -4,16 +4,7 @@ import "../src/app.css";
 import { AuthPanel } from "../src/AuthPanel";
 import { GameStateProvider } from "../src/GameState";
 import { MapCanvas } from "../src/MapCanvas";
-import {
-  Crafting,
-  Files,
-  HealthBar,
-  Inventory,
-  LighterButton,
-  PauseMenu,
-  RunPanel,
-  SaveLoadMenu,
-} from "../src/panes";
+import { Crafting, Files, Inventory, PauseMenu, RunPanel, SaveLoadMenu } from "../src/panes";
 import { setPaused as setGamePaused, takeSaveMenu } from "../src/wasmBridge";
 
 type Tab = "items" | "crafting" | "files";
@@ -72,8 +63,6 @@ export default function HomePage() {
           </section>
           <section className="pane pane-side">
             <header className="side-header">
-              <HealthBar />
-              <LighterButton />
               <Link className="records-link" href="/records">
                 Records
               </Link>

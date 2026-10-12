@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import {
   ITEM_NAMES,
   SAVE_SLOTS,
+  clearInventorySlot,
   craftRecipe,
   gameReset,
   loadGame,
+  moveInventorySlot,
   readFiles,
   readReplay,
   runElapsedMs,
@@ -84,57 +86,257 @@ export function RunPanel() {
   );
 }
 
-export function HealthBar() {
-  const { health } = useGameState();
-  const labels = ["FINE", "CAUTION", "DANGER"];
-  const colors = ["var(--green)", "var(--orange)", "var(--red)"];
+const HEALTH_LABELS = ["FINE", "CAUTION", "DANGER"];
+const HEALTH_COLORS = ["var(--green)", "var(--orange)", "var(--red)"];
+
+// Same shapes as item_icon_shape in native/src/level.c.
+const ITEM_SHAPES = [0, 0, 0, 3, 2, 3, 0, 1, 3];
+
+const ITEM_TEXT = [
+  "A clear glass bottle. It could hold a mixed herb.",
+  "A worn coin stamped with a crest. It has no spendable value here.",
+  "A fresh green herb. It can be ground, or used to steady Grace.",
+  "A typewriter ribbon. Saving at a typewriter spends one.",
+  "A small flat-head screwdriver. It pries panels and tightens fittings.",
+  "A prepared dose in a glass syringe. It is meant for an emergency.",
+  "A glass cartridge fuse. The basement fuse box will take it.",
+  "A pocket lighter. It throws a small circle of light when it is lit.",
+  "A key topped with a small cherub. It opens a matching lock.",
+];
+
+type ItemAction = "Move" | "Use" | "Discard";
+
+const ITEM_ACTIONS: ItemAction[][] = [
+  ["Discard"],
+  ["Move", "Discard"],
+  ["Move", "Use", "Discard"],
+  ["Move", "Discard"],
+  ["Move"],
+  ["Move", "Use", "Discard"],
+  ["Move"],
+  [],
+  ["Move"],
+];
+
+const STEROID_CHARGES = 0;
+const STABILIZER_CHARGES = 0;
+
+function ItemGlyph({ item }: { item: number }) {
+  const color = ITEM_COLORS[item] ?? "#ff006a";
+  const shape = ITEM_SHAPES[item] ?? 0;
+  if (shape === 1) {
+    return <span className="glyph glyph-square" style={{ background: color }} />;
+  }
+  if (shape === 2) {
+    return <span className="glyph glyph-ring" style={{ borderColor: color }} />;
+  }
+  if (shape === 3) {
+    return (
+      <span className="glyph glyph-ink" style={{ background: color }}>
+        <span className="glyph-hole" />
+      </span>
+    );
+  }
+  return <span className="glyph glyph-circle" style={{ background: color }} />;
+}
+
+function ChargePips({
+  label,
+  icon,
+  filled,
+  fill,
+}: {
+  label: string;
+  icon: string;
+  filled: number;
+  fill: string;
+}) {
   return (
-    <div className="health" style={{ background: colors[health] ?? colors[0] }}>
-      <span className="health-label">{labels[health] ?? labels[0]}</span>
+    <div className="pip-group" title={label}>
+      <span className="pip" style={{ background: icon }} />
+      {Array.from({ length: 4 }, (_, index) => (
+        <span
+          key={index}
+          className="pip"
+          style={{ background: index < filled ? fill : undefined }}
+        />
+      ))}
     </div>
   );
 }
 
-export function LighterButton() {
-  const { hasLighter, lighterOn } = useGameState();
-  if (!hasLighter) {
-    return null;
-  }
-  return (
-    <button
-      type="button"
-      className="lighter"
-      data-on={lighterOn}
-      onClick={() => setLighter(!lighterOn)}
-    >
-      Lighter {lighterOn ? "on" : "off"}
-    </button>
-  );
-}
-
 export function Inventory() {
-  const { inventory } = useGameState();
+  const { inventory, health, hasLighter, lighterOn } = useGameState();
+  const [selected, setSelected] = useState(-1);
+  const [movingFrom, setMovingFrom] = useState(-1);
+  const [menu, setMenu] = useState<{ index: number; x: number; y: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menu) {
+      return;
+    }
+    const onDown = (event: globalThis.MouseEvent) => {
+      if (menuRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      setMenu(null);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [menu]);
+
+  useEffect(() => {
+    if (!menu && movingFrom < 0) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.stopImmediatePropagation();
+      setMenu(null);
+      setMovingFrom(-1);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [menu, movingFrom]);
+
+  const selectedItem = selected >= 0 ? inventory[selected] : -1;
+  const menuItem = menu ? inventory[menu.index] : -1;
+  const menuActions = menuItem >= 0 ? (ITEM_ACTIONS[menuItem] ?? []) : [];
+
+  const onSlotClick = (index: number) => {
+    if (movingFrom >= 0) {
+      if (movingFrom !== index) {
+        moveInventorySlot(movingFrom, index);
+        setSelected(index);
+      }
+      setMovingFrom(-1);
+      return;
+    }
+    setSelected((inventory[index] ?? -1) >= 0 ? index : -1);
+  };
+
+  const onSlotMenu = (event: MouseEvent, index: number) => {
+    event.preventDefault();
+    if (movingFrom >= 0) {
+      setMovingFrom(-1);
+      return;
+    }
+    const item = inventory[index] ?? -1;
+    if (item < 0 || (ITEM_ACTIONS[item] ?? []).length === 0) {
+      setMenu(null);
+      return;
+    }
+    setSelected(index);
+    setMenu({
+      index,
+      x: Math.min(event.clientX, window.innerWidth - 120),
+      y: Math.min(event.clientY, window.innerHeight - 110),
+    });
+  };
+
+  const runAction = (action: ItemAction) => {
+    if (!menu) {
+      return;
+    }
+    const index = menu.index;
+    setMenu(null);
+    if (action === "Move") {
+      setMovingFrom(index);
+      return;
+    }
+    if (action === "Discard") {
+      clearInventorySlot(index);
+      if (selected === index) {
+        setSelected(-1);
+      }
+    }
+  };
+
   return (
     <div className="pane-content">
       <h2>ITEMS</h2>
       <div className="inventory-grid">
         {inventory.map((item, index) => (
-          <div
+          <button
             key={index}
+            type="button"
             className="inventory-slot"
             data-filled={item >= 0}
+            data-selected={selected === index}
+            data-moving={movingFrom === index}
             title={item >= 0 ? ITEM_NAMES[item] : ""}
+            onClick={() => onSlotClick(index)}
+            onContextMenu={(event) => onSlotMenu(event, index)}
           >
-            {item >= 0 && (
-              <span
-                className="inventory-item"
-                style={{ background: ITEM_COLORS[item] ?? "#ff006a" }}
-              />
-            )}
+            {item >= 0 && <ItemGlyph item={item} />}
             {item >= 0 && <span className="inventory-name">{ITEM_NAMES[item]}</span>}
-          </div>
+          </button>
         ))}
       </div>
+      {movingFrom >= 0 && <p className="move-hint">Click a slot</p>}
+      <div className="item-detail">
+        {selectedItem >= 0 && (
+          <>
+            <h3>{ITEM_NAMES[selectedItem]}</h3>
+            <p>{ITEM_TEXT[selectedItem]}</p>
+          </>
+        )}
+      </div>
+      <div className="equip-row">
+        <div className="gun-slot" title="No gun equipped" />
+        <div className="quick-slots">
+          <div className="quick-slot" />
+          {hasLighter ? (
+            <button
+              type="button"
+              className="quick-slot quick-slot-btn"
+              data-on={lighterOn}
+              title={lighterOn ? "Lighter on" : "Lighter"}
+              onClick={() => setLighter(!lighterOn)}
+            >
+              <span className="lighter-swatch" />
+            </button>
+          ) : (
+            <div className="quick-slot" />
+          )}
+        </div>
+        <div className="status-stack">
+          <div className="pip-row">
+            <ChargePips
+              label="Steroids Injector. Increases health."
+              icon="#f2ff00"
+              filled={STEROID_CHARGES}
+              fill="#f2ff00"
+            />
+            <ChargePips
+              label="Stabilizer Injector. Increases gun damage and handling."
+              icon="#66d5f4"
+              filled={STABILIZER_CHARGES}
+              fill="#66d5f4"
+            />
+          </div>
+          <div
+            className="status-color"
+            style={{ background: HEALTH_COLORS[health] ?? HEALTH_COLORS[0] }}
+          />
+          <div className="status-label">{HEALTH_LABELS[health] ?? HEALTH_LABELS[0]}</div>
+        </div>
+      </div>
+      {movingFrom >= 0 && (
+        <button type="button" className="move-catch" onClick={() => setMovingFrom(-1)} />
+      )}
+      {menu && menuActions.length > 0 && (
+        <div ref={menuRef} className="item-menu" style={{ left: menu.x, top: menu.y }}>
+          {menuActions.map((action) => (
+            <button key={action} type="button" onClick={() => runAction(action)}>
+              {action}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

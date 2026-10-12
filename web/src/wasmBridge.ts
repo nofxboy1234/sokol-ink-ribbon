@@ -14,6 +14,8 @@ export type EmscriptenModule = {
   _web_inventory_count?: () => number;
   _web_inventory_slot?: (index: number) => number;
   _web_inventory_has?: (item: number) => number;
+  _web_inventory_move?: (from: number, to: number) => number;
+  _web_inventory_clear?: (index: number) => number;
   _health_value?: () => number;
   _items_collected?: () => number;
   _doors_discovered?: () => number;
@@ -108,9 +110,8 @@ export function readSnapshot(revision: number): GameSnapshot {
       goalMet: false,
     };
   }
-  const count = m._web_inventory_count?.() ?? 0;
   const inventory = EMPTY_INVENTORY.slice();
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < inventory.length; i++) {
     inventory[i] = m._web_inventory_slot?.(i) ?? -1;
   }
   return {
@@ -181,6 +182,14 @@ export function saveUsed(slot: number): boolean {
 
 export function saveTimeMs(slot: number): number {
   return module()?._save_time?.(slot) ?? 0;
+}
+
+export function moveInventorySlot(from: number, to: number): boolean {
+  return (module()?._web_inventory_move?.(from, to) ?? 0) !== 0;
+}
+
+export function clearInventorySlot(index: number): boolean {
+  return (module()?._web_inventory_clear?.(index) ?? 0) !== 0;
 }
 
 export function craftRecipe(index: number): boolean {

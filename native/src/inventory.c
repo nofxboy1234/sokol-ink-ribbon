@@ -1,55 +1,75 @@
 #include "inventory.h"
 
-#include <string.h>
-
-static struct {
-    int count;
-    int slots[INV_SLOTS];
-} inv;
+// Fixed cells, so a move can leave an empty slot in the middle.
+static int inv_slots[INV_SLOTS];
 
 void inventory_init(void) {
-    inv.count = 0;
     for (int i = 0; i < INV_SLOTS; i++) {
-        inv.slots[i] = -1;
+        inv_slots[i] = -1;
     }
 }
 
 bool inventory_add(int item_type) {
-    if (inv.count >= INV_SLOTS) {
-        return false;
-    }
-    inv.slots[inv.count++] = item_type;
-    return true;
-}
-
-bool inventory_remove(int item_type) {
-    for (int i = 0; i < inv.count; i++) {
-        if (inv.slots[i] == item_type) {
-            for (int j = i; j < inv.count - 1; j++) {
-                inv.slots[j] = inv.slots[j + 1];
-            }
-            inv.count--;
-            inv.slots[inv.count] = -1;
+    for (int i = 0; i < INV_SLOTS; i++) {
+        if (inv_slots[i] < 0) {
+            inv_slots[i] = item_type;
             return true;
         }
     }
     return false;
 }
 
+bool inventory_remove(int item_type) {
+    for (int i = 0; i < INV_SLOTS; i++) {
+        if (inv_slots[i] == item_type) {
+            inv_slots[i] = -1;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool inventory_move(int from, int to) {
+    if (from < 0 || to < 0 || from >= INV_SLOTS || to >= INV_SLOTS || from == to) {
+        return false;
+    }
+    if (inv_slots[from] < 0) {
+        return false;
+    }
+    int item = inv_slots[from];
+    inv_slots[from] = inv_slots[to];
+    inv_slots[to] = item;
+    return true;
+}
+
+bool inventory_clear_slot(int index) {
+    if (index < 0 || index >= INV_SLOTS || inv_slots[index] < 0) {
+        return false;
+    }
+    inv_slots[index] = -1;
+    return true;
+}
+
 int inventory_count(void) {
-    return inv.count;
+    int count = 0;
+    for (int i = 0; i < INV_SLOTS; i++) {
+        if (inv_slots[i] >= 0) {
+            count++;
+        }
+    }
+    return count;
 }
 
 int inventory_slot(int index) {
     if (index < 0 || index >= INV_SLOTS) {
         return -1;
     }
-    return inv.slots[index];
+    return inv_slots[index];
 }
 
 bool inventory_has(int item_type) {
-    for (int i = 0; i < inv.count; i++) {
-        if (inv.slots[i] == item_type) {
+    for (int i = 0; i < INV_SLOTS; i++) {
+        if (inv_slots[i] == item_type) {
             return true;
         }
     }
@@ -57,8 +77,13 @@ bool inventory_has(int item_type) {
 }
 
 void inventory_set(int count, const int* slots) {
-    inv.count = count < 0 ? 0 : (count > INV_SLOTS ? INV_SLOTS : count);
+    if (count < 0) {
+        count = 0;
+    }
+    if (count > INV_SLOTS) {
+        count = INV_SLOTS;
+    }
     for (int i = 0; i < INV_SLOTS; i++) {
-        inv.slots[i] = i < inv.count ? slots[i] : -1;
+        inv_slots[i] = (i < count && slots) ? slots[i] : -1;
     }
 }
