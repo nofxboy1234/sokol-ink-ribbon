@@ -104,6 +104,52 @@ test("pause stops movement", async ({ page }) => {
   expect(s2).toBe(s1);
 });
 
+test("a phone draws map cells about as large as a desktop window resized to the same box", async ({
+  browser,
+}) => {
+  const desktop = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+    deviceScaleFactor: 1,
+  });
+  const desktopPage = await desktop.newPage();
+  await desktopPage.goto("/");
+  await desktopPage.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
+    timeout: 30_000,
+  });
+  const opened = await desktopPage.evaluate(() => window.Module?._level_cell_px?.() ?? 0);
+  expect(opened).toBe(17);
+
+  await desktopPage.setViewportSize({ width: 390, height: 844 });
+  await desktopPage.waitForFunction(() => {
+    const canvas = document.querySelector("canvas#canvas");
+    return canvas instanceof HTMLCanvasElement && canvas.width === 372;
+  });
+  const resized = await desktopPage.evaluate(() => ({
+    cell: window.Module?._level_cell_px?.() ?? 0,
+    width: document.querySelector("canvas#canvas")?.width ?? 0,
+  }));
+  expect(resized).toEqual({ cell: 17, width: 372 });
+  await desktop.close();
+
+  const phone = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 3,
+    isMobile: true,
+    hasTouch: true,
+  });
+  const phonePage = await phone.newPage();
+  await phonePage.goto("/");
+  await phonePage.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
+    timeout: 30_000,
+  });
+  const phoneMap = await phonePage.evaluate(() => ({
+    cell: window.Module?._level_cell_px?.() ?? 0,
+    width: document.querySelector("canvas#canvas")?.width ?? 0,
+  }));
+  expect(phoneMap).toEqual({ cell: 16, width: 372 });
+  await phone.close();
+});
+
 test("no save button and records navigates client-side", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Save run" })).toHaveCount(0);

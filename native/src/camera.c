@@ -2,7 +2,7 @@
 
 #include <math.h>
 
-#define CAMERA_MIN_SCALE 6.0f
+#define CAMERA_MIN_SCALE 16.0f
 #define CAMERA_MAX_SCALE 96.0f
 #define CAMERA_FIT_CELLS 44.0f
 #define CAMERA_CATCHUP 6.0f
@@ -31,7 +31,11 @@ void camera_set_viewport(int w, int h) {
 
 static float fit_scale(void) {
     float min_dim = (float)(cam.width < cam.height ? cam.width : cam.height);
-    return min_dim / CAMERA_FIT_CELLS;
+    float scale = min_dim / CAMERA_FIT_CELLS;
+    if (scale < CAMERA_MIN_SCALE) {
+        scale = CAMERA_MIN_SCALE;
+    }
+    return scale;
 }
 
 void camera_follow(float cx, float cy) {
