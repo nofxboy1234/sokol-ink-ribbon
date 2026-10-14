@@ -23,10 +23,10 @@ static int heur(int ax, int ay, int bx, int by) {
 }
 
 bool pathfind(int sx, int sy, int tx, int ty, path_t* out) {
-    return pathfind_within(sx, sy, tx, ty, INT_MAX, out);
+    return pathfind_within(sx, sy, tx, ty, INT_MAX, false, out);
 }
 
-bool pathfind_within(int sx, int sy, int tx, int ty, int max_cost, path_t* out) {
+bool pathfind_within(int sx, int sy, int tx, int ty, int max_cost, bool through_breakable, path_t* out) {
     out->count = 0;
     if (!grid_is_floor(sx, sy) || !grid_is_floor(tx, ty)) {
         return false;
@@ -77,9 +77,10 @@ bool pathfind_within(int sx, int sy, int tx, int ty, int max_cost, path_t* out) 
             }
             // a door covers the wall line: its state decides, not the wall
             bool blocked = doors_on_edge(cx, cy, nx, ny)
-                ? doors_block_edge(cx, cy, nx, ny)
+                ? doors_block_edge(cx, cy, nx, ny) &&
+                      !(through_breakable && doors_breakable_edge(cx, cy, nx, ny))
                 : grid_blocked(cx, cy, nx, ny);
-            if (blocked || doors_approach_blocked(cx, cy, nx, ny)) {
+            if (blocked || doors_approach_blocked(cx, cy, nx, ny, through_breakable)) {
                 continue;
             }
             int ni = ny * cols + nx;

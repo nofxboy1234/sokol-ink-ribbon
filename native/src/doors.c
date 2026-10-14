@@ -28,7 +28,11 @@ static bool is_door(const obj_t* o) {
 
 static bool blocks(const obj_t* o) {
     // unlocked doors never block movement; Grace opens them by walking through
-    return o->state != DOOR_UNLOCKED;
+    return o->state != DOOR_UNLOCKED && o->state != DOOR_BROKEN;
+}
+
+static bool intact_breakable(const obj_t* o) {
+    return is_door(o) && o->breakable && o->state != DOOR_BROKEN;
 }
 
 static bool on_edge(const obj_t* o, int ax, int ay, int bx, int by) {
@@ -59,6 +63,57 @@ bool doors_on_edge(int ax, int ay, int bx, int by) {
         }
     }
     return false;
+}
+
+// Closed doors block sight; open and broken ones leave a gap to look through.
+bool doors_block_sight(int ax, int ay, int bx, int by) {
+    level_t* lv = dr.level;
+    for (int i = 0; i < lv->obj_count; i++) {
+        obj_t* o = &lv->objs[i];
+        if (is_door(o) && o->state != DOOR_BROKEN && !o->open && on_edge(o, ax, ay, bx, by)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int doors_closed_on_edge(int ax, int ay, int bx, int by) {
+    level_t* lv = dr.level;
+    for (int i = 0; i < lv->obj_count; i++) {
+        obj_t* o = &lv->objs[i];
+        if (is_door(o) && o->state != DOOR_BROKEN && !o->open && on_edge(o, ax, ay, bx, by)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+bool doors_breakable_edge(int ax, int ay, int bx, int by) {
+    level_t* lv = dr.level;
+    for (int i = 0; i < lv->obj_count; i++) {
+        obj_t* o = &lv->objs[i];
+        if (intact_breakable(o) && on_edge(o, ax, ay, bx, by)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void doors_open(int index) {
+    level_t* lv = dr.level;
+    if (index >= 0 && index < lv->obj_count && lv->objs[index].state == DOOR_UNLOCKED) {
+        lv->objs[index].open = 1;
+    }
+}
+
+void doors_break(int index) {
+    level_t* lv = dr.level;
+    if (index < 0 || index >= lv->obj_count || !intact_breakable(&lv->objs[index])) {
+        return;
+    }
+    lv->objs[index].state = DOOR_BROKEN;
+    lv->objs[index].open = 1;
+    dr.discovered[index] = 1;
 }
 
 bool doors_block_edge(int ax, int ay, int bx, int by) {
@@ -98,13 +153,13 @@ static int cell_door_distance(const obj_t* o, int x, int y) {
 // Locked and unknown doors keep Grace two cells away so her dot does not
 // overlap the slab. Unlocked doors have no such limit: she walks through an
 // open one, and pushes a closed one open by stepping up to it.
-bool doors_approach_blocked(int from_x, int from_y, int to_x, int to_y) {
+bool doors_approach_blocked(int from_x, int from_y, int to_x, int to_y, bool through_breakable) {
     (void)from_x;
     (void)from_y;
     level_t* lv = dr.level;
     for (int i = 0; i < lv->obj_count; i++) {
         const obj_t* o = &lv->objs[i];
-        if (!is_door(o) || o->state == DOOR_UNLOCKED) {
+        if (!is_door(o) || !blocks(o) || (through_breakable && o->breakable)) {
             continue;
         }
         if (cell_door_distance(o, to_x, to_y) == 0) {
@@ -169,7 +224,7 @@ bool doors_interact(int x, int y) {
     level_t* lv = dr.level;
     for (int i = 0; i < lv->obj_count; i++) {
         obj_t* o = &lv->objs[i];
-        if (!is_door(o)) {
+        if (!is_door(o) || o->state == DOOR_BROKEN) {
             continue;
         }
         int span = o->span > 0 ? o->span : 1;

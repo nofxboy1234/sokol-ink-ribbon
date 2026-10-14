@@ -81,10 +81,10 @@
   ],
   "objects": [
     { "kind": "door", "id": 1, "x": 16, "y": 38, "horizontal": 1, "span": 3, "state": "locked", "open": false, "key_id": 0, "auto_close": 0.00, "breakable": false, "link": 17, "name": "door" },
-    { "kind": "door", "id": 2, "x": 94, "y": 17, "horizontal": 1, "span": 3, "state": "unlocked", "open": true, "key_id": 0, "auto_close": 0.00, "breakable": false, "name": "door" },
+    { "kind": "door", "id": 2, "x": 94, "y": 17, "horizontal": 1, "span": 3, "state": "unlocked", "open": true, "key_id": 0, "auto_close": 0.00, "breakable": true, "name": "door" },
     { "kind": "door", "id": 3, "x": 16, "y": 31, "horizontal": 1, "span": 3, "state": "unlocked", "open": true, "key_id": 0, "auto_close": 0.00, "breakable": false, "name": "door" },
     { "kind": "door", "id": 4, "x": 37, "y": 38, "horizontal": 1, "span": 3, "state": "unlocked", "open": false, "key_id": 0, "auto_close": 0.00, "breakable": false, "name": "door" },
-    { "kind": "door", "id": 5, "x": 93, "y": 57, "horizontal": 1, "span": 3, "state": "unknown", "discover": "unlocked", "open": false, "key_id": 0, "auto_close": 0.00, "breakable": false, "name": "door" },
+    { "kind": "door", "id": 5, "x": 93, "y": 57, "horizontal": 1, "span": 3, "state": "unknown", "discover": "unlocked", "open": false, "key_id": 0, "auto_close": 0.00, "breakable": true, "name": "door" },
     { "kind": "item", "id": 6, "x": 1, "y": 23, "item": "lighter", "name": "item" },
     { "kind": "item", "id": 7, "x": 1, "y": 21, "item": "fuse", "name": "item" },
     { "kind": "item", "id": 8, "x": 69, "y": 65, "item": "injector", "name": "item" },

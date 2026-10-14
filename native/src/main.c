@@ -63,6 +63,9 @@ static struct {
 
 #define ENEMY_STUN_SECONDS 3.0f
 #define HEALTH_DANGER 2
+// How far Grace's footsteps carry, in cells; standing still is silent.
+#define GRACE_NOISE_WALK 4.0f
+#define GRACE_NOISE_RUN 8.0f
 
 static void bump_revision(void);
 
@@ -241,6 +244,9 @@ static const obj_t* hover_interactable(void) {
         if (!grid_is_revealed(o->x, o->y)) {
             continue;
         }
+        if (o->kind == OBJ_DOOR && o->state == DOOR_BROKEN) {
+            continue;
+        }
         if (o->kind == OBJ_ITEM && items_taken(i)) {
             continue;
         }
@@ -301,7 +307,9 @@ static void frame(void) {
     }
     if (!app.paused) {
         player_update(dt);
-        if (enemy_update(dt, player_x(), player_y())) {
+        float noise = !player_is_moving() ? 0.0f
+            : player_move_mode() == PLAYER_RUN ? GRACE_NOISE_RUN : GRACE_NOISE_WALK;
+        if (enemy_update(dt, player_x(), player_y(), noise)) {
             enemy_hit();
         }
         camera_follow(player_x(), player_y());
@@ -539,6 +547,19 @@ WEB_EXPORT int web_inventory_use(int index) {
 
 WEB_EXPORT int web_enemy_state(void) {
     return (int)enemy_state();
+}
+
+WEB_EXPORT int web_doors_broken(void) {
+    int count = 0;
+    for (int i = 0; i < app.level.obj_count; i++) {
+        const obj_t* o = &app.level.objs[i];
+        count += o->kind == OBJ_DOOR && o->state == DOOR_BROKEN;
+    }
+    return count;
+}
+
+WEB_EXPORT int web_enemy_sense(void) {
+    return (int)enemy_sense();
 }
 
 WEB_EXPORT float web_enemy_px(void) {
