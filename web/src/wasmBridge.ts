@@ -29,6 +29,14 @@ export type EmscriptenModule = {
   _web_goal_met?: () => number;
   _game_reset?: () => void;
   _craft_recipe?: (index: number) => number;
+  _web_crafting_count?: () => number;
+  _web_crafting_part_item?: (index: number, part: number) => number;
+  _web_crafting_part_qty?: (index: number, part: number) => number;
+  _web_crafting_ready?: (index: number) => number;
+  _web_item_count?: () => number;
+  _web_item_label?: (item: number) => number;
+  _web_item_color?: (item: number) => number;
+  _web_item_icon?: (item: number) => number;
   _replay_length?: () => number;
   _replay_x?: (index: number) => number;
   _replay_y?: (index: number) => number;
@@ -196,6 +204,80 @@ export function craftRecipe(index: number): boolean {
   return (module()?._craft_recipe?.(index) ?? 0) !== 0;
 }
 
+function copyCString(ptr: number): string {
+  const utf8 = module()?.UTF8ToString;
+  if (!ptr || !utf8) {
+    return "";
+  }
+  return utf8(ptr);
+}
+
+export type RecipePart = {
+  item: number;
+  qty: number;
+  label: string;
+};
+
+export type RecipeView = {
+  inputs: RecipePart[];
+  output: RecipePart;
+};
+
+export type ItemAppearance = {
+  label: string;
+  color: string;
+  shape: number;
+};
+
+export function itemCount(): number {
+  return module()?._web_item_count?.() ?? 0;
+}
+
+export function itemAppearance(item: number): ItemAppearance {
+  const m = module();
+  const label = copyCString(m?._web_item_label?.(item) ?? 0);
+  const color = copyCString(m?._web_item_color?.(item) ?? 0);
+  return {
+    label: label || "Item",
+    color: color || "#1e1e1e",
+    shape: m?._web_item_icon?.(item) ?? 0,
+  };
+}
+
+export function readRecipes(): RecipeView[] {
+  const m = module();
+  if (!m?._web_crafting_count) {
+    return [];
+  }
+  const recipes: RecipeView[] = [];
+  const count = m._web_crafting_count();
+  for (let index = 0; index < count; index++) {
+    const inputs: RecipePart[] = [];
+    for (let part = 0; ; part++) {
+      const item = m._web_crafting_part_item?.(index, part) ?? -1;
+      if (item < 0) {
+        break;
+      }
+      const qty = m._web_crafting_part_qty?.(index, part) ?? 0;
+      inputs.push({ item, qty, label: itemAppearance(item).label });
+    }
+    const outItem = m._web_crafting_part_item?.(index, -1) ?? -1;
+    if (inputs.length === 0 || outItem < 0) {
+      continue;
+    }
+    const outQty = m._web_crafting_part_qty?.(index, -1) ?? 0;
+    recipes.push({
+      inputs,
+      output: { item: outItem, qty: outQty, label: itemAppearance(outItem).label },
+    });
+  }
+  return recipes;
+}
+
+export function recipeReady(index: number): boolean {
+  return (module()?._web_crafting_ready?.(index) ?? 0) !== 0;
+}
+
 export type ReplayPoint = { x: number; y: number };
 
 export function readReplay(): ReplayPoint[] {
@@ -211,15 +293,3 @@ export function readReplay(): ReplayPoint[] {
 export function runElapsedMs(): number {
   return module()?._run_elapsed_ms?.() ?? 0;
 }
-
-export const ITEM_NAMES = [
-  "Empty Bottle",
-  "Antique Coin",
-  "Green Herb",
-  "Ink Ribbon",
-  "Screwdriver",
-  "Med Injector",
-  "Fuse",
-  "Lighter",
-  "Cherub Key",
-];
