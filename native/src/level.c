@@ -140,12 +140,36 @@ obj_kind_t obj_kind_from_name(const char* name) {
     return OBJ_ITEM;
 }
 
+typedef struct {
+    const char* id;
+    const char* label;
+    float r, g, b;
+    int icon;
+} item_info_t;
+
+static const item_info_t k_items[ITEM_COUNT] = {
+    [ITEM_BOTTLE] = { "bottle", "Empty Bottle", 0.0f, 0.031f, 1.0f, 0 },
+    [ITEM_COIN] = { "coin", "Antique Coin", 0.733f, 0.733f, 0.733f, 0 },
+    [ITEM_HERB] = { "herb", "Green Herb", 0.0f, 1.0f, 0.149f, 0 },
+    [ITEM_INK_RIBBON] = { "ink_ribbon", "Ink Ribbon", 0.8f, 0.0f, 0.4f, 3 },
+    [ITEM_SCREWDRIVER] = { "screwdriver", "Screwdriver", 1.0f, 0.0f, 0.933f, 2 },
+    [ITEM_INJECTOR] = { "injector", "Med Injector", 0.0f, 0.8f, 0.15f, 3 },
+    [ITEM_FUSE] = { "fuse", "Fuse", 0.0f, 1.0f, 0.733f, 0 },
+    [ITEM_LIGHTER] = { "lighter", "Lighter", 0.95f, 0.95f, 0.0f, 1 },
+    [ITEM_CHERUB_KEY] = { "cherub_key", "Cherub Key", 0.9f, 0.0f, 0.15f, 3 },
+    [ITEM_MIXED_HERB] = { "mixed_herb", "Mixed Herb (G+G)", 0.13f, 0.45f, 0.10f, 0 },
+};
+
+static const item_info_t* item_row(int item) {
+    if (item < 0 || item >= ITEM_COUNT || !k_items[item].id) {
+        return 0;
+    }
+    return &k_items[item];
+}
+
 const char* item_name(item_t item) {
-    static const char* names[ITEM_COUNT] = {
-        "bottle", "coin", "herb", "ink_ribbon", "screwdriver",
-        "injector", "fuse", "lighter", "cherub_key",
-    };
-    return (item >= 0 && item < ITEM_COUNT) ? names[item] : "herb";
+    const item_info_t* row = item_row((int)item);
+    return row ? row->id : "herb";
 }
 
 item_t item_from_name(const char* name) {
@@ -158,18 +182,8 @@ item_t item_from_name(const char* name) {
 }
 
 const char* item_display_name(int item) {
-    switch (item) {
-        case ITEM_BOTTLE: return "Empty Bottle";
-        case ITEM_COIN: return "Antique Coin";
-        case ITEM_HERB: return "Green Herb";
-        case ITEM_INK_RIBBON: return "Ink Ribbon";
-        case ITEM_SCREWDRIVER: return "Screwdriver";
-        case ITEM_INJECTOR: return "Med Injector";
-        case ITEM_FUSE: return "Fuse";
-        case ITEM_LIGHTER: return "Lighter";
-        case ITEM_CHERUB_KEY: return "Cherub Key";
-        default: return "Item";
-    }
+    const item_info_t* row = item_row(item);
+    return (row && row->label) ? row->label : "Item";
 }
 
 const char* door_state_name(int state) {
@@ -187,30 +201,48 @@ int door_state_from_name(const char* name) {
 }
 
 void item_color_rgb(int item, float* r, float* g, float* b) {
-    switch (item) {
-        case ITEM_BOTTLE: *r = 0.0f; *g = 0.031f; *b = 1.0f; break;
-        case ITEM_COIN: *r = 0.733f; *g = 0.733f; *b = 0.733f; break;
-        case ITEM_HERB: *r = 0.0f; *g = 1.0f; *b = 0.149f; break;
-        case ITEM_INK_RIBBON: *r = 0.8f; *g = 0.0f; *b = 0.4f; break;
-        case ITEM_SCREWDRIVER: *r = 1.0f; *g = 0.0f; *b = 0.933f; break;
-        case ITEM_INJECTOR: *r = 0.0f; *g = 0.8f; *b = 0.15f; break;
-        case ITEM_FUSE: *r = 0.0f; *g = 1.0f; *b = 0.733f; break;
-        case ITEM_LIGHTER: *r = 0.95f; *g = 0.95f; *b = 0.0f; break;
-        case ITEM_CHERUB_KEY: *r = 0.9f; *g = 0.0f; *b = 0.15f; break;
-        default: *r = 0.118f; *g = 0.118f; *b = 0.118f; break;
+    const item_info_t* row = item_row(item);
+    if (!row) {
+        *r = 0.118f;
+        *g = 0.118f;
+        *b = 0.118f;
+        return;
     }
+    *r = row->r;
+    *g = row->g;
+    *b = row->b;
 }
 
-// Icon style from ref/map.kra: 0 circle, 1 square, 2 hollow ring, 3 circle + ink ring.
-int item_icon_shape(int item) {
-    switch (item) {
-        case ITEM_LIGHTER: return 1;
-        case ITEM_SCREWDRIVER: return 2;
-        case ITEM_INK_RIBBON: return 3;
-        case ITEM_INJECTOR: return 3;
-        case ITEM_CHERUB_KEY: return 3;
-        default: return 0;
+static int hex_channel(float channel) {
+    int value = (int)(channel * 255.0f + 0.5f);
+    if (value < 0) {
+        return 0;
     }
+    if (value > 255) {
+        return 255;
+    }
+    return value;
+}
+
+const char* item_color_hex(int item) {
+    static char bufs[ITEM_COUNT][8];
+    const item_info_t* row = item_row(item);
+    if (!row) {
+        return "#1e1e1e";
+    }
+    snprintf(
+        bufs[item],
+        sizeof(bufs[item]),
+        "#%02x%02x%02x",
+        hex_channel(row->r),
+        hex_channel(row->g),
+        hex_channel(row->b));
+    return bufs[item];
+}
+
+int item_icon_shape(int item) {
+    const item_info_t* row = item_row(item);
+    return row ? row->icon : 0;
 }
 
 void door_color_rgb(int state, float* r, float* g, float* b) {

@@ -29,16 +29,29 @@ typedef enum {
 
 typedef enum {
     ITEM_BOTTLE = 0,
-    ITEM_COIN,
-    ITEM_HERB,
-    ITEM_INK_RIBBON,
-    ITEM_SCREWDRIVER,
-    ITEM_INJECTOR,
-    ITEM_FUSE,
-    ITEM_LIGHTER,
-    ITEM_CHERUB_KEY,
-    ITEM_COUNT,
+    ITEM_COIN = 1,
+    ITEM_HERB = 2,
+    ITEM_INK_RIBBON = 3,
+    ITEM_SCREWDRIVER = 4,
+    ITEM_INJECTOR = 5,
+    ITEM_FUSE = 6,
+    ITEM_LIGHTER = 7,
+    ITEM_CHERUB_KEY = 8,
+    ITEM_MIXED_HERB = 9,
+    ITEM_COUNT = 10,
 } item_t;
+
+#ifdef __cplusplus
+#define _Static_assert(cond, msg) static_assert(cond, msg)
+#endif
+_Static_assert(ITEM_HERB == 2, "save ordinal");
+_Static_assert(ITEM_LIGHTER == 7, "save ordinal");
+_Static_assert(ITEM_CHERUB_KEY == 8, "save ordinal");
+_Static_assert(ITEM_MIXED_HERB == 9, "save ordinal");
+_Static_assert(ITEM_COUNT == 10, "save ordinal");
+#ifdef __cplusplus
+#undef _Static_assert
+#endif
 
 typedef enum {
     DOOR_UNKNOWN = 0,
@@ -103,6 +116,7 @@ int door_state_from_name(const char* name);
 
 // Reference map colours, shared by the runtime and the editor.
 void item_color_rgb(int item, float* r, float* g, float* b);
+const char* item_color_hex(int item);
 int item_icon_shape(int item);
 void door_color_rgb(int state, float* r, float* g, float* b);
 
