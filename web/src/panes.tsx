@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   SAVE_SLOTS,
+  applyInventoryItem,
   clearInventorySlot,
   craftRecipe,
   gameReset,
@@ -118,7 +119,7 @@ const ITEM_ACTIONS: ItemAction[][] = [
   ["Move"],
   [],
   ["Move"],
-  ["Move", "Discard"],
+  ["Move", "Use", "Discard"],
 ];
 
 const STEROID_CHARGES = 0;
@@ -307,6 +308,12 @@ export function Inventory() {
     setMenu(null);
     if (action === "Move") {
       setMovingFrom(index);
+      return;
+    }
+    if (action === "Use") {
+      if (applyInventoryItem(index) && selected === index) {
+        setSelected(-1);
+      }
       return;
     }
     if (action === "Discard") {

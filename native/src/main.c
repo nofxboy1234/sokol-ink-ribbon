@@ -13,6 +13,7 @@
 #include "camera.h"
 #include "crafting.h"
 #include "doors.h"
+#include "enemy.h"
 #include "grid.h"
 #include "health.h"
 #include "interact.h"
@@ -53,11 +54,15 @@ static struct {
     bool touch_moved;
     float touch_start_x, touch_start_y;
     float touch_hold;
+    int respawn_x, respawn_y;
 } app;
 
 // A long press on the map runs, like a right click.
 #define TOUCH_RUN_HOLD 0.45f
 #define TOUCH_SLOP_PX 14.0f
+
+#define ENEMY_STUN_SECONDS 3.0f
+#define HEALTH_DANGER 2
 
 static void bump_revision(void);
 
@@ -149,6 +154,25 @@ static void handle_click(player_move_t mode) {
     bump_revision();
 }
 
+// A hit worsens Grace's health one step. A hit while in Danger sends her back
+// to the last save point (or the start) at full health.
+static void enemy_hit(void) {
+    int health = health_state();
+    if (health >= HEALTH_DANGER) {
+        player_set_cell(app.respawn_x, app.respawn_y);
+        health_set(0);
+        app.route.count = 0;
+        app.targeting = true;
+        app.preview.count = 0;
+        camera_follow(player_x(), player_y());
+        camera_recentre();
+    } else {
+        health_set(health + 1);
+    }
+    enemy_stun(ENEMY_STUN_SECONDS);
+    bump_revision();
+}
+
 static void init(void) {
     sg_setup(&(sg_desc){
         .environment = sglue_environment(),
@@ -169,6 +193,9 @@ static void init(void) {
     interact_init();
     health_init();
     savegame_init();
+    enemy_init(app.level.start_x, app.level.start_y);
+    app.respawn_x = app.level.start_x;
+    app.respawn_y = app.level.start_y;
     camera_init();
     camera_set_viewport(sapp_width(), sapp_height());
     camera_follow(player_x(), player_y());
@@ -276,6 +303,9 @@ static void frame(void) {
     }
     if (!app.paused) {
         player_update(dt);
+        if (enemy_update(dt, player_x(), player_y())) {
+            enemy_hit();
+        }
         camera_follow(player_x(), player_y());
         camera_update(dt);
         reveal_sections();
@@ -496,6 +526,31 @@ WEB_EXPORT int health_value(void) {
     return health_state();
 }
 
+// Green Herb heals one step, Mixed Herb (G+G) heals fully.
+WEB_EXPORT int web_inventory_use(int index) {
+    int item = inventory_slot(index);
+    int heal = item == ITEM_HERB ? 1 : item == ITEM_MIXED_HERB ? HEALTH_DANGER : 0;
+    int health = health_state();
+    if (heal == 0 || health == 0 || !inventory_clear_slot(index)) {
+        return 0;
+    }
+    health_set(health - heal);
+    bump_revision();
+    return 1;
+}
+
+WEB_EXPORT int web_enemy_state(void) {
+    return (int)enemy_state();
+}
+
+WEB_EXPORT float web_enemy_px(void) {
+    return enemy_x();
+}
+
+WEB_EXPORT float web_enemy_py(void) {
+    return enemy_y();
+}
+
 WEB_EXPORT int items_collected(void) {
     return items_taken_count();
 }
@@ -598,6 +653,9 @@ WEB_EXPORT void game_reset(void) {
     doors_init();
     interact_init();
     health_init();
+    enemy_init(app.level.start_x, app.level.start_y);
+    app.respawn_x = app.level.start_x;
+    app.respawn_y = app.level.start_y;
     camera_set_follow(true);
     camera_follow(player_x(), player_y());
     camera_recentre();
@@ -630,6 +688,7 @@ WEB_EXPORT int save_game(int slot) {
         return 0;
     }
     savegame_save(slot, app.elapsed * 1000.0);
+    player_cell(&app.respawn_x, &app.respawn_y);
     bump_revision();
     return 1;
 }
@@ -638,6 +697,8 @@ WEB_EXPORT int load_game(int slot) {
     double e = 0.0;
     if (savegame_load(slot, &e)) {
         app.elapsed = e / 1000.0;
+        player_cell(&app.respawn_x, &app.respawn_y);
+        enemy_init(app.respawn_x, app.respawn_y);
         app.route.count = 0;
         app.targeting = true;
         app.preview.count = 0;
