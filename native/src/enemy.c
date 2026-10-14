@@ -348,13 +348,21 @@ bool enemy_update(float dt, float gx, float gy, float noise) {
                 enter(ENEMY_LOOK);
             }
             break;
-        case ENEMY_BREAKING:
+        case ENEMY_BREAKING: {
+            // If the door was opened (or broken) mid-swing there is nothing
+            // left to smash: stop and walk through instead.
+            const obj_t* d = &grid_level()->objs[e.door];
+            if (d->open || d->state == DOOR_BROKEN) {
+                e.state = e.resume;
+                break;
+            }
             e.timer -= dt;
             if (e.timer <= 0.0f) {
                 doors_break(e.door);
                 e.state = e.resume;
             }
             break;
+        }
         case ENEMY_LOOK:
         case ENEMY_WINDED:
             e.timer -= dt;
