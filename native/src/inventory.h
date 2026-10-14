@@ -11,4 +11,5 @@ bool inventory_clear_slot(int index);
 int inventory_count(void);
 int inventory_slot(int index);
 bool inventory_has(int item_type);
+int inventory_count_of(int item_type);
 void inventory_set(int count, const int* slots);

@@ -7,20 +7,24 @@ import {
   type PointerEvent,
 } from "react";
 import {
-  ITEM_NAMES,
   SAVE_SLOTS,
   clearInventorySlot,
   craftRecipe,
   gameReset,
+  itemAppearance,
+  itemCount,
   loadGame,
   moveInventorySlot,
   readFiles,
+  readRecipes,
   readReplay,
+  recipeReady,
   runElapsedMs,
   saveGame,
   saveTimeMs,
   saveUsed,
   setLighter,
+  type ItemAppearance,
 } from "./wasmBridge";
 import { useElapsed, useGameState } from "./GameState";
 
@@ -31,19 +35,6 @@ export function formatMs(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-// Same colours as item_color_rgb in native/src/level.c.
-const ITEM_COLORS = [
-  "#0008ff",
-  "#bbbbbb",
-  "#00ff26",
-  "#cc0066",
-  "#ff00ee",
-  "#00cc26",
-  "#00ffbb",
-  "#f2f200",
-  "#e60026",
-];
-
 // The map page unmounts on the way to Records, but the wasm game stays
 // alive, so this has to live outside RunPanel or each visit posts again.
 let goalRunSaved = false;
@@ -52,6 +43,12 @@ export function RunPanel() {
   const elapsed = useElapsed();
   const { goalMet } = useGameState();
   const [status, setStatus] = useState("");
+  const count = itemCount();
+  if (count > 0 && (ITEM_TEXT.length !== count || ITEM_ACTIONS.length !== count)) {
+    throw new Error(
+      `item copy length text ${ITEM_TEXT.length} actions ${ITEM_ACTIONS.length} catalog ${count}`,
+    );
+  }
 
   // A run saves itself the moment the goal (the fuse box) is activated.
   useEffect(() => {
@@ -96,9 +93,6 @@ export function RunPanel() {
 const HEALTH_LABELS = ["FINE", "CAUTION", "DANGER"];
 const HEALTH_COLORS = ["var(--green)", "var(--orange)", "var(--red)"];
 
-// Same shapes as item_icon_shape in native/src/level.c.
-const ITEM_SHAPES = [0, 0, 0, 3, 2, 3, 0, 1, 3];
-
 const ITEM_TEXT = [
   "A clear glass bottle. It could hold a mixed herb.",
   "A worn coin stamped with a crest. It has no spendable value here.",
@@ -109,6 +103,7 @@ const ITEM_TEXT = [
   "A glass cartridge fuse. The basement fuse box will take it.",
   "A pocket lighter. It throws a small circle of light when it is lit.",
   "A key topped with a small cherub. It opens a matching lock.",
+  "This is a combination of 2 Green Herbs, and will restore a medium amount of health when used.",
 ];
 
 type ItemAction = "Move" | "Use" | "Discard";
@@ -123,14 +118,14 @@ const ITEM_ACTIONS: ItemAction[][] = [
   ["Move"],
   [],
   ["Move"],
+  ["Move", "Discard"],
 ];
 
 const STEROID_CHARGES = 0;
 const STABILIZER_CHARGES = 0;
 
-function ItemGlyph({ item }: { item: number }) {
-  const color = ITEM_COLORS[item] ?? "#ff006a";
-  const shape = ITEM_SHAPES[item] ?? 0;
+function ItemGlyph({ appearance }: { appearance: ItemAppearance }) {
+  const { color, shape } = appearance;
   if (shape === 1) {
     return <span className="glyph glyph-square" style={{ background: color }} />;
   }
@@ -214,6 +209,7 @@ export function Inventory() {
   }, [menu, movingFrom]);
 
   const selectedItem = selected >= 0 ? inventory[selected] : -1;
+  const selectedLook = selectedItem >= 0 ? itemAppearance(selectedItem) : null;
   const menuItem = menu ? inventory[menu.index] : -1;
   const menuActions = menuItem >= 0 ? (ITEM_ACTIONS[menuItem] ?? []) : [];
 
@@ -325,32 +321,35 @@ export function Inventory() {
     <div className="pane-content">
       <h2>ITEMS</h2>
       <div className="inventory-grid">
-        {inventory.map((item, index) => (
-          <button
-            key={index}
-            type="button"
-            className="inventory-slot"
-            data-filled={item >= 0}
-            data-selected={selected === index}
-            data-moving={movingFrom === index}
-            title={item >= 0 ? ITEM_NAMES[item] : ""}
-            onClick={() => onSlotClick(index)}
-            onContextMenu={(event) => onSlotMenu(event, index)}
-            onPointerDown={(event) => onSlotPointerDown(event, index)}
-            onPointerMove={onSlotPointerMove}
-            onPointerUp={onSlotPointerEnd}
-            onPointerCancel={onSlotPointerEnd}
-          >
-            {item >= 0 && <ItemGlyph item={item} />}
-            {item >= 0 && <span className="inventory-name">{ITEM_NAMES[item]}</span>}
-          </button>
-        ))}
+        {inventory.map((item, index) => {
+          const look = item >= 0 ? itemAppearance(item) : null;
+          return (
+            <button
+              key={index}
+              type="button"
+              className="inventory-slot"
+              data-filled={item >= 0}
+              data-selected={selected === index}
+              data-moving={movingFrom === index}
+              title={look ? look.label : ""}
+              onClick={() => onSlotClick(index)}
+              onContextMenu={(event) => onSlotMenu(event, index)}
+              onPointerDown={(event) => onSlotPointerDown(event, index)}
+              onPointerMove={onSlotPointerMove}
+              onPointerUp={onSlotPointerEnd}
+              onPointerCancel={onSlotPointerEnd}
+            >
+              {look && <ItemGlyph appearance={look} />}
+              {look && <span className="inventory-name">{look.label}</span>}
+            </button>
+          );
+        })}
       </div>
       {movingFrom >= 0 && <p className="move-hint">Choose a slot</p>}
       <div className="item-detail">
-        {selectedItem >= 0 && (
+        {selectedLook && (
           <>
-            <h3>{ITEM_NAMES[selectedItem]}</h3>
+            <h3>{selectedLook.label}</h3>
             <p>{ITEM_TEXT[selectedItem]}</p>
           </>
         )}
@@ -411,37 +410,157 @@ export function Inventory() {
   );
 }
 
-const RECIPES = [
-  { inputs: ["Green Herb", "Green Herb"], output: "Mixed Herb" },
-  { inputs: ["Green Herb", "Empty Bottle"], output: "Herb Bottle" },
-  { inputs: ["Fuse", "Screwdriver"], output: "Repaired Fuse" },
-];
+const HOLD_MS = 1000;
+
+type Hold =
+  | { kind: "idle" }
+  | { kind: "filling"; index: number; pointerId: number; startedAt: number }
+  | { kind: "committed"; index: number; pointerId: number };
+
+type HoldBind = {
+  onPointerDown: (event: PointerEvent<HTMLButtonElement>) => void;
+  onPointerUp: (event: PointerEvent<HTMLButtonElement>) => void;
+  onPointerCancel: (event: PointerEvent<HTMLButtonElement>) => void;
+  onContextMenu: (event: MouseEvent<HTMLButtonElement>) => void;
+};
+
+function useCraftHold(onCommit: (index: number) => boolean): {
+  bind: (index: number, ready: boolean) => HoldBind;
+  fill: (index: number) => number;
+} {
+  const onCommitRef = useRef(onCommit);
+  onCommitRef.current = onCommit;
+  const [hold, setHold] = useState<Hold>({ kind: "idle" });
+  const holdRef = useRef(hold);
+  holdRef.current = hold;
+  const [fillRatio, setFillRatio] = useState(0);
+  const frameRef = useRef(0);
+
+  useEffect(() => {
+    if (hold.kind !== "filling") {
+      return;
+    }
+    const startedAt = hold.startedAt;
+    const index = hold.index;
+    const pointerId = hold.pointerId;
+    const tick = (now: number) => {
+      const current = holdRef.current;
+      if (current.kind !== "filling" || current.startedAt !== startedAt) {
+        return;
+      }
+      const elapsed = now - startedAt;
+      if (elapsed >= HOLD_MS) {
+        holdRef.current = { kind: "committed", index, pointerId };
+        const ok = onCommitRef.current(index);
+        if (!ok) {
+          holdRef.current = { kind: "idle" };
+          setFillRatio(0);
+          setHold({ kind: "idle" });
+          return;
+        }
+        setFillRatio(1);
+        setHold(holdRef.current);
+        return;
+      }
+      setFillRatio(Math.min(1, Math.max(0, elapsed / HOLD_MS)));
+      frameRef.current = requestAnimationFrame(tick);
+    };
+    frameRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameRef.current);
+  }, [hold]);
+
+  const endHold = (event: PointerEvent<HTMLButtonElement>, index: number) => {
+    const current = holdRef.current;
+    if (current.kind === "idle" || current.index !== index || current.pointerId !== event.pointerId) {
+      return;
+    }
+    cancelAnimationFrame(frameRef.current);
+    holdRef.current = { kind: "idle" };
+    setFillRatio(0);
+    setHold({ kind: "idle" });
+  };
+
+  return {
+    bind: (index, ready) => ({
+      onPointerDown: (event) => {
+        if (!ready || holdRef.current.kind !== "idle") {
+          return;
+        }
+        if (event.pointerType === "mouse" && event.button !== 0) {
+          return;
+        }
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        const next: Hold = {
+          kind: "filling",
+          index,
+          pointerId: event.pointerId,
+          startedAt: event.timeStamp,
+        };
+        holdRef.current = next;
+        setFillRatio(0);
+        setHold(next);
+      },
+      onPointerUp: (event) => endHold(event, index),
+      onPointerCancel: (event) => endHold(event, index),
+      onContextMenu: (event) => {
+        event.preventDefault();
+      },
+    }),
+    fill: (index) => {
+      if (hold.kind === "idle" || hold.index !== index) {
+        return 0;
+      }
+      if (hold.kind === "committed") {
+        return 1;
+      }
+      return fillRatio;
+    },
+  };
+}
 
 export function Crafting() {
-  const { inventory } = useGameState();
+  const { revision } = useGameState();
+  const recipes = useMemo(() => readRecipes(), [revision]);
+  const hold = useCraftHold((index) => craftRecipe(index));
+
   return (
     <div className="pane-content">
       <h2>CRAFTING</h2>
       <ul className="recipe-list">
-        {RECIPES.map((recipe, index) => (
-          <li key={recipe.output}>
-            <button
-              type="button"
-              className="recipe"
-              disabled={inventory.every((item) => item < 0)}
-              onClick={() => craftRecipe(index)}
-            >
-              <span className="recipe-dot" style={{ background: "#ff006a" }} />
-              <span>{recipe.inputs[0]}</span>
-              <span className="recipe-op">+</span>
-              <span className="recipe-ring" />
-              <span>{recipe.inputs[1]}</span>
-              <span className="recipe-op">→</span>
-              <span className="recipe-dot" style={{ background: "#ff006a" }} />
-              <span className="recipe-output">{recipe.output}</span>
-            </button>
-          </li>
-        ))}
+        {recipes.map((recipe, index) => {
+          const ready = recipeReady(index);
+          return (
+            <li key={index}>
+              <button
+                type="button"
+                className="recipe"
+                aria-disabled={!ready}
+                {...hold.bind(index, ready)}
+              >
+                <span
+                  className="recipe-fill"
+                  style={{
+                    transform: `scaleX(${hold.fill(index)})`,
+                    visibility: ready && hold.fill(index) > 0 ? "visible" : "hidden",
+                  }}
+                />
+                {recipe.inputs.map((part, partIndex) => (
+                  <span key={part.item} className="recipe-part">
+                    {partIndex > 0 && <span className="recipe-op">+</span>}
+                    <span>
+                      {part.label} × {part.qty}
+                    </span>
+                  </span>
+                ))}
+                <span className="recipe-op">→</span>
+                <span className="recipe-output">
+                  {recipe.output.label} × {recipe.output.qty}
+                </span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

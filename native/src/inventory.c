@@ -68,12 +68,20 @@ int inventory_slot(int index) {
 }
 
 bool inventory_has(int item_type) {
+    return inventory_count_of(item_type) > 0;
+}
+
+int inventory_count_of(int item_type) {
+    if (item_type < 0) {
+        return 0;
+    }
+    int count = 0;
     for (int i = 0; i < INV_SLOTS; i++) {
         if (inv_slots[i] == item_type) {
-            return true;
+            count++;
         }
     }
-    return false;
+    return count;
 }
 
 void inventory_set(int count, const int* slots) {
