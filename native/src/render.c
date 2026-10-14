@@ -417,7 +417,9 @@ void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* ro
     if (grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
         float ex, ey;
         camera_cell_to_screen(enemy_x(), enemy_y(), &ex, &ey);
-        fill_circle(ex, ey, scale * 0.64f, C_RED_R);
+        // a winded enemy fades so the escape window reads at a glance
+        float alpha = enemy_state() == ENEMY_WINDED ? 0.45f : 1.0f;
+        fill_circle(ex, ey, scale * 0.64f, 1.0f, 0.0f, 0.165f, alpha);
         if (enemy_state() == ENEMY_STUNNED) {
             ring_circle(ex, ey, scale * 0.64f, scale * 0.12f, C_INK_R);
         }

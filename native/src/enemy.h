@@ -7,6 +7,7 @@ typedef enum {
     ENEMY_CHASE,
     ENEMY_SEARCH,
     ENEMY_STUNNED,
+    ENEMY_WINDED,
 } enemy_state_t;
 
 void enemy_init(int avoid_x, int avoid_y);
