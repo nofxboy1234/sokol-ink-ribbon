@@ -31,8 +31,10 @@ static bool blocks(const obj_t* o) {
     return o->state != DOOR_UNLOCKED && o->state != DOOR_BROKEN;
 }
 
+// Only a shut door can be smashed: an open one is walked through and a
+// broken one is already gone.
 static bool intact_breakable(const obj_t* o) {
-    return is_door(o) && o->breakable && o->state != DOOR_BROKEN;
+    return is_door(o) && o->breakable && o->state != DOOR_BROKEN && !o->open;
 }
 
 static bool on_edge(const obj_t* o, int ax, int ay, int bx, int by) {
@@ -159,7 +161,7 @@ bool doors_approach_blocked(int from_x, int from_y, int to_x, int to_y, bool thr
     level_t* lv = dr.level;
     for (int i = 0; i < lv->obj_count; i++) {
         const obj_t* o = &lv->objs[i];
-        if (!is_door(o) || !blocks(o) || (through_breakable && o->breakable)) {
+        if (!is_door(o) || !blocks(o) || (through_breakable && intact_breakable(o))) {
             continue;
         }
         if (cell_door_distance(o, to_x, to_y) == 0) {

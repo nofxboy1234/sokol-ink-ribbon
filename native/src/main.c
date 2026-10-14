@@ -39,7 +39,8 @@ static struct {
     level_t level;
     path_t preview;
     path_t route;
-    bool targeting;
+    // Touch has no hover, so the green preview only shows while a finger is down.
+    bool touch_pointer;
     float mouse_x, mouse_y;
     int hover_x, hover_y;
     bool ui_captured;
@@ -119,7 +120,7 @@ static void update_hover(void) {
         app.hover_y = cy;
         int px, py;
         player_cell(&px, &py);
-        if (!app.targeting || !pathfind(px, py, cx, cy, &app.preview)) {
+        if ((app.touch_pointer && !app.touch_active) || !pathfind(px, py, cx, cy, &app.preview)) {
             app.preview.count = 0;
         }
     } else {
@@ -130,9 +131,6 @@ static void update_hover(void) {
 }
 
 static void handle_click(player_move_t mode) {
-    // A click while Grace walks steers her straight away; it also brings
-    // the green preview back.
-    app.targeting = true;
     if (app.hover_x < 0 || app.hover_y < 0) {
         return;
     }
@@ -147,8 +145,6 @@ static void handle_click(player_move_t mode) {
     player_move_to(app.hover_x, app.hover_y, mode);
     if (player_is_moving()) {
         app.route = *player_path();
-        app.targeting = false;
-        app.preview.count = 0;
     } else {
         app.route.count = 0;
     }
@@ -163,8 +159,7 @@ static void enemy_hit(void) {
         player_set_cell(app.respawn_x, app.respawn_y);
         health_set(0);
         app.route.count = 0;
-        app.targeting = true;
-        app.preview.count = 0;
+            app.preview.count = 0;
         camera_follow(player_x(), player_y());
         camera_recentre();
     } else {
@@ -207,7 +202,6 @@ static void init(void) {
     app.hover_y = -1;
     app.preview.count = 0;
     app.route.count = 0;
-    app.targeting = true;
     app.ui_captured = false;
     app.last_steps = 0;
     app.last_moving = false;
@@ -325,7 +319,6 @@ static void frame(void) {
             int last = app.route.count - 1;
             if (px == app.route.x[last] && py == app.route.y[last]) {
                 app.route.count = 0;
-                app.targeting = true;
             }
         }
         app.elapsed += (double)dt;
@@ -341,9 +334,10 @@ static void frame(void) {
     update_hover();
 
     _dbgui_update();
-    render_scene(app.targeting ? app.hover_x : -1,
-                 app.targeting ? app.hover_y : -1,
-                 app.targeting ? &app.preview : NULL,
+    bool hover = !app.touch_pointer || app.touch_active;
+    render_scene(hover ? app.hover_x : -1,
+                 hover ? app.hover_y : -1,
+                 hover ? &app.preview : NULL,
                  &app.route);
 
     sg_begin_pass(&(sg_pass){
@@ -377,6 +371,7 @@ static void event(const sapp_event* e) {
             camera_set_viewport(sapp_width(), sapp_height());
             return;
         case SAPP_EVENTTYPE_MOUSE_MOVE:
+            app.touch_pointer = false;
             app.mouse_x = e->mouse_x;
             app.mouse_y = e->mouse_y;
             return;
@@ -388,6 +383,7 @@ static void event(const sapp_event* e) {
             }
             return;
         case SAPP_EVENTTYPE_TOUCHES_BEGAN:
+            app.touch_pointer = true;
             if (e->num_touches == 1) {
                 app.touch_active = true;
                 app.touch_moved = false;
@@ -683,7 +679,6 @@ WEB_EXPORT void game_reset(void) {
     app.elapsed = 0.0;
     app.paused = false;
     app.route.count = 0;
-    app.targeting = true;
     app.preview.count = 0;
     app.last_steps = 0;
     app.last_moving = false;
@@ -719,8 +714,7 @@ WEB_EXPORT int load_game(int slot) {
         player_cell(&app.respawn_x, &app.respawn_y);
         enemy_init(app.respawn_x, app.respawn_y);
         app.route.count = 0;
-        app.targeting = true;
-        app.preview.count = 0;
+            app.preview.count = 0;
         camera_follow(player_x(), player_y());
         bump_revision();
         return 1;
