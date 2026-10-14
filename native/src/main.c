@@ -535,6 +535,38 @@ WEB_EXPORT int web_goal_met(void) {
     return goal_met() ? 1 : 0;
 }
 
+WEB_EXPORT int web_crafting_count(void) {
+    return crafting_count();
+}
+
+WEB_EXPORT int web_crafting_part_item(int index, int part) {
+    return crafting_part_item(index, part);
+}
+
+WEB_EXPORT int web_crafting_part_qty(int index, int part) {
+    return crafting_part_qty(index, part);
+}
+
+WEB_EXPORT int web_crafting_ready(int index) {
+    return crafting_ready(index) ? 1 : 0;
+}
+
+WEB_EXPORT int web_item_count(void) {
+    return ITEM_COUNT;
+}
+
+WEB_EXPORT const char* web_item_label(int item) {
+    return item_display_name(item);
+}
+
+WEB_EXPORT const char* web_item_color(int item) {
+    return item_color_hex(item);
+}
+
+WEB_EXPORT int web_item_icon(int item) {
+    return item_icon_shape(item);
+}
+
 WEB_EXPORT int craft_recipe(int index) {
     if (craft(index)) {
         bump_revision();
