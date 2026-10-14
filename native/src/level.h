@@ -57,6 +57,8 @@ typedef enum {
     DOOR_UNKNOWN = 0,
     DOOR_LOCKED,
     DOOR_UNLOCKED,
+    // smashed by the enemy: the slab is gone and the gap stays open
+    DOOR_BROKEN,
 } door_state_t;
 
 typedef struct {

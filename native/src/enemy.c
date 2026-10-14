@@ -2,8 +2,9 @@
 //  enemy.c
 //  One stalker that roams the map on A* paths. Its behaviour is a state
 //  machine: patrol random nearby cells, stop to look around, chase Grace on
-//  sight, search where she was probably heading, catch its breath after a
-//  long chase, and freeze after a hit.
+//  sight, smell or sound, search where she was probably heading, smash
+//  through breakable doors, catch its breath after a long chase, and freeze
+//  after a hit.
 //------------------------------------------------------------------------------
 #include "enemy.h"
 #include "doors.h"
@@ -19,7 +20,10 @@
 // her in view out to 9 cells and hears her within 5 steps.
 #define ENEMY_SIGHT_RADIUS 6.5f
 #define ENEMY_TRACK_RADIUS 9.0f
-#define ENEMY_HEAR_STEPS 5
+#define ENEMY_SMELL_STEPS 5
+#define ENEMY_BREAK_CHASE 50
+#define ENEMY_BREAK_SEARCH 35
+#define ENEMY_BREAK_PATROL 20
 #define ENEMY_TOUCH_DIST 0.95f
 #define ENEMY_REPLAN 0.35f
 #define ENEMY_CHASE_STEPS 30
@@ -46,16 +50,20 @@ static struct {
     int sweeps;
     int seen_x, seen_y;
     int heading_x, heading_y;
+    enemy_sense_t sense;
+    int door;
+    enemy_state_t resume;
     unsigned int rng;
 } e;
 
 static path_t scratch;
 
+// Sight edges: walls and closed doors block, open and broken doors do not.
 static bool edge_blocked(int ax, int ay, int bx, int by) {
     if (!grid_is_floor(bx, by)) {
         return true;
     }
-    return doors_on_edge(ax, ay, bx, by) ? doors_block_edge(ax, ay, bx, by) : grid_blocked(ax, ay, bx, by);
+    return doors_on_edge(ax, ay, bx, by) ? doors_block_sight(ax, ay, bx, by) : grid_blocked(ax, ay, bx, by);
 }
 
 static unsigned int rnd(void) {
@@ -83,7 +91,10 @@ static bool route_to(int tx, int ty, int max_cost) {
     } else {
         cell_of(&sx, &sy);
     }
-    if (!pathfind_within(sx, sy, tx, ty, max_cost, &scratch)) {
+    // Each plan rolls whether it is willing to smash through breakable doors.
+    int chance = e.state == ENEMY_CHASE ? ENEMY_BREAK_CHASE : e.state == ENEMY_SEARCH ? ENEMY_BREAK_SEARCH : ENEMY_BREAK_PATROL;
+    bool through = (int)(rnd() % 100u) < chance;
+    if (!pathfind_within(sx, sy, tx, ty, max_cost, through, &scratch)) {
         return false;
     }
     e.path = scratch;
@@ -170,7 +181,7 @@ void enemy_init(int avoid_x, int avoid_y) {
     for (int attempt = 0; attempt < 400; attempt++) {
         int tx = avoid_x + (int)(rnd() % 37u) - 18;
         int ty = avoid_y + (int)(rnd() % 37u) - 18;
-        if (grid_is_floor(tx, ty) && pathfind_within(avoid_x, avoid_y, tx, ty, ENEMY_SPAWN_MAX, &scratch) &&
+        if (grid_is_floor(tx, ty) && pathfind_within(avoid_x, avoid_y, tx, ty, ENEMY_SPAWN_MAX, false, &scratch) &&
             scratch.count - 1 >= ENEMY_SPAWN_MIN) {
             e.x = (float)tx + 0.5f;
             e.y = (float)ty + 0.5f;
@@ -224,24 +235,28 @@ static bool line_of_sight(float gx, float gy) {
 }
 
 // Spotting needs a clear line inside the sight radius, from a cell Grace has
-// revealed. Once on her trail it keeps her out to the wider track radius and
-// hears her footsteps a few steps away, even round a corner.
-static bool senses(float gx, float gy, bool tracking) {
-    if (!grid_is_revealed((int)floorf(e.x), (int)floorf(e.y))) {
-        return false;
-    }
+// revealed; once on her trail it keeps her out to the wider track radius.
+// Smell follows walkable paths a few steps out, so it rounds corners but not
+// walls. Hearing ignores walls and doors and reaches as far as her footsteps
+// carry. Smell and hearing work in every direction and from the fog.
+static enemy_sense_t senses(float gx, float gy, float noise, bool tracking) {
     float dx = gx - e.x;
     float dy = gy - e.y;
+    float d2 = dx * dx + dy * dy;
     float radius = tracking ? ENEMY_TRACK_RADIUS : ENEMY_SIGHT_RADIUS;
-    if (dx * dx + dy * dy <= radius * radius && line_of_sight(gx, gy)) {
-        return true;
-    }
-    if (!tracking) {
-        return false;
+    if (grid_is_revealed((int)floorf(e.x), (int)floorf(e.y)) && d2 <= radius * radius && line_of_sight(gx, gy)) {
+        return SENSE_SIGHT;
     }
     int cx, cy;
     cell_of(&cx, &cy);
-    return pathfind_within(cx, cy, (int)floorf(gx), (int)floorf(gy), ENEMY_HEAR_STEPS, &scratch);
+    if (d2 <= (float)(ENEMY_SMELL_STEPS * ENEMY_SMELL_STEPS) &&
+        pathfind_within(cx, cy, (int)floorf(gx), (int)floorf(gy), ENEMY_SMELL_STEPS, false, &scratch)) {
+        return SENSE_SMELL;
+    }
+    if (noise > 0.0f && d2 <= noise * noise) {
+        return SENSE_HEARING;
+    }
+    return SENSE_NONE;
 }
 
 static void remember(float gx, float gy) {
@@ -258,6 +273,28 @@ static void remember(float gx, float gy) {
     e.seen_y = y;
 }
 
+// A closed door on the next step: a breakable one may get smashed (always,
+// if it is locked and the plan went through it), an unlocked one is pushed
+// open, anything else ends the walk.
+static void cross_door(int ax, int ay, int bx, int by) {
+    int door = doors_closed_on_edge(ax, ay, bx, by);
+    if (door < 0) {
+        return;
+    }
+    const obj_t* o = &grid_level()->objs[door];
+    bool locked = doors_block_edge(ax, ay, bx, by);
+    if (o->breakable && (locked || rnd() % 2u == 0u)) {
+        e.door = door;
+        e.resume = e.state;
+        e.state = ENEMY_BREAKING;
+        e.timer = rnd_range(1.2f, 2.0f);
+    } else if (!locked) {
+        doors_open(door);
+    } else {
+        e.path.count = 0;
+    }
+}
+
 // Returns true once the path is used up.
 static bool walk(float dt) {
     if (e.index < e.path.count) {
@@ -271,6 +308,9 @@ static bool walk(float dt) {
             e.x = tx;
             e.y = ty;
             e.index++;
+            if (e.index < e.path.count) {
+                cross_door(e.path.x[e.index - 1], e.path.y[e.index - 1], e.path.x[e.index], e.path.y[e.index]);
+            }
             return e.index >= e.path.count;
         }
         e.x += dx / dist * step;
@@ -280,7 +320,7 @@ static bool walk(float dt) {
     return true;
 }
 
-bool enemy_update(float dt, float gx, float gy) {
+bool enemy_update(float dt, float gx, float gy, float noise) {
     if (e.state == ENEMY_STUNNED) {
         e.timer -= dt;
         if (e.timer <= 0.0f) {
@@ -293,10 +333,11 @@ bool enemy_update(float dt, float gx, float gy) {
     }
 
     bool tracking = e.state == ENEMY_CHASE || e.state == ENEMY_SEARCH;
-    bool sensed = e.state != ENEMY_WINDED && senses(gx, gy, tracking);
+    e.sense = e.state == ENEMY_WINDED ? SENSE_NONE : senses(gx, gy, noise, tracking);
+    bool sensed = e.sense != SENSE_NONE;
     if (sensed) {
         remember(gx, gy);
-        if (e.state != ENEMY_CHASE && e.stamina > ENEMY_STAMINA_MIN) {
+        if (e.state != ENEMY_CHASE && e.state != ENEMY_BREAKING && e.stamina > ENEMY_STAMINA_MIN) {
             enter(ENEMY_CHASE);
         }
     }
@@ -305,6 +346,13 @@ bool enemy_update(float dt, float gx, float gy) {
         case ENEMY_PATROL:
             if (walk(dt)) {
                 enter(ENEMY_LOOK);
+            }
+            break;
+        case ENEMY_BREAKING:
+            e.timer -= dt;
+            if (e.timer <= 0.0f) {
+                doors_break(e.door);
+                e.state = e.resume;
             }
             break;
         case ENEMY_LOOK:
@@ -371,6 +419,10 @@ bool enemy_update(float dt, float gx, float gy) {
 void enemy_stun(float seconds) {
     enter(ENEMY_STUNNED);
     e.timer = seconds;
+}
+
+enemy_sense_t enemy_sense(void) {
+    return e.sense;
 }
 
 enemy_state_t enemy_state(void) {

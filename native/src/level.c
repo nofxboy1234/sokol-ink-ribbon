@@ -187,12 +187,12 @@ const char* item_display_name(int item) {
 }
 
 const char* door_state_name(int state) {
-    static const char* names[3] = { "unknown", "locked", "unlocked" };
-    return (state >= 0 && state < 3) ? names[state] : "unknown";
+    static const char* names[4] = { "unknown", "locked", "unlocked", "broken" };
+    return (state >= 0 && state < 4) ? names[state] : "unknown";
 }
 
 int door_state_from_name(const char* name) {
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
         if (strcmp(name, door_state_name(i)) == 0) {
             return i;
         }

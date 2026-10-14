@@ -123,6 +123,9 @@ static void draw_objects_pass(int item_pass) {
         if (o->kind == OBJ_ITEM && openable_covers_closed(o->x, o->y)) {
             continue;
         }
+        if (o->kind == OBJ_DOOR && o->state == DOOR_BROKEN) {
+            continue;
+        }
         float sx, sy;
         camera_cell_to_screen((float)o->x, (float)o->y, &sx, &sy);
         switch (o->kind) {
@@ -252,6 +255,9 @@ static void draw_discovery_markers(void) {
         if (o->kind != OBJ_ITEM && o->kind != OBJ_DOOR && o->kind != OBJ_SWITCH &&
             o->kind != OBJ_TYPEWRITER && o->kind != OBJ_FUSEBOX &&
             o->kind != OBJ_FILE && o->kind != OBJ_SAFE && o->kind != OBJ_OPENABLE) {
+            continue;
+        }
+        if (o->kind == OBJ_DOOR && o->state == DOOR_BROKEN) {
             continue;
         }
         if (o->kind == OBJ_ITEM && items_taken(i)) {
@@ -420,6 +426,9 @@ void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* ro
         // a winded enemy fades so the escape window reads at a glance
         float alpha = enemy_state() == ENEMY_WINDED ? 0.45f : 1.0f;
         fill_circle(ex, ey, scale * 0.64f, 1.0f, 0.0f, 0.165f, alpha);
+        if (enemy_state() == ENEMY_BREAKING) {
+            ring_circle(ex, ey, scale * 0.64f, scale * 0.12f, C_YELLOW_R);
+        }
         if (enemy_state() == ENEMY_STUNNED) {
             ring_circle(ex, ey, scale * 0.64f, scale * 0.12f, C_INK_R);
         }
