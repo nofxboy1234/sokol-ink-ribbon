@@ -26,6 +26,9 @@ export function addMain(b: Builder) {
         t.addIncludeDirectories([t.buildDir()]);
         t.addDependencies(['sokol-static', 'dbgui']);
         t.addCompileDefinitions({ USE_DBG_UI: '1' });
+        if (b.activeConfig().platform === 'emscripten') {
+            t.addLinkOptions(['-sEXPORTED_RUNTIME_METHODS=UTF8ToString']);
+        }
         t.addJob({
             job: 'embedfiles',
             args: { outHeader: 'levels.h', files: ['level_01.json'], asText: true },
