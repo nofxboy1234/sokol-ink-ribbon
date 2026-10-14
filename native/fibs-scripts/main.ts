@@ -7,6 +7,7 @@ const sources = [
     'camera.c',
     'pathfind.c',
     'player.c',
+    'enemy.c',
     'render.c',
     'inventory.c',
     'items.c',

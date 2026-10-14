@@ -23,6 +23,10 @@ static int heur(int ax, int ay, int bx, int by) {
 }
 
 bool pathfind(int sx, int sy, int tx, int ty, path_t* out) {
+    return pathfind_within(sx, sy, tx, ty, INT_MAX, out);
+}
+
+bool pathfind_within(int sx, int sy, int tx, int ty, int max_cost, path_t* out) {
     out->count = 0;
     if (!grid_is_floor(sx, sy) || !grid_is_floor(tx, ty)) {
         return false;
@@ -83,7 +87,7 @@ bool pathfind(int sx, int sy, int tx, int ty, path_t* out) {
                 continue;
             }
             int tentative = pf.g[current] + 1;
-            if (tentative < pf.g[ni]) {
+            if (tentative <= max_cost && tentative < pf.g[ni]) {
                 pf.came[ni] = current;
                 pf.g[ni] = tentative;
                 pf.f[ni] = tentative + heur(nx, ny, tx, ty);

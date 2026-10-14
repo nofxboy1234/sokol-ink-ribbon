@@ -16,6 +16,10 @@ export type EmscriptenModule = {
   _web_inventory_has?: (item: number) => number;
   _web_inventory_move?: (from: number, to: number) => number;
   _web_inventory_clear?: (index: number) => number;
+  _web_inventory_use?: (index: number) => number;
+  _web_enemy_state?: () => number;
+  _web_enemy_px?: () => number;
+  _web_enemy_py?: () => number;
   _health_value?: () => number;
   _items_collected?: () => number;
   _doors_discovered?: () => number;
@@ -198,6 +202,10 @@ export function moveInventorySlot(from: number, to: number): boolean {
 
 export function clearInventorySlot(index: number): boolean {
   return (module()?._web_inventory_clear?.(index) ?? 0) !== 0;
+}
+
+export function applyInventoryItem(index: number): boolean {
+  return (module()?._web_inventory_use?.(index) ?? 0) !== 0;
 }
 
 export function craftRecipe(index: number): boolean {
