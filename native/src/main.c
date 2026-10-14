@@ -127,11 +127,9 @@ static void update_hover(void) {
 }
 
 static void handle_click(player_move_t mode) {
-    // The click after a route is chosen only brings the green preview back.
-    if (!app.targeting) {
-        app.targeting = true;
-        return;
-    }
+    // A click while Grace walks steers her straight away; it also brings
+    // the green preview back.
+    app.targeting = true;
     if (app.hover_x < 0 || app.hover_y < 0) {
         return;
     }
