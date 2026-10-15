@@ -9,6 +9,8 @@ import {
 } from "./wasmBridge";
 
 const same = (a: GraceView, b: GraceView) =>
+  a.live === b.live &&
+  a.menuOpen === b.menuOpen &&
   a.mode === b.mode &&
   a.setup === b.setup &&
   a.ready === b.ready &&
@@ -64,8 +66,8 @@ function arcCentre(x: number, y: number, w: number, h: number, reach: number): n
   return -90; // up
 }
 
-// Grace's actions. While Paused with nothing chosen: three icons in an arc
-// around her. Once an action is chosen: an Ok/Cancel pill at the bottom of
+// Grace's actions. While Paused, tapping her dot toggles three icons in an
+// arc around her. Once an action is chosen: an Ok/Cancel pill at the bottom of
 // the map, so the level stays clear for picking a cell.
 export function GraceActions() {
   const [grace, setGrace] = useState<GraceView>(readGrace);
@@ -103,7 +105,9 @@ export function GraceActions() {
   }, []);
 
   const paused = grace.mode === GraceMode.Paused;
-  const picking = paused && grace.setup === GraceSetup.None;
+  // Nothing shows until the map is up: before that the bridge reports
+  // Grace at (0, 0) and the icons would bunch up in the top-left corner.
+  const picking = grace.live && paused && grace.menuOpen && grace.setup === GraceSetup.None;
   const setupName =
     grace.setup === GraceSetup.Walk
       ? "Walk"
@@ -152,7 +156,7 @@ export function GraceActions() {
             </button>
           );
         })}
-      {paused && !picking && (
+      {grace.live && paused && grace.setup !== GraceSetup.None && (
         <div className="grace-pill" role="toolbar" aria-label="Confirm action">
           <span className="grace-pill-label">
             <strong>{setupName}</strong> · {hint}

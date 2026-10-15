@@ -21,6 +21,7 @@ export type EmscriptenModule = {
   _web_grace_mode?: () => number;
   _web_grace_setup?: () => number;
   _web_grace_ready?: () => number;
+  _web_grace_menu_open?: () => number;
   _web_grace_action?: (action: number) => number;
   _web_grace_screen_x?: () => number;
   _web_grace_screen_y?: () => number;
@@ -183,9 +184,12 @@ export const GraceSetup = { None: 0, Walk: 1, Run: 2, Wait: 3 } as const;
 export const GraceAction = { Walk: 0, Run: 1, Wait: 2, Ok: 3, Cancel: 4, Pause: 5 } as const;
 
 export type GraceView = {
+  // false until the wasm map is up and Grace has a real screen position
+  live: boolean;
   mode: number;
   setup: number;
   ready: boolean;
+  menuOpen: boolean;
   x: number;
   y: number;
   cell: number;
@@ -193,13 +197,16 @@ export type GraceView = {
 
 export function readGrace(): GraceView {
   const m = module();
+  const cell = m?._web_cell_css_px?.() ?? 0;
   return {
+    live: (m?._grid_width?.() ?? 0) > 0 && cell > 0,
     mode: m?._web_grace_mode?.() ?? GraceMode.Paused,
+    menuOpen: (m?._web_grace_menu_open?.() ?? 0) !== 0,
     setup: m?._web_grace_setup?.() ?? GraceSetup.None,
     ready: (m?._web_grace_ready?.() ?? 0) !== 0,
     x: m?._web_grace_screen_x?.() ?? 0,
     y: m?._web_grace_screen_y?.() ?? 0,
-    cell: m?._web_cell_css_px?.() ?? 0,
+    cell,
   };
 }
 
