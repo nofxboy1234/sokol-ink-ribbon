@@ -21,7 +21,7 @@ declare global {
   }
 }
 
-// From Paused: tap her dot, tap an action icon, click a cell dx cells to Grace's right,
+// From Paused (menu open): tap an action icon, click a cell dx cells to Grace's right,
 // then Ok on the pill.
 async function orderGrace(page: Page, action: "Walk" | "Run", dx: number) {
   const box = await page.locator("canvas#canvas").boundingBox();
@@ -33,8 +33,7 @@ async function orderGrace(page: Page, action: "Walk" | "Run", dx: number) {
     y: window.Module?._web_grace_screen_y?.() ?? 0,
   }));
   const cellPx = await page.evaluate(() => window.Module?._level_cell_px?.() ?? 20);
-  // the menu is closed while Paused until her dot is tapped
-  await page.mouse.click(box.x + at.x, box.y + at.y);
+  // the menu is open whenever she is Paused
   await page.getByRole("button", { name: action, exact: true }).click();
   const ok = page
     .getByRole("toolbar", { name: "Confirm action" })
@@ -105,8 +104,9 @@ test("the world is frozen while Grace is paused", async ({ page }) => {
   await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
     timeout: 30_000,
   });
-  // the action menu starts closed
-  await expect(page.getByRole("button", { name: "Walk", exact: true })).toBeHidden();
+  // the action menu starts open and the indicator shows Paused
+  await expect(page.getByRole("button", { name: "Walk", exact: true })).toBeVisible();
+  await expect(page.getByRole("status", { name: "Grace: Paused" })).toBeVisible();
   const t0 = await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0);
   await page.waitForTimeout(600);
   expect(await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0)).toBe(t0);
@@ -130,10 +130,12 @@ test("a double click on the map pauses Grace mid-move", async ({ page }) => {
   await page.waitForTimeout(400);
   // a single click does nothing
   expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(1);
+  await expect(page.getByRole("status", { name: "Grace: Walking" })).toBeVisible();
   await page.mouse.dblclick(x, y);
   await expect.poll(() => page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(0);
-  // paused by double-click: the menu stays closed
-  await expect(page.getByRole("button", { name: "Walk", exact: true })).toBeHidden();
+  // paused by double-click: the menu opens again
+  await expect(page.getByRole("button", { name: "Walk", exact: true })).toBeVisible();
+  await expect(page.getByRole("status", { name: "Grace: Paused" })).toBeVisible();
 
   const t1 = await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0);
   const s1 = await page.evaluate(() => window.Module?._player_total_steps?.() ?? 0);

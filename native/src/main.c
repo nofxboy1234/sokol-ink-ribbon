@@ -170,7 +170,7 @@ static void update_hover(void) {
 static void set_grace(grace_mode_t mode) {
     if (app.grace != mode) {
         app.grace = mode;
-        app.menu_open = false;  // closed on start of an action, arrival and pause
+        app.menu_open = mode == GRACE_PAUSED;  // open whenever she pauses, closed during actions
         bump_revision();
     }
 }
@@ -373,6 +373,8 @@ static void init(void) {
     app.elapsed = 0.0;
     app.paused = false;
     app.save_menu = false;
+    app.grace = GRACE_PAUSED;
+    app.menu_open = true;  // start with the action menu open
     app.pass_action = (sg_pass_action){
         .colors[0] = {
             .load_action = SG_LOADACTION_CLEAR,
@@ -895,7 +897,7 @@ WEB_EXPORT void game_reset(void) {
     app.elapsed = 0.0;
     app.paused = false;
     app.grace = GRACE_PAUSED;
-    app.menu_open = false;
+    app.menu_open = true;
     app.setup = SETUP_NONE;
     app.setup_has_target = false;
     app.route.count = 0;
@@ -935,7 +937,7 @@ WEB_EXPORT int load_game(int slot) {
         enemy_init(app.respawn_x, app.respawn_y);
         player_stop();
         app.grace = GRACE_PAUSED;
-        app.menu_open = false;
+        app.menu_open = true;
         app.setup = SETUP_NONE;
         app.setup_has_target = false;
     app.setup = SETUP_NONE;
