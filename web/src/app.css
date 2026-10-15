@@ -754,8 +754,13 @@ button.recipe[aria-disabled="true"] {
   stroke-linejoin: round;
 }
 
+/* shared hover/press/focus look for the icons and the pill buttons */
 .grace-icon:hover,
-.grace-icon:focus-visible {
+.grace-icon:focus-visible,
+.grace-icon:active,
+.grace-pill button:enabled:hover,
+.grace-pill button:enabled:focus-visible,
+.grace-pill button:enabled:active {
   background: var(--ink);
   color: var(--paper);
 }

@@ -69,6 +69,7 @@ static struct {
     sg_pass_action pass_action;
     grace_mode_t grace;
     grace_setup_t setup;
+    bool menu_open;         // the action icons around Grace (Paused only)
     bool setup_has_target;  // Walk/Run: a reachable cell was picked
     int setup_x, setup_y;
     path_t setup_route;     // the rope to the picked cell
@@ -169,6 +170,7 @@ static void update_hover(void) {
 static void set_grace(grace_mode_t mode) {
     if (app.grace != mode) {
         app.grace = mode;
+        app.menu_open = false;  // closed on start of an action, arrival and pause
         bump_revision();
     }
 }
@@ -237,6 +239,7 @@ static bool grace_do(grace_action_t action) {
                 return false;
             }
             clear_setup();
+            app.menu_open = true;  // back to choosing an action
             return true;
         case GRACE_ACT_PAUSE:
             if (app.grace == GRACE_PAUSED) {
@@ -248,6 +251,19 @@ static bool grace_do(grace_action_t action) {
             return true;
     }
     return false;
+}
+
+// Is the screen point on Grace's dot? Touch gets a bigger target.
+static bool on_grace(float sx, float sy) {
+    float gx, gy;
+    camera_cell_to_screen(player_x(), player_y(), &gx, &gy);
+    float r = camera_cell_px() * 0.75f;
+    float min_r = (app.touch_pointer ? 28.0f : 14.0f) * sapp_dpi_scale();
+    if (r < min_r) {
+        r = min_r;
+    }
+    float dx = sx - gx, dy = sy - gy;
+    return dx * dx + dy * dy <= r * r;
 }
 
 static void handle_click(void) {
@@ -264,6 +280,19 @@ static void handle_click(void) {
             app.last_click_y = app.mouse_y;
         }
         return;
+    }
+    if (app.setup == SETUP_NONE) {
+        // Paused with nothing chosen: her dot toggles the menu; any other
+        // click closes it (and may still use a door or item).
+        if (on_grace(app.mouse_x, app.mouse_y)) {
+            app.menu_open = !app.menu_open;
+            bump_revision();
+            return;
+        }
+        if (app.menu_open) {
+            app.menu_open = false;
+            bump_revision();
+        }
     }
     if (app.hover_x < 0 || app.hover_y < 0) {
         return;
@@ -694,6 +723,10 @@ WEB_EXPORT int web_grace_setup(void) {
     return (int)app.setup;
 }
 
+WEB_EXPORT int web_grace_menu_open(void) {
+    return app.menu_open ? 1 : 0;
+}
+
 WEB_EXPORT int web_grace_ready(void) {
     return setup_ready() ? 1 : 0;
 }
@@ -862,6 +895,7 @@ WEB_EXPORT void game_reset(void) {
     app.elapsed = 0.0;
     app.paused = false;
     app.grace = GRACE_PAUSED;
+    app.menu_open = false;
     app.setup = SETUP_NONE;
     app.setup_has_target = false;
     app.route.count = 0;
@@ -901,6 +935,7 @@ WEB_EXPORT int load_game(int slot) {
         enemy_init(app.respawn_x, app.respawn_y);
         player_stop();
         app.grace = GRACE_PAUSED;
+        app.menu_open = false;
         app.setup = SETUP_NONE;
         app.setup_has_target = false;
     app.setup = SETUP_NONE;
