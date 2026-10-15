@@ -72,6 +72,12 @@ void player_stop(void) {
     p.index = 0;
 }
 
+void player_halt(void) {
+    player_stop();
+    p.x = floorf(p.x) + 0.5f;
+    p.y = floorf(p.y) + 0.5f;
+}
+
 void player_update(float dt) {
     if (!p.moving || p.index >= p.path.count) {
         p.moving = false;
