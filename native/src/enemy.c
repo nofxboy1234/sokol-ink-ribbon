@@ -10,6 +10,7 @@
 #include "doors.h"
 #include "grid.h"
 #include "pathfind.h"
+#include "sight.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -54,17 +55,10 @@ static struct {
     int door;
     enemy_state_t resume;
     unsigned int rng;
+    float flash;  // seconds of damage flashing left (counts down with the stun)
 } e;
 
 static path_t scratch;
-
-// Sight edges: walls and closed doors block, open and broken doors do not.
-static bool edge_blocked(int ax, int ay, int bx, int by) {
-    if (!grid_is_floor(bx, by)) {
-        return true;
-    }
-    return doors_on_edge(ax, ay, bx, by) ? doors_block_sight(ax, ay, bx, by) : grid_blocked(ax, ay, bx, by);
-}
 
 static unsigned int rnd(void) {
     e.rng ^= e.rng << 13;
@@ -120,7 +114,7 @@ static void predicted_cell(int* tx, int* ty) {
     for (int i = 1; i <= ENEMY_PREDICT_STEPS; i++) {
         int nx = e.seen_x + e.heading_x * i;
         int ny = e.seen_y + e.heading_y * i;
-        if (!grid_is_floor(nx, ny) || edge_blocked(nx - e.heading_x, ny - e.heading_y, nx, ny)) {
+        if (!grid_is_floor(nx, ny) || sight_edge_blocked(nx - e.heading_x, ny - e.heading_y, nx, ny)) {
             break;
         }
         *tx = nx;
@@ -193,45 +187,17 @@ void enemy_init(int avoid_x, int avoid_y) {
     e.heading_x = 0;
     e.heading_y = 0;
     e.stamina = ENEMY_STAMINA_MAX;
+    e.flash = 0.0f;
     enter(ENEMY_LOOK);
+}
+
+void enemy_seed(unsigned int seed) {
+    e.rng = seed ? seed : 1u;
 }
 
 // A clear straight line between the two dots: walls and closed doors block it.
 static bool line_of_sight(float gx, float gy) {
-    int x = (int)floorf(e.x);
-    int y = (int)floorf(e.y);
-    int tx = (int)floorf(gx);
-    int ty = (int)floorf(gy);
-    int dx = abs(tx - x);
-    int dy = -abs(ty - y);
-    int sx = x < tx ? 1 : -1;
-    int sy = y < ty ? 1 : -1;
-    int err = dx + dy;
-    while (x != tx || y != ty) {
-        int e2 = 2 * err;
-        int nx = x;
-        int ny = y;
-        if (e2 >= dy) {
-            err += dy;
-            nx += sx;
-        }
-        if (e2 <= dx) {
-            err += dx;
-            ny += sy;
-        }
-        if (nx != x && ny != y) {
-            bool via_x = !edge_blocked(x, y, nx, y) && !edge_blocked(nx, y, nx, ny);
-            bool via_y = !edge_blocked(x, y, x, ny) && !edge_blocked(x, ny, nx, ny);
-            if (!via_x && !via_y) {
-                return false;
-            }
-        } else if (edge_blocked(x, y, nx, ny)) {
-            return false;
-        }
-        x = nx;
-        y = ny;
-    }
-    return true;
+    return sight_clear((int)floorf(e.x), (int)floorf(e.y), (int)floorf(gx), (int)floorf(gy));
 }
 
 // Spotting needs a clear line inside the sight radius, from a cell Grace has
@@ -321,6 +287,9 @@ static bool walk(float dt) {
 }
 
 bool enemy_update(float dt, float gx, float gy, float noise) {
+    if (e.flash > 0.0f) {
+        e.flash -= dt;
+    }
     if (e.state == ENEMY_STUNNED) {
         e.timer -= dt;
         if (e.timer <= 0.0f) {
@@ -427,6 +396,50 @@ bool enemy_update(float dt, float gx, float gy, float noise) {
 void enemy_stun(float seconds) {
     enter(ENEMY_STUNNED);
     e.timer = seconds;
+}
+
+void enemy_damage(float seconds) {
+    enemy_stun(seconds);
+    e.flash = seconds;
+}
+
+float enemy_flash(void) {
+    return e.flash > 0.0f ? e.flash : 0.0f;
+}
+
+// A sound at a cell: if it carries as far as the enemy (walls don't stop it,
+// like footsteps), it goes to look. Search heads for the remembered cell and
+// then sweeps around it. A stunned, winded or door-smashing enemy ignores it.
+bool enemy_hear_noise(int x, int y, float radius) {
+    if (e.state == ENEMY_STUNNED || e.state == ENEMY_WINDED || e.state == ENEMY_BREAKING) {
+        return false;
+    }
+    float dx = (float)x + 0.5f - e.x;
+    float dy = (float)y + 0.5f - e.y;
+    if (dx * dx + dy * dy > radius * radius) {
+        return false;
+    }
+    e.seen_x = x;
+    e.seen_y = y;
+    e.heading_x = 0;
+    e.heading_y = 0;
+    enter(ENEMY_SEARCH);
+    return true;
+}
+
+int enemy_focus_x(void) {
+    return e.seen_x;
+}
+
+int enemy_focus_y(void) {
+    return e.seen_y;
+}
+
+void enemy_place(float x, float y) {
+    e.x = x;
+    e.y = y;
+    e.path.count = 0;
+    e.index = 0;
 }
 
 enemy_sense_t enemy_sense(void) {

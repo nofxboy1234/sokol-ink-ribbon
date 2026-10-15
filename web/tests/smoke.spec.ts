@@ -104,9 +104,9 @@ test("the world is frozen while Grace is paused", async ({ page }) => {
   await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
     timeout: 30_000,
   });
-  // the action menu starts open and the indicator shows Paused
+  // the action menu starts open; with nothing done yet the indicator shows Wait
   await expect(page.getByRole("button", { name: "Walk", exact: true })).toBeVisible();
-  await expect(page.getByRole("status", { name: "Grace: Paused" })).toBeVisible();
+  await expect(page.getByRole("status", { name: "Grace: Paused, last Waiting" })).toBeVisible();
   const t0 = await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0);
   await page.waitForTimeout(600);
   expect(await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0)).toBe(t0);
@@ -133,9 +133,12 @@ test("a double click on the map pauses Grace mid-move", async ({ page }) => {
   await expect(page.getByRole("status", { name: "Grace: Walking" })).toBeVisible();
   await page.mouse.dblclick(x, y);
   await expect.poll(() => page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(0);
-  // paused by double-click: the menu opens again
+  // paused by double-click: the menu opens again, the indicator keeps her
+  // last state and the cyan route to her target stays drawn
   await expect(page.getByRole("button", { name: "Walk", exact: true })).toBeVisible();
-  await expect(page.getByRole("status", { name: "Grace: Paused" })).toBeVisible();
+  await expect(page.getByRole("status", { name: "Grace: Paused, last Walking" })).toBeVisible();
+  expect(await page.evaluate(() => window.Module?._web_grace_pending?.())).toBe(1);
+  expect(await page.evaluate(() => window.Module?._web_route_length?.() ?? 0)).toBeGreaterThan(1);
 
   const t1 = await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0);
   const s1 = await page.evaluate(() => window.Module?._player_total_steps?.() ?? 0);
@@ -226,4 +229,90 @@ test("no save button and records navigates client-side", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Records" })).toBeVisible();
   const marker = await page.evaluate(() => (window as unknown as { __marker?: number }).__marker);
   expect(marker).toBe(1);
+});
+
+test("right click on Grace opens Quick Equip and an active bottle can be thrown", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const seen: boolean[] = [];
+    (window as unknown as { __ctx: boolean[] }).__ctx = seen;
+    document.addEventListener("contextmenu", (event) => seen.push(event.defaultPrevented));
+  });
+  await page.goto("/");
+  await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
+    timeout: 30_000,
+  });
+  const box = await page.locator("canvas#canvas").boundingBox();
+  if (!box) {
+    throw new Error("canvas has no box");
+  }
+  const at = await page.evaluate(() => ({
+    x: window.Module?._web_grace_screen_x?.() ?? 0,
+    y: window.Module?._web_grace_screen_y?.() ?? 0,
+  }));
+  const quick = page.getByRole("group", { name: "Quick Equip" });
+
+  await page.mouse.click(box.x + at.x, box.y + at.y, { button: "right" });
+  await expect(quick).toBeVisible();
+  await expect(page.getByRole("button", { name: "Walk", exact: true })).toBeHidden();
+  expect(await page.evaluate(() => (window as unknown as { __ctx: boolean[] }).__ctx)).toEqual([
+    true,
+  ]);
+  // nothing equipped yet: no bottle
+  await expect(page.getByRole("button", { name: "Empty Bottle", exact: true })).toHaveCount(0);
+
+  // equip a bottle from the Inventory
+  await page.evaluate(() => window.Module?._web_test_give?.(0));
+  const slot = page.locator(".inventory-slot", { hasText: "Empty Bottle" });
+  await slot.click({ button: "right" });
+  await page.locator(".item-menu").getByRole("button", { name: "Equip", exact: true }).click();
+  await expect(slot).toHaveAttribute("data-equipped", "true");
+
+  // the bottle sits East in Quick Equip (still open); picking it makes it active
+  const bottle = quick.getByRole("button", { name: "Empty Bottle", exact: true });
+  await expect(bottle).toHaveAttribute("data-slot", "East");
+  await bottle.click();
+  expect(await page.evaluate(() => window.Module?._web_bottle_active?.())).toBe(1);
+
+  // Throw sits West; aim at a cell in reach, confirm on the pill
+  const throwButton = page.getByRole("button", { name: "Throw", exact: true });
+  await expect(throwButton).toHaveAttribute("data-slot", "West");
+  await throwButton.click();
+  const target = await page.evaluate(() => {
+    const m = window.Module;
+    const px = m?._player_cell_x?.() ?? 0;
+    const py = m?._player_cell_y?.() ?? 0;
+    for (let d = 5; d >= 2; d--) {
+      for (const [dx, dy] of [
+        [d, 0],
+        [-d, 0],
+        [0, d],
+        [0, -d],
+      ]) {
+        if (m?._web_throw_in_reach?.(px + dx, py + dy)) {
+          return { dx, dy };
+        }
+      }
+    }
+    return null;
+  });
+  expect(target).not.toBeNull();
+  const cellPx = await page.evaluate(() => window.Module?._web_cell_css_px?.() ?? 0);
+  await page.mouse.click(
+    box.x + at.x + (target?.dx ?? 0) * cellPx,
+    box.y + at.y + (target?.dy ?? 0) * cellPx,
+  );
+  const ok = page
+    .getByRole("toolbar", { name: "Confirm action" })
+    .getByRole("button", { name: "Ok", exact: true });
+  await expect(ok).toBeEnabled();
+  await ok.click();
+  expect(
+    await page.evaluate(() => window.Module?._web_impact_age_ms?.() ?? -1),
+  ).toBeGreaterThanOrEqual(0);
+  // the bottle is spent (and unequipped), and she carries on waiting
+  await expect(slot).toHaveCount(0);
+  expect(await page.evaluate(() => window.Module?._web_bottle_equipped?.())).toBe(0);
+  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
 });

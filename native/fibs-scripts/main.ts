@@ -16,6 +16,8 @@ const sources = [
     'crafting.c',
     'health.c',
     'savegame.c',
+    'sight.c',
+    'throw.c',
     'tooltip.cc',
 ];
 
