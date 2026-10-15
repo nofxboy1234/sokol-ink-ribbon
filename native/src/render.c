@@ -27,23 +27,11 @@
 
 static struct {
     sgl_pipeline pip;
+    render_fx_t fx;
 } r;
 
-void render_init(void) {
-    r.pip = sgl_make_pipeline(&(sg_pipeline_desc){
-        .colors[0].blend = {
-            .enabled = true,
-            .src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA,
-            .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-            .src_factor_alpha = SG_BLENDFACTOR_SRC_ALPHA,
-            .dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-        },
-        .label = "map-pipeline",
-    });
-}
-
-void render_shutdown(void) {
-    sgl_destroy_pipeline(r.pip);
+void render_set_fx(const render_fx_t* fx) {
+    r.fx = *fx;
 }
 
 static void fill_rect(float x, float y, float w, float h, float cr, float cg, float cb, float ca) {
@@ -96,6 +84,36 @@ static void thick_line(float x0, float y0, float x1, float y1, float t, float cr
     sgl_v2f(x1 - nx, y1 - ny);
     sgl_v2f(x0 - nx, y0 - ny);
     sgl_end();
+}
+
+// Damage flashing: on/off a few times a second while time is left.
+#define FLASH_PERIOD 0.16f
+static bool flash_on(float left) {
+    return left > 0.0f && fmodf(left, FLASH_PERIOD) > FLASH_PERIOD * 0.5f;
+}
+
+static void outline_cell(float sx, float sy, float scale, float cr, float cg, float cb, float ca) {
+    thick_line(sx, sy, sx + scale, sy, 2.0f, cr, cg, cb, ca);
+    thick_line(sx + scale, sy, sx + scale, sy + scale, 2.0f, cr, cg, cb, ca);
+    thick_line(sx + scale, sy + scale, sx, sy + scale, 2.0f, cr, cg, cb, ca);
+    thick_line(sx, sy + scale, sx, sy, 2.0f, cr, cg, cb, ca);
+}
+
+void render_init(void) {
+    r.pip = sgl_make_pipeline(&(sg_pipeline_desc){
+        .colors[0].blend = {
+            .enabled = true,
+            .src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA,
+            .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .src_factor_alpha = SG_BLENDFACTOR_SRC_ALPHA,
+            .dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+        },
+        .label = "map-pipeline",
+    });
+}
+
+void render_shutdown(void) {
+    sgl_destroy_pipeline(r.pip);
 }
 
 static void item_color(int item, float* cr, float* cg, float* cb) {
@@ -425,7 +443,13 @@ void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* ro
         camera_cell_to_screen(enemy_x(), enemy_y(), &ex, &ey);
         // a winded enemy fades so the escape window reads at a glance
         float alpha = enemy_state() == ENEMY_WINDED ? 0.45f : 1.0f;
-        fill_circle(ex, ey, scale * 0.64f, 1.0f, 0.0f, 0.165f, alpha);
+        if (flash_on(enemy_flash())) {
+            // hit by a bottle: blinks white inside a red ring while stunned
+            fill_circle(ex, ey, scale * 0.64f, 1.0f, 1.0f, 1.0f, 1.0f);
+            ring_circle(ex, ey, scale * 0.64f, scale * 0.12f, C_RED_R);
+        } else {
+            fill_circle(ex, ey, scale * 0.64f, 1.0f, 0.0f, 0.165f, alpha);
+        }
         if (enemy_state() == ENEMY_BREAKING) {
             ring_circle(ex, ey, scale * 0.64f, scale * 0.12f, C_YELLOW_R);
         }
@@ -437,6 +461,37 @@ void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* ro
     {
         float px, py;
         camera_cell_to_screen(player_x(), player_y(), &px, &py);
-        fill_circle(px, py, scale * 0.51f, C_PURPLE_R);
+        if (flash_on(r.fx.grace_flash)) {
+            fill_circle(px, py, scale * 0.51f, 1.0f, 1.0f, 1.0f, 1.0f);
+            ring_circle(px, py, scale * 0.51f, scale * 0.12f, C_PURPLE_R);
+        } else {
+            fill_circle(px, py, scale * 0.51f, C_PURPLE_R);
+        }
+        // the aim line runs straight from her centre to the cell's centre
+        if (r.fx.aim) {
+            float cx, cy, sx, sy;
+            camera_cell_to_screen((float)r.fx.aim_x + 0.5f, (float)r.fx.aim_y + 0.5f, &cx, &cy);
+            camera_cell_to_screen((float)r.fx.aim_x, (float)r.fx.aim_y, &sx, &sy);
+            if (r.fx.aim_ok) {
+                thick_line(px, py, cx, cy, 2.0f, C_CYAN_R);
+                outline_cell(sx, sy, scale, C_CYAN_R);
+            } else {
+                thick_line(px, py, cx, cy, 2.0f, 0.616f, 0.616f, 0.616f, 0.8f);
+                outline_cell(sx, sy, scale, 0.616f, 0.616f, 0.616f, 0.8f);
+            }
+        }
+    }
+
+    // the bottle's impact: its blue dot, with a ring pulsing out of it
+    if (r.fx.impact) {
+        float cx, cy;
+        camera_cell_to_screen((float)r.fx.impact_x + 0.5f, (float)r.fx.impact_y + 0.5f, &cx, &cy);
+        float br, bg, bb;
+        item_color(ITEM_BOTTLE, &br, &bg, &bb);
+        float a = r.fx.impact_alpha;
+        float dot = scale * 0.36f;
+        float ring = dot + (scale * 1.4f - dot) * r.fx.impact_pulse;
+        fill_circle(cx, cy, dot, br, bg, bb, a);
+        ring_circle(cx, cy, ring, scale * 0.1f, br, bg, bb, a * (1.0f - 0.5f * r.fx.impact_pulse));
     }
 }

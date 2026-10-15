@@ -24,6 +24,7 @@
 #include "player.h"
 #include "render.h"
 #include "savegame.h"
+#include "throw.h"
 #include "webexport.h"
 #include "levels.h"
 
@@ -50,6 +51,7 @@ typedef enum {
     SETUP_WALK,
     SETUP_RUN,
     SETUP_WAIT,
+    SETUP_THROW,
 } grace_setup_t;
 
 typedef enum {
@@ -59,17 +61,37 @@ typedef enum {
     GRACE_ACT_OK,
     GRACE_ACT_CANCEL,
     GRACE_ACT_PAUSE,
+    GRACE_ACT_THROW,
 } grace_action_t;
 
 // Two map clicks this close in time and space pause an action.
 #define DOUBLE_CLICK_SECONDS 0.33f
 #define DOUBLE_CLICK_SLOP_PX 24.0f
+// Touch has no right click: holding a finger on Grace this long opens Quick Equip.
+#define LONG_PRESS_SECONDS 0.5f
+// How long Grace flashes after a hit.
+#define GRACE_FLASH_SECONDS 1.0f
+// The bottle's impact: the ring pulses out, then everything fades.
+#define IMPACT_PULSE_SECONDS 0.25f
+#define IMPACT_FADE_SECONDS 0.35f
 
 static struct {
     sg_pass_action pass_action;
     grace_mode_t grace;
+    grace_mode_t last;      // her last action (Walk/Run/Wait), shown while Paused
     grace_setup_t setup;
     bool menu_open;         // the action icons around Grace (Paused only)
+    bool quick_open;        // the Quick Equip icons around Grace (Paused only)
+    // A move interrupted by a pause: where she was headed and how, so the
+    // cyan route stays drawn and a throw can resume it.
+    bool pending;
+    bool pending_run;
+    int pending_x, pending_y;
+    double touch_start_at;
+    bool long_fired;
+    double grace_flash_until;
+    double impact_at;       // real clock of the last impact, < 0 for none
+    int impact_x, impact_y;
     bool setup_has_target;  // Walk/Run: a reachable cell was picked
     int setup_x, setup_y;
     path_t setup_route;     // the rope to the picked cell
@@ -170,7 +192,11 @@ static void update_hover(void) {
 static void set_grace(grace_mode_t mode) {
     if (app.grace != mode) {
         app.grace = mode;
+        if (mode != GRACE_PAUSED) {
+            app.last = mode;
+        }
         app.menu_open = mode == GRACE_PAUSED;  // open whenever she pauses, closed during actions
+        app.quick_open = false;
         bump_revision();
     }
 }
@@ -182,7 +208,59 @@ static bool setup_is_move(void) {
 // Ok is enabled once every choice is made: Wait needs none, Walk/Run need
 // a reachable target.
 static bool setup_ready(void) {
-    return app.setup == SETUP_WAIT || (setup_is_move() && app.setup_has_target);
+    return app.setup == SETUP_WAIT || ((setup_is_move() || app.setup == SETUP_THROW) && app.setup_has_target);
+}
+
+// How she would throw right now: on the move if a paused walk or run is
+// waiting to resume, otherwise standing still.
+static throw_stance_t grace_stance(void) {
+    if (app.pending) {
+        return app.pending_run ? THROW_STANCE_RUN : THROW_STANCE_WALK;
+    }
+    return THROW_STANCE_WAIT;
+}
+
+static void clear_pending(void) {
+    app.pending = false;
+    app.route.count = 0;
+}
+
+static void pick_throw(int x, int y) {
+    int px, py;
+    player_cell(&px, &py);
+    if (!throw_in_reach(px, py, x, y)) {
+        return;  // out of range, a wall in the way, or her own cell
+    }
+    app.setup_has_target = true;
+    app.setup_x = x;
+    app.setup_y = y;
+    bump_revision();
+}
+
+// Throw the bottle, then carry on: a paused walk resumes, otherwise she waits.
+static bool throw_confirm(void) {
+    int px, py;
+    player_cell(&px, &py);
+    throw_stance_t stance = grace_stance();
+    throw_result_t result;
+    if (!throw_resolve(px, py, app.setup_x, app.setup_y, stance, &result)) {
+        return false;
+    }
+    app.impact_at = app.clock;
+    app.impact_x = app.setup_x;
+    app.impact_y = app.setup_y;
+    if (stance == THROW_STANCE_WALK) {
+        player_move_to(app.pending_x, app.pending_y, PLAYER_WALK);
+    }
+    if (stance == THROW_STANCE_WALK && player_is_moving()) {
+        app.route = *player_path();
+        app.pending = false;
+        set_grace(GRACE_WALKING);
+    } else {
+        clear_pending();
+        set_grace(GRACE_WAITING);
+    }
+    return true;
 }
 
 static void clear_setup(void) {
@@ -216,19 +294,35 @@ static bool grace_do(grace_action_t action) {
             app.setup = action == GRACE_ACT_WALK ? SETUP_WALK
                       : action == GRACE_ACT_RUN  ? SETUP_RUN
                                                  : SETUP_WAIT;
+            app.quick_open = false;
+            bump_revision();
+            return true;
+        case GRACE_ACT_THROW:
+            if (app.grace != GRACE_PAUSED || app.setup != SETUP_NONE || !throw_active() ||
+                !throw_allowed(grace_stance())) {
+                return false;
+            }
+            app.setup = SETUP_THROW;
+            app.quick_open = false;
             bump_revision();
             return true;
         case GRACE_ACT_OK:
             if (app.grace != GRACE_PAUSED || !setup_ready()) {
                 return false;
             }
-            if (app.setup == SETUP_WAIT) {
+            if (app.setup == SETUP_THROW) {
+                if (!throw_confirm()) {
+                    return false;
+                }
+            } else if (app.setup == SETUP_WAIT) {
+                clear_pending();  // waiting gives up the old target
                 set_grace(GRACE_WAITING);
             } else {
                 bool run = app.setup == SETUP_RUN;
                 player_move_to(app.setup_x, app.setup_y, run ? PLAYER_RUN : PLAYER_WALK);
                 if (player_is_moving()) {
                     app.route = *player_path();
+                    app.pending = false;
                     set_grace(run ? GRACE_RUNNING : GRACE_WALKING);
                 }
             }
@@ -245,8 +339,23 @@ static bool grace_do(grace_action_t action) {
             if (app.grace == GRACE_PAUSED) {
                 return false;
             }
+            if ((app.grace == GRACE_WALKING || app.grace == GRACE_RUNNING) && app.route.count > 1) {
+                // keep where she was headed: the route is redrawn from where she stops
+                int last = app.route.count - 1;
+                app.pending_x = app.route.x[last];
+                app.pending_y = app.route.y[last];
+                app.pending_run = app.grace == GRACE_RUNNING;
+                app.pending = true;
+            }
             player_halt();  // stop at the nearest cell
             app.route.count = 0;
+            if (app.pending) {
+                int px, py;
+                player_cell(&px, &py);
+                if (!pathfind(px, py, app.pending_x, app.pending_y, &app.route) || app.route.count < 2) {
+                    clear_pending();
+                }
+            }
             set_grace(GRACE_PAUSED);
             return true;
     }
@@ -266,6 +375,17 @@ static bool on_grace(float sx, float sy) {
     return dx * dx + dy * dy <= r * r;
 }
 
+// Right click (or a long press) on her dot while Paused opens Quick Equip
+// and closes the action menu; again closes it.
+static void handle_quick_equip(void) {
+    if (app.grace != GRACE_PAUSED || app.setup != SETUP_NONE || !on_grace(app.mouse_x, app.mouse_y)) {
+        return;
+    }
+    app.quick_open = !app.quick_open;
+    app.menu_open = !app.quick_open;
+    bump_revision();
+}
+
 static void handle_click(void) {
     if (app.grace != GRACE_PAUSED) {
         // During an action a single click does nothing; a double click pauses.
@@ -282,17 +402,32 @@ static void handle_click(void) {
         return;
     }
     if (app.setup == SETUP_NONE) {
-        // Paused with nothing chosen: her dot toggles the menu; any other
-        // click closes it (and may still use a door or item).
+        // Paused with nothing chosen: her dot toggles the action menu (and
+        // closes Quick Equip); any other click closes both (and may still
+        // use a door or item).
         if (on_grace(app.mouse_x, app.mouse_y)) {
-            app.menu_open = !app.menu_open;
+            app.menu_open = app.quick_open || !app.menu_open;
+            app.quick_open = false;
             bump_revision();
             return;
         }
-        if (app.menu_open) {
+        if (app.menu_open || app.quick_open) {
             app.menu_open = false;
+            app.quick_open = false;
             bump_revision();
         }
+    }
+    if (app.setup == SETUP_THROW) {
+        // Aiming: no doors or items, just pick a cell; the same cell again throws.
+        if (app.hover_x < 0 || app.hover_y < 0) {
+            return;
+        }
+        if (app.setup_has_target && app.hover_x == app.setup_x && app.hover_y == app.setup_y) {
+            grace_do(GRACE_ACT_OK);
+        } else {
+            pick_throw(app.hover_x, app.hover_y);
+        }
+        return;
     }
     if (app.hover_x < 0 || app.hover_y < 0) {
         return;
@@ -317,20 +452,26 @@ static void handle_click(void) {
 
 // A hit worsens Grace's health one step. A hit while in Danger sends her back
 // to the last save point (or the start) at full health.
-static void enemy_hit(void) {
+static void grace_hurt(void) {
     int health = health_state();
     if (health >= HEALTH_DANGER) {
         player_set_cell(app.respawn_x, app.respawn_y);
         health_set(0);
-        app.route.count = 0;
-            app.preview.count = 0;
+        clear_pending();
+        app.preview.count = 0;
         camera_follow(player_x(), player_y());
         camera_recentre();
     } else {
         health_set(health + 1);
     }
-    enemy_stun(ENEMY_STUN_SECONDS);
+    app.grace_flash_until = app.clock + GRACE_FLASH_SECONDS;
     bump_revision();
+}
+
+// The enemy caught her: she is hurt and it freezes for a moment.
+static void enemy_hit(void) {
+    grace_hurt();
+    enemy_stun(ENEMY_STUN_SECONDS);
 }
 
 static void init(void) {
@@ -353,6 +494,7 @@ static void init(void) {
     interact_init();
     health_init();
     savegame_init();
+    throw_init();
     enemy_init(app.level.start_x, app.level.start_y);
     app.respawn_x = app.level.start_x;
     app.respawn_y = app.level.start_y;
@@ -374,7 +516,12 @@ static void init(void) {
     app.paused = false;
     app.save_menu = false;
     app.grace = GRACE_PAUSED;
+    app.last = GRACE_WAITING;  // nothing done yet: she is standing still
     app.menu_open = true;  // start with the action menu open
+    app.quick_open = false;
+    app.pending = false;
+    app.impact_at = -1.0;
+    app.grace_flash_until = -1.0;
     app.pass_action = (sg_pass_action){
         .colors[0] = {
             .load_action = SG_LOADACTION_CLEAR,
@@ -463,6 +610,19 @@ void _dbgui_extra(void) {
 static void frame(void) {
     const float dt = (float)sapp_frame_duration();
     app.clock += (double)dt;
+    if (throw_equipped()) {
+        throw_sync();  // a used, discarded or crafted-away last bottle unequips
+        if (!throw_equipped()) {
+            bump_revision();
+        }
+    }
+    if (app.touch_active && !app.touch_moved && !app.long_fired &&
+        app.clock - app.touch_start_at >= LONG_PRESS_SECONDS) {
+        app.long_fired = true;
+        app.mouse_x = app.touch_start_x;
+        app.mouse_y = app.touch_start_y;
+        handle_quick_equip();
+    }
     if (!app.paused && app.grace != GRACE_PAUSED) {
         player_update(dt);
         float noise = !player_is_moving() ? 0.0f
@@ -484,7 +644,7 @@ static void frame(void) {
             }
         }
         if ((app.grace == GRACE_WALKING || app.grace == GRACE_RUNNING) && !player_is_moving()) {
-            app.route.count = 0;
+            clear_pending();
             set_grace(GRACE_PAUSED);  // she pauses on arrival
         }
         app.elapsed += (double)dt;
@@ -504,6 +664,33 @@ static void frame(void) {
     update_hover();
 
     _dbgui_update();
+    render_fx_t fx = { 0 };
+    if (app.setup == SETUP_THROW) {
+        bool hover = !app.touch_pointer || app.touch_active;
+        int ax = app.setup_has_target ? app.setup_x : hover ? app.hover_x : -1;
+        int ay = app.setup_has_target ? app.setup_y : hover ? app.hover_y : -1;
+        if (ax >= 0 && ay >= 0) {
+            int px, py;
+            player_cell(&px, &py);
+            fx.aim = true;
+            fx.aim_x = ax;
+            fx.aim_y = ay;
+            fx.aim_ok = throw_in_reach(px, py, ax, ay);
+        }
+    }
+    if (app.impact_at >= 0.0) {
+        float age = (float)(app.clock - app.impact_at);
+        if (age < IMPACT_PULSE_SECONDS + IMPACT_FADE_SECONDS) {
+            fx.impact = true;
+            fx.impact_x = app.impact_x;
+            fx.impact_y = app.impact_y;
+            fx.impact_pulse = age < IMPACT_PULSE_SECONDS ? age / IMPACT_PULSE_SECONDS : 1.0f;
+            fx.impact_alpha = age < IMPACT_PULSE_SECONDS ? 1.0f
+                            : 1.0f - (age - IMPACT_PULSE_SECONDS) / IMPACT_FADE_SECONDS;
+        }
+    }
+    fx.grace_flash = app.clock < app.grace_flash_until ? (float)(app.grace_flash_until - app.clock) : 0.0f;
+    render_set_fx(&fx);
     // While setting up Walk/Run the rope shows the picked cell's route, or
     // follows the pointer until one is picked (touch: only while a finger is
     // down, since touch has no hover).
@@ -555,8 +742,10 @@ static void event(const sapp_event* e) {
         case SAPP_EVENTTYPE_MOUSE_UP:
             app.mouse_x = e->mouse_x;
             app.mouse_y = e->mouse_y;
-            if (e->mouse_button == SAPP_MOUSEBUTTON_LEFT || e->mouse_button == SAPP_MOUSEBUTTON_RIGHT) {
+            if (e->mouse_button == SAPP_MOUSEBUTTON_LEFT) {
                 click_at();
+            } else if (e->mouse_button == SAPP_MOUSEBUTTON_RIGHT) {
+                handle_quick_equip();  // right click does nothing else on the map
             }
             return;
         case SAPP_EVENTTYPE_TOUCHES_BEGAN:
@@ -564,6 +753,8 @@ static void event(const sapp_event* e) {
             if (e->num_touches == 1) {
                 app.touch_active = true;
                 app.touch_moved = false;
+                app.long_fired = false;
+                app.touch_start_at = app.clock;
                 app.touch_start_x = app.mouse_x = e->touches[0].pos_x;
                 app.touch_start_y = app.mouse_y = e->touches[0].pos_y;
             } else {
@@ -589,7 +780,7 @@ static void event(const sapp_event* e) {
                     held++;
                 }
             }
-            if (held == 0 && app.touch_active && !app.touch_moved) {
+            if (held == 0 && app.touch_active && !app.touch_moved && !app.long_fired) {
                 click_at();
             }
             if (held == 0) {
@@ -727,6 +918,117 @@ WEB_EXPORT int web_grace_setup(void) {
 
 WEB_EXPORT int web_grace_menu_open(void) {
     return app.menu_open ? 1 : 0;
+}
+
+WEB_EXPORT int web_grace_last(void) {
+    return (int)app.last;
+}
+
+WEB_EXPORT int web_grace_stance(void) {
+    return (int)grace_stance();
+}
+
+WEB_EXPORT int web_grace_pending(void) {
+    return app.pending ? 1 : 0;
+}
+
+WEB_EXPORT int web_route_length(void) {
+    return app.route.count;
+}
+
+WEB_EXPORT int web_quick_open(void) {
+    return app.quick_open ? 1 : 0;
+}
+
+// Quick Equip slot 0..3 = N, E, S, W. Only East holds anything (the bottle):
+// picking it toggles it as the active weapon and returns to the action menu.
+WEB_EXPORT int web_quick_select(int slot) {
+    if (!app.quick_open || slot != 1 || !throw_equipped()) {
+        return 0;
+    }
+    throw_set_active(!throw_active());
+    app.quick_open = false;
+    app.menu_open = true;
+    bump_revision();
+    return 1;
+}
+
+WEB_EXPORT int web_bottle_equipped(void) {
+    return throw_equipped() ? 1 : 0;
+}
+
+WEB_EXPORT int web_bottle_active(void) {
+    return throw_active() ? 1 : 0;
+}
+
+WEB_EXPORT int web_bottle_equip(int on) {
+    if (!throw_set_equipped(on != 0)) {
+        return 0;
+    }
+    bump_revision();
+    return 1;
+}
+
+WEB_EXPORT int web_throw_hit_chance(void) {
+    return throw_hit_chance(grace_stance());
+}
+
+WEB_EXPORT int web_throw_in_reach(int x, int y) {
+    int px, py;
+    player_cell(&px, &py);
+    return throw_in_reach(px, py, x, y) ? 1 : 0;
+}
+
+WEB_EXPORT int web_cell_floor(int x, int y) {
+    return grid_is_floor(x, y) && grid_is_revealed(x, y) ? 1 : 0;
+}
+
+WEB_EXPORT int web_throw_allowed(void) {
+    return throw_active() && throw_allowed(grace_stance()) ? 1 : 0;
+}
+
+WEB_EXPORT float web_enemy_flash(void) {
+    return enemy_flash();
+}
+
+WEB_EXPORT float web_grace_flash(void) {
+    return app.clock < app.grace_flash_until ? (float)(app.grace_flash_until - app.clock) : 0.0f;
+}
+
+WEB_EXPORT int web_enemy_focus_x(void) {
+    return enemy_focus_x();
+}
+
+WEB_EXPORT int web_enemy_focus_y(void) {
+    return enemy_focus_y();
+}
+
+// Milliseconds since the last bottle impact, or -1.
+WEB_EXPORT double web_impact_age_ms(void) {
+    return app.impact_at < 0.0 ? -1.0 : (app.clock - app.impact_at) * 1000.0;
+}
+
+// Test hooks: seed the throw and enemy dice, hand Grace an item, put the
+// enemy somewhere, and hit Grace.
+WEB_EXPORT void web_test_seed(unsigned int seed) {
+    throw_seed(seed);
+    enemy_seed(seed * 2654435761u + 1u);
+}
+
+WEB_EXPORT int web_test_give(int item) {
+    if (item < 0 || item >= ITEM_COUNT || !inventory_add(item)) {
+        return 0;
+    }
+    bump_revision();
+    return 1;
+}
+
+WEB_EXPORT void web_test_enemy_at(int x, int y) {
+    enemy_place((float)x + 0.5f, (float)y + 0.5f);
+}
+
+WEB_EXPORT void web_test_hurt(void) {
+    grace_hurt();
 }
 
 WEB_EXPORT int web_grace_ready(void) {
@@ -886,6 +1188,7 @@ WEB_EXPORT void game_reset(void) {
     doors_init();
     interact_init();
     health_init();
+    throw_init();
     enemy_init(app.level.start_x, app.level.start_y);
     app.respawn_x = app.level.start_x;
     app.respawn_y = app.level.start_y;
@@ -897,7 +1200,12 @@ WEB_EXPORT void game_reset(void) {
     app.elapsed = 0.0;
     app.paused = false;
     app.grace = GRACE_PAUSED;
+    app.last = GRACE_WAITING;
     app.menu_open = true;
+    app.quick_open = false;
+    app.pending = false;
+    app.impact_at = -1.0;
+    app.grace_flash_until = -1.0;
     app.setup = SETUP_NONE;
     app.setup_has_target = false;
     app.route.count = 0;
@@ -937,13 +1245,15 @@ WEB_EXPORT int load_game(int slot) {
         enemy_init(app.respawn_x, app.respawn_y);
         player_stop();
         app.grace = GRACE_PAUSED;
+        app.last = GRACE_WAITING;
         app.menu_open = true;
+        app.quick_open = false;
+        app.pending = false;
         app.setup = SETUP_NONE;
         app.setup_has_target = false;
-    app.setup = SETUP_NONE;
-    app.setup_has_target = false;
         app.route.count = 0;
-            app.preview.count = 0;
+        app.preview.count = 0;
+        throw_sync();
         camera_follow(player_x(), player_y());
         bump_revision();
         return 1;
