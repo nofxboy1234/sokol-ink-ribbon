@@ -16,20 +16,61 @@ const same = (a: GraceView, b: GraceView) =>
   Math.round(a.y) === Math.round(b.y) &&
   a.cell === b.cell;
 
+function WalkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
+function RunIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 5l7 7-7 7M12 5l7 7-7 7" />
+    </svg>
+  );
+}
+
+function WaitIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
 const ACTIONS = [
-  { label: "Walk", setup: GraceSetup.Walk, action: GraceAction.Walk },
-  { label: "Run", setup: GraceSetup.Run, action: GraceAction.Run },
-  { label: "Wait", setup: GraceSetup.Wait, action: GraceAction.Wait },
+  { label: "Walk", action: GraceAction.Walk, Icon: WalkIcon },
+  { label: "Run", action: GraceAction.Run, Icon: RunIcon },
+  { label: "Wait", action: GraceAction.Wait, Icon: WaitIcon },
 ];
 
-const EDGE = 6;
+const EDGE = 4;
+const SPREAD = 60; // degrees between icons
 
-// Grace's action menu, shown above her only while she is Paused. Pick an
-// action (the others lock), make its choices, then Ok or Cancel.
+// Which way the arc opens: up by default, away from any edge Grace is near.
+function arcCentre(x: number, y: number, w: number, h: number, reach: number): number {
+  if (y - reach < EDGE) {
+    return 90; // down
+  }
+  if (x - reach < EDGE) {
+    return 0; // right
+  }
+  if (x + reach > w - EDGE) {
+    return 180; // left
+  }
+  return -90; // up
+}
+
+// Grace's actions. While Paused with nothing chosen: three icons in an arc
+// around her. Once an action is chosen: an Ok/Cancel pill at the bottom of
+// the map, so the level stays clear for picking a cell.
 export function GraceActions() {
   const [grace, setGrace] = useState<GraceView>(readGrace);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [shift, setShift] = useState({ x: 0, y: 0 });
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [pane, setPane] = useState({ w: 0, h: 0, size: 40 });
 
   useEffect(() => {
     let frame = 0;
@@ -42,69 +83,88 @@ export function GraceActions() {
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  const paused = grace.mode === GraceMode.Paused;
-  const left = grace.x;
-  const top = grace.y - Math.max(grace.cell * 0.6, 12);
-
-  // Keep the menu inside the map pane near its edges.
   useLayoutEffect(() => {
-    const menu = menuRef.current;
-    const pane = menu?.offsetParent as HTMLElement | null;
-    if (!menu || !pane) {
+    const host = hostRef.current?.parentElement;
+    if (!host) {
       return;
     }
-    const w = menu.offsetWidth;
-    const h = menu.offsetHeight;
-    const minX = EDGE + w / 2;
-    const maxX = pane.clientWidth - EDGE - w / 2;
-    const x = Math.min(Math.max(left, minX), Math.max(minX, maxX)) - left;
-    const y = top - h < EDGE ? EDGE + h - top : 0;
-    setShift((prev) => (prev.x === x && prev.y === y ? prev : { x, y }));
-  }, [left, top, paused, grace.setup]);
+    const measure = () => {
+      const size = window.matchMedia("(pointer: coarse)").matches ? 44 : 40;
+      setPane((prev) =>
+        prev.w === host.clientWidth && prev.h === host.clientHeight && prev.size === size
+          ? prev
+          : { w: host.clientWidth, h: host.clientHeight, size },
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
 
-  if (!paused) {
-    return null;
-  }
-  const locked = grace.setup !== GraceSetup.None;
+  const paused = grace.mode === GraceMode.Paused;
+  const picking = paused && grace.setup === GraceSetup.None;
+  const setupName =
+    grace.setup === GraceSetup.Walk
+      ? "Walk"
+      : grace.setup === GraceSetup.Run
+        ? "Run"
+        : grace.setup === GraceSetup.Wait
+          ? "Wait"
+          : "";
   const hint =
-    grace.setup === GraceSetup.Walk || grace.setup === GraceSetup.Run
-      ? grace.ready
-        ? "Ok to go"
-        : "Pick a cell"
-      : grace.setup === GraceSetup.Wait
-        ? "Ok to wait"
-        : null;
+    grace.setup === GraceSetup.Wait
+      ? "Ok to wait"
+      : grace.ready
+        ? "Tap the cell again or Ok"
+        : "Pick a cell";
+
+  const radius = Math.max(grace.cell * 0.9, pane.size * 0.95) + pane.size / 2;
+  const reach = radius + pane.size / 2;
+  const centre = arcCentre(grace.x, grace.y, pane.w, pane.h, reach);
 
   return (
-    <div
-      ref={menuRef}
-      className="grace-menu"
-      role="toolbar"
-      aria-label="Grace actions"
-      style={{ left: left + shift.x, top: top + shift.y }}
-    >
-      <div className="grace-menu-row">
-        {ACTIONS.map((entry) => (
-          <button
-            key={entry.label}
-            type="button"
-            aria-pressed={grace.setup === entry.setup}
-            disabled={locked && grace.setup !== entry.setup}
-            onClick={() => graceAction(entry.action)}
-          >
-            {entry.label}
+    <div ref={hostRef} className="grace-actions">
+      {picking &&
+        ACTIONS.map((entry, i) => {
+          // keep Walk on the left when the arc opens downwards
+          const step = centre === 90 ? 1 - i : i - 1;
+          const angle = ((centre + step * SPREAD) * Math.PI) / 180;
+          const x = grace.x + Math.cos(angle) * radius;
+          const y = grace.y + Math.sin(angle) * radius;
+          const half = pane.size / 2;
+          return (
+            <button
+              key={entry.label}
+              type="button"
+              className="grace-icon"
+              aria-label={entry.label}
+              title={entry.label}
+              style={{
+                left: Math.min(Math.max(x, EDGE + half), pane.w - EDGE - half),
+                top: Math.min(Math.max(y, EDGE + half), pane.h - EDGE - half),
+                width: pane.size,
+                height: pane.size,
+              }}
+              onClick={() => graceAction(entry.action)}
+            >
+              <entry.Icon />
+            </button>
+          );
+        })}
+      {paused && !picking && (
+        <div className="grace-pill" role="toolbar" aria-label="Confirm action">
+          <span className="grace-pill-label">
+            <strong>{setupName}</strong> · {hint}
+          </span>
+          <button type="button" disabled={!grace.ready} onClick={() => graceAction(GraceAction.Ok)}>
+            Ok
           </button>
-        ))}
-      </div>
-      <div className="grace-menu-row">
-        <button type="button" disabled={!grace.ready} onClick={() => graceAction(GraceAction.Ok)}>
-          Ok
-        </button>
-        <button type="button" disabled={!locked} onClick={() => graceAction(GraceAction.Cancel)}>
-          Cancel
-        </button>
-      </div>
-      {hint && <div className="grace-menu-hint">{hint}</div>}
+          <button type="button" onClick={() => graceAction(GraceAction.Cancel)}>
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   );
 }

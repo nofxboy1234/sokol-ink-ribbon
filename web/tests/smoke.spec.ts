@@ -21,8 +21,8 @@ declare global {
   }
 }
 
-// From Paused: pick an action in Grace's menu, click a cell dx cells to her
-// right, then Ok.
+// From Paused: tap an action icon, click a cell dx cells to Grace's right,
+// then Ok on the pill.
 async function orderGrace(page: Page, action: "Walk" | "Run", dx: number) {
   const box = await page.locator("canvas#canvas").boundingBox();
   if (!box) {
@@ -33,9 +33,10 @@ async function orderGrace(page: Page, action: "Walk" | "Run", dx: number) {
     y: window.Module?._web_grace_screen_y?.() ?? 0,
   }));
   const cellPx = await page.evaluate(() => window.Module?._level_cell_px?.() ?? 20);
-  const menu = page.getByRole("toolbar", { name: "Grace actions" });
-  await menu.getByRole("button", { name: action, exact: true }).click();
-  const ok = menu.getByRole("button", { name: "Ok", exact: true });
+  await page.getByRole("button", { name: action, exact: true }).click();
+  const ok = page
+    .getByRole("toolbar", { name: "Confirm action" })
+    .getByRole("button", { name: "Ok", exact: true });
   await expect(ok).toBeDisabled();
   const scale = await page.evaluate(() => window.devicePixelRatio);
   await page.mouse.click(box.x + at.x + (cellPx / scale) * dx, box.y + at.y);
@@ -126,7 +127,7 @@ test("a double click on the map pauses Grace mid-move", async ({ page }) => {
   // a single click does nothing
   expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(1);
   await page.mouse.dblclick(x, y);
-  await expect(page.getByRole("toolbar", { name: "Grace actions" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Walk", exact: true })).toBeVisible();
 
   const t1 = await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0);
   const s1 = await page.evaluate(() => window.Module?._player_total_steps?.() ?? 0);
