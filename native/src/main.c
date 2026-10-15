@@ -34,33 +34,47 @@
 #include <string.h>
 
 
-// What Grace is doing. The world (enemy, doors, run clock) only advances
-// while she is acting: GRACE_MOVING or GRACE_WAITING.
+// Grace's state (see grace_state_machine.png): every change goes through
+// Paused. Paused is the only state where world time (enemy, doors, run
+// clock) is frozen; the action menu above her shows only then.
 typedef enum {
-    GRACE_PAUSED = 0,   // idle, time frozen; click her to open the menu
-    GRACE_MENU,         // action menu open above her, time frozen
-    GRACE_TARGET,       // Walk/Run chosen, picking a cell with the rope, time frozen
-    GRACE_MOVING,       // walking or running to the target
-    GRACE_WAITING,      // idling in place while time passes
+    GRACE_PAUSED = 0,
+    GRACE_WALKING,
+    GRACE_RUNNING,
+    GRACE_WAITING,
 } grace_mode_t;
+
+// The action being set up in the Paused menu, before Ok.
+typedef enum {
+    SETUP_NONE = 0,
+    SETUP_WALK,
+    SETUP_RUN,
+    SETUP_WAIT,
+} grace_setup_t;
 
 typedef enum {
     GRACE_ACT_WALK = 0,
     GRACE_ACT_RUN,
     GRACE_ACT_WAIT,
+    GRACE_ACT_OK,
+    GRACE_ACT_CANCEL,
     GRACE_ACT_PAUSE,
-    GRACE_ACT_CANCEL,   // close the menu or leave target selection
 } grace_action_t;
 
-// The one Wait decision: Grace can be paused out of Wait with the Pause
-// action. Set to false to make Wait last until another action instead
-// (there would then be no way back to Paused while waiting).
-#define GRACE_PAUSE_WHILE_WAITING true
+// Two map clicks this close in time and space pause an action.
+#define DOUBLE_CLICK_SECONDS 0.33f
+#define DOUBLE_CLICK_SLOP_PX 24.0f
 
 static struct {
     sg_pass_action pass_action;
     grace_mode_t grace;
-    player_move_t grace_move;
+    grace_setup_t setup;
+    bool setup_has_target;  // Walk/Run: a reachable cell was picked
+    int setup_x, setup_y;
+    path_t setup_route;     // the rope to the picked cell
+    double clock;           // real seconds, for double-click timing
+    double last_click_at;
+    float last_click_x, last_click_y;
     level_t level;
     path_t preview;
     path_t route;
@@ -159,77 +173,97 @@ static void set_grace(grace_mode_t mode) {
     }
 }
 
-static bool grace_acting(void) {
-    return app.grace == GRACE_MOVING || app.grace == GRACE_WAITING;
+static bool setup_is_move(void) {
+    return app.setup == SETUP_WALK || app.setup == SETUP_RUN;
 }
 
-static bool grace_can_pause(void) {
-    return app.grace == GRACE_MOVING || (GRACE_PAUSE_WHILE_WAITING && app.grace == GRACE_WAITING);
+// Ok is enabled once every choice is made: Wait needs none, Walk/Run need
+// a reachable target.
+static bool setup_ready(void) {
+    return app.setup == SETUP_WAIT || (setup_is_move() && app.setup_has_target);
+}
+
+static void clear_setup(void) {
+    app.setup = SETUP_NONE;
+    app.setup_has_target = false;
+    app.setup_route.count = 0;
+    bump_revision();
+}
+
+static void pick_target(int x, int y) {
+    int px, py;
+    player_cell(&px, &py);
+    if (!pathfind(px, py, x, y, &app.setup_route) || app.setup_route.count < 2) {
+        return;  // a wall or unreachable cell is ignored
+    }
+    app.setup_has_target = true;
+    app.setup_x = x;
+    app.setup_y = y;
+    bump_revision();
 }
 
 static bool grace_do(grace_action_t action) {
     switch (action) {
         case GRACE_ACT_WALK:
         case GRACE_ACT_RUN:
-            if (app.grace != GRACE_MENU) {
-                return false;
-            }
-            app.grace_move = action == GRACE_ACT_RUN ? PLAYER_RUN : PLAYER_WALK;
-            set_grace(GRACE_TARGET);
-            return true;
         case GRACE_ACT_WAIT:
-            if (app.grace != GRACE_MENU) {
+            // Picking an action locks the others until Ok or Cancel.
+            if (app.grace != GRACE_PAUSED || app.setup != SETUP_NONE) {
                 return false;
             }
-            set_grace(GRACE_WAITING);
+            app.setup = action == GRACE_ACT_WALK ? SETUP_WALK
+                      : action == GRACE_ACT_RUN  ? SETUP_RUN
+                                                 : SETUP_WAIT;
+            bump_revision();
             return true;
-        case GRACE_ACT_PAUSE:
-            if (!grace_can_pause()) {
+        case GRACE_ACT_OK:
+            if (app.grace != GRACE_PAUSED || !setup_ready()) {
                 return false;
             }
-            player_stop();
-            app.route.count = 0;
-            set_grace(GRACE_PAUSED);
+            if (app.setup == SETUP_WAIT) {
+                set_grace(GRACE_WAITING);
+            } else {
+                bool run = app.setup == SETUP_RUN;
+                player_move_to(app.setup_x, app.setup_y, run ? PLAYER_RUN : PLAYER_WALK);
+                if (player_is_moving()) {
+                    app.route = *player_path();
+                    set_grace(run ? GRACE_RUNNING : GRACE_WALKING);
+                }
+            }
+            clear_setup();
             return true;
         case GRACE_ACT_CANCEL:
-            if (app.grace != GRACE_MENU && app.grace != GRACE_TARGET) {
+            if (app.setup == SETUP_NONE) {
                 return false;
             }
+            clear_setup();
+            return true;
+        case GRACE_ACT_PAUSE:
+            if (app.grace == GRACE_PAUSED) {
+                return false;
+            }
+            player_halt();  // stop at the nearest cell
+            app.route.count = 0;
             set_grace(GRACE_PAUSED);
             return true;
     }
     return false;
 }
 
-// Is the screen point on Grace's dot? Touch gets a bigger target.
-static bool on_grace(float sx, float sy) {
-    float gx, gy;
-    camera_cell_to_screen(player_x(), player_y(), &gx, &gy);
-    float r = camera_cell_px() * 0.75f;
-    float min_r = (app.touch_pointer ? 28.0f : 14.0f) * sapp_dpi_scale();
-    if (r < min_r) {
-        r = min_r;
-    }
-    float dx = sx - gx, dy = sy - gy;
-    return dx * dx + dy * dy <= r * r;
-}
-
 static void handle_click(void) {
-    switch (app.grace) {
-        case GRACE_PAUSED:
-            if (on_grace(app.mouse_x, app.mouse_y)) {
-                set_grace(GRACE_MENU);
-                return;
-            }
-            break;  // doors and items can still be used while paused
-        case GRACE_MENU:
-            set_grace(GRACE_PAUSED);  // clicking off the menu closes it
-            return;
-        case GRACE_TARGET:
-            break;
-        case GRACE_MOVING:
-        case GRACE_WAITING:
-            return;  // she must be paused before she takes new orders
+    if (app.grace != GRACE_PAUSED) {
+        // During an action a single click does nothing; a double click pauses.
+        float dx = app.mouse_x - app.last_click_x, dy = app.mouse_y - app.last_click_y;
+        float slop = DOUBLE_CLICK_SLOP_PX * sapp_dpi_scale();
+        if (app.clock - app.last_click_at <= DOUBLE_CLICK_SECONDS && dx * dx + dy * dy <= slop * slop) {
+            app.last_click_at = -1.0;
+            grace_do(GRACE_ACT_PAUSE);
+        } else {
+            app.last_click_at = app.clock;
+            app.last_click_x = app.mouse_x;
+            app.last_click_y = app.mouse_y;
+        }
+        return;
     }
     if (app.hover_x < 0 || app.hover_y < 0) {
         return;
@@ -242,15 +276,9 @@ static void handle_click(void) {
         bump_revision();
         return;
     }
-    if (app.grace != GRACE_TARGET) {
-        return;
+    if (setup_is_move()) {
+        pick_target(app.hover_x, app.hover_y);
     }
-    player_move_to(app.hover_x, app.hover_y, app.grace_move);
-    if (player_is_moving()) {
-        app.route = *player_path();
-        set_grace(GRACE_MOVING);
-    }
-    bump_revision();
 }
 
 // A hit worsens Grace's health one step. A hit while in Danger sends her back
@@ -398,7 +426,8 @@ void _dbgui_extra(void) {
 
 static void frame(void) {
     const float dt = (float)sapp_frame_duration();
-    if (!app.paused && grace_acting()) {
+    app.clock += (double)dt;
+    if (!app.paused && app.grace != GRACE_PAUSED) {
         player_update(dt);
         float noise = !player_is_moving() ? 0.0f
             : player_move_mode() == PLAYER_RUN ? GRACE_NOISE_RUN : GRACE_NOISE_WALK;
@@ -418,7 +447,7 @@ static void frame(void) {
                 app.route.count = 0;
             }
         }
-        if (app.grace == GRACE_MOVING && !player_is_moving()) {
+        if ((app.grace == GRACE_WALKING || app.grace == GRACE_RUNNING) && !player_is_moving()) {
             app.route.count = 0;
             set_grace(GRACE_PAUSED);  // she pauses on arrival
         }
@@ -439,13 +468,18 @@ static void frame(void) {
     update_hover();
 
     _dbgui_update();
-    // The rope only shows while picking a target; touch has no hover, so
-    // only while a finger is down.
-    bool hover = app.grace == GRACE_TARGET && (!app.touch_pointer || app.touch_active);
-    render_scene(hover ? app.hover_x : -1,
-                 hover ? app.hover_y : -1,
-                 hover ? &app.preview : NULL,
-                 &app.route);
+    // While setting up Walk/Run the rope shows the picked cell's route, or
+    // follows the pointer until one is picked (touch: only while a finger is
+    // down, since touch has no hover).
+    if (setup_is_move() && app.setup_has_target) {
+        render_scene(app.setup_x, app.setup_y, &app.setup_route, &app.route);
+    } else {
+        bool hover = setup_is_move() && (!app.touch_pointer || app.touch_active);
+        render_scene(hover ? app.hover_x : -1,
+                     hover ? app.hover_y : -1,
+                     hover ? &app.preview : NULL,
+                     &app.route);
+    }
 
     sg_begin_pass(&(sg_pass){
         .action = app.pass_action,
@@ -651,8 +685,12 @@ WEB_EXPORT int web_grace_mode(void) {
     return (int)app.grace;
 }
 
-WEB_EXPORT int web_grace_can_pause(void) {
-    return grace_can_pause() ? 1 : 0;
+WEB_EXPORT int web_grace_setup(void) {
+    return (int)app.setup;
+}
+
+WEB_EXPORT int web_grace_ready(void) {
+    return setup_ready() ? 1 : 0;
 }
 
 WEB_EXPORT int web_grace_action(int action) {
@@ -814,6 +852,8 @@ WEB_EXPORT void game_reset(void) {
     app.elapsed = 0.0;
     app.paused = false;
     app.grace = GRACE_PAUSED;
+    app.setup = SETUP_NONE;
+    app.setup_has_target = false;
     app.route.count = 0;
     app.preview.count = 0;
     app.last_steps = 0;
@@ -851,6 +891,10 @@ WEB_EXPORT int load_game(int slot) {
         enemy_init(app.respawn_x, app.respawn_y);
         player_stop();
         app.grace = GRACE_PAUSED;
+        app.setup = SETUP_NONE;
+        app.setup_has_target = false;
+    app.setup = SETUP_NONE;
+    app.setup_has_target = false;
         app.route.count = 0;
             app.preview.count = 0;
         camera_follow(player_x(), player_y());

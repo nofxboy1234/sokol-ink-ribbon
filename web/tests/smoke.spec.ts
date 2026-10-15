@@ -21,8 +21,8 @@ declare global {
   }
 }
 
-// Click Grace's dot, pick an action from her menu, then click a cell
-// dx cells to her right.
+// From Paused: pick an action in Grace's menu, click a cell dx cells to her
+// right, then Ok.
 async function orderGrace(page: Page, action: "Walk" | "Run", dx: number) {
   const box = await page.locator("canvas#canvas").boundingBox();
   if (!box) {
@@ -33,10 +33,13 @@ async function orderGrace(page: Page, action: "Walk" | "Run", dx: number) {
     y: window.Module?._web_grace_screen_y?.() ?? 0,
   }));
   const cellPx = await page.evaluate(() => window.Module?._level_cell_px?.() ?? 20);
-  await page.mouse.click(box.x + at.x, box.y + at.y);
-  await page.getByRole("menuitem", { name: action, exact: true }).click();
+  const menu = page.getByRole("toolbar", { name: "Grace actions" });
+  await menu.getByRole("button", { name: action, exact: true }).click();
+  const ok = menu.getByRole("button", { name: "Ok", exact: true });
+  await expect(ok).toBeDisabled();
   const scale = await page.evaluate(() => window.devicePixelRatio);
   await page.mouse.click(box.x + at.x + (cellPx / scale) * dx, box.y + at.y);
+  await ok.click();
 }
 
 test("the map app boots and renders the level", async ({ page }) => {
@@ -90,7 +93,7 @@ test("walking records a replay", async ({ page }) => {
   await page.waitForTimeout(1500);
   const after = await page.evaluate(() => window.Module?._replay_length?.() ?? 0);
   expect(after).toBeGreaterThan(before);
-  // she pauses when she arrives
+  // she is Paused again once she arrives
   expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(0);
 });
 
@@ -104,7 +107,7 @@ test("the world is frozen while Grace is paused", async ({ page }) => {
   expect(await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0)).toBe(t0);
 });
 
-test("the Pause action stops Grace mid-move", async ({ page }) => {
+test("a double click on the map pauses Grace mid-move", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
     timeout: 30_000,
@@ -112,7 +115,18 @@ test("the Pause action stops Grace mid-move", async ({ page }) => {
 
   await orderGrace(page, "Walk", 6);
   await page.waitForTimeout(300);
-  await page.getByRole("button", { name: "Pause Grace" }).click();
+  const box = await page.locator("canvas#canvas").boundingBox();
+  if (!box) {
+    throw new Error("canvas has no box");
+  }
+  const x = box.x + box.width / 2 + 60;
+  const y = box.y + box.height / 2 + 60;
+  await page.mouse.click(x, y);
+  await page.waitForTimeout(400);
+  // a single click does nothing
+  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(1);
+  await page.mouse.dblclick(x, y);
+  await expect(page.getByRole("toolbar", { name: "Grace actions" })).toBeVisible();
 
   const t1 = await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0);
   const s1 = await page.evaluate(() => window.Module?._player_total_steps?.() ?? 0);
@@ -120,6 +134,7 @@ test("the Pause action stops Grace mid-move", async ({ page }) => {
   const t2 = await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0);
   const s2 = await page.evaluate(() => window.Module?._player_total_steps?.() ?? 0);
 
+  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(0);
   expect(t1).toBeGreaterThan(0);
   expect(t2).toBe(t1);
   expect(s2).toBe(s1);

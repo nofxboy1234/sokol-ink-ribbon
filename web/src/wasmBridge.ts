@@ -19,7 +19,8 @@ export type EmscriptenModule = {
   _web_inventory_use?: (index: number) => number;
   _web_enemy_state?: () => number;
   _web_grace_mode?: () => number;
-  _web_grace_can_pause?: () => number;
+  _web_grace_setup?: () => number;
+  _web_grace_ready?: () => number;
   _web_grace_action?: (action: number) => number;
   _web_grace_screen_x?: () => number;
   _web_grace_screen_y?: () => number;
@@ -176,17 +177,26 @@ export function gameReset(): void {
   module()?._game_reset?.();
 }
 
-// Mirrors grace_mode_t / grace_action_t in native/src/main.c.
-export const GraceMode = { Paused: 0, Menu: 1, Target: 2, Moving: 3, Waiting: 4 } as const;
-export const GraceAction = { Walk: 0, Run: 1, Wait: 2, Pause: 3, Cancel: 4 } as const;
+// Mirrors grace_mode_t / grace_setup_t / grace_action_t in native/src/main.c.
+export const GraceMode = { Paused: 0, Walking: 1, Running: 2, Waiting: 3 } as const;
+export const GraceSetup = { None: 0, Walk: 1, Run: 2, Wait: 3 } as const;
+export const GraceAction = { Walk: 0, Run: 1, Wait: 2, Ok: 3, Cancel: 4, Pause: 5 } as const;
 
-export type GraceView = { mode: number; canPause: boolean; x: number; y: number; cell: number };
+export type GraceView = {
+  mode: number;
+  setup: number;
+  ready: boolean;
+  x: number;
+  y: number;
+  cell: number;
+};
 
 export function readGrace(): GraceView {
   const m = module();
   return {
     mode: m?._web_grace_mode?.() ?? GraceMode.Paused,
-    canPause: (m?._web_grace_can_pause?.() ?? 0) !== 0,
+    setup: m?._web_grace_setup?.() ?? GraceSetup.None,
+    ready: (m?._web_grace_ready?.() ?? 0) !== 0,
     x: m?._web_grace_screen_x?.() ?? 0,
     y: m?._web_grace_screen_y?.() ?? 0,
     cell: m?._web_cell_css_px?.() ?? 0,

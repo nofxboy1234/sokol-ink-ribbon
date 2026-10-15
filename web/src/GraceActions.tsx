@@ -1,16 +1,35 @@
-import { useEffect, useState } from "react";
-import { GraceAction, GraceMode, graceAction, readGrace, type GraceView } from "./wasmBridge";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  GraceAction,
+  GraceMode,
+  GraceSetup,
+  graceAction,
+  readGrace,
+  type GraceView,
+} from "./wasmBridge";
 
 const same = (a: GraceView, b: GraceView) =>
   a.mode === b.mode &&
-  a.canPause === b.canPause &&
+  a.setup === b.setup &&
+  a.ready === b.ready &&
   Math.round(a.x) === Math.round(b.x) &&
   Math.round(a.y) === Math.round(b.y) &&
   a.cell === b.cell;
 
-// Grace's action menu and Pause action, drawn over the map above her dot.
+const ACTIONS = [
+  { label: "Walk", setup: GraceSetup.Walk, action: GraceAction.Walk },
+  { label: "Run", setup: GraceSetup.Run, action: GraceAction.Run },
+  { label: "Wait", setup: GraceSetup.Wait, action: GraceAction.Wait },
+];
+
+const EDGE = 6;
+
+// Grace's action menu, shown above her only while she is Paused. Pick an
+// action (the others lock), make its choices, then Ok or Cancel.
 export function GraceActions() {
   const [grace, setGrace] = useState<GraceView>(readGrace);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [shift, setShift] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     let frame = 0;
@@ -23,42 +42,69 @@ export function GraceActions() {
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  const above = { left: grace.x, top: grace.y - Math.max(grace.cell * 0.6, 12) };
+  const paused = grace.mode === GraceMode.Paused;
+  const left = grace.x;
+  const top = grace.y - Math.max(grace.cell * 0.6, 12);
+
+  // Keep the menu inside the map pane near its edges.
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    const pane = menu?.offsetParent as HTMLElement | null;
+    if (!menu || !pane) {
+      return;
+    }
+    const w = menu.offsetWidth;
+    const h = menu.offsetHeight;
+    const minX = EDGE + w / 2;
+    const maxX = pane.clientWidth - EDGE - w / 2;
+    const x = Math.min(Math.max(left, minX), Math.max(minX, maxX)) - left;
+    const y = top - h < EDGE ? EDGE + h - top : 0;
+    setShift((prev) => (prev.x === x && prev.y === y ? prev : { x, y }));
+  }, [left, top, paused, grace.setup]);
+
+  if (!paused) {
+    return null;
+  }
+  const locked = grace.setup !== GraceSetup.None;
+  const hint =
+    grace.setup === GraceSetup.Walk || grace.setup === GraceSetup.Run
+      ? grace.ready
+        ? "Ok to go"
+        : "Pick a cell"
+      : grace.setup === GraceSetup.Wait
+        ? "Ok to wait"
+        : null;
 
   return (
-    <>
-      {grace.mode === GraceMode.Menu && (
-        <div className="grace-menu" role="menu" aria-label="Grace actions" style={above}>
-          <button type="button" role="menuitem" onClick={() => graceAction(GraceAction.Walk)}>
-            Walk
+    <div
+      ref={menuRef}
+      className="grace-menu"
+      role="toolbar"
+      aria-label="Grace actions"
+      style={{ left: left + shift.x, top: top + shift.y }}
+    >
+      <div className="grace-menu-row">
+        {ACTIONS.map((entry) => (
+          <button
+            key={entry.label}
+            type="button"
+            aria-pressed={grace.setup === entry.setup}
+            disabled={locked && grace.setup !== entry.setup}
+            onClick={() => graceAction(entry.action)}
+          >
+            {entry.label}
           </button>
-          <button type="button" role="menuitem" onClick={() => graceAction(GraceAction.Run)}>
-            Run
-          </button>
-          <button type="button" role="menuitem" onClick={() => graceAction(GraceAction.Wait)}>
-            Wait
-          </button>
-        </div>
-      )}
-      {grace.canPause && (
-        <button
-          type="button"
-          className="grace-pause"
-          aria-label="Pause Grace"
-          style={above}
-          onClick={() => graceAction(GraceAction.Pause)}
-        >
-          {grace.mode === GraceMode.Waiting ? "Waiting… Pause" : "Pause"}
+        ))}
+      </div>
+      <div className="grace-menu-row">
+        <button type="button" disabled={!grace.ready} onClick={() => graceAction(GraceAction.Ok)}>
+          Ok
         </button>
-      )}
-      {grace.mode === GraceMode.Target && (
-        <div className="grace-hint">
-          <span>Pick a cell</span>
-          <button type="button" onClick={() => graceAction(GraceAction.Cancel)}>
-            Cancel
-          </button>
-        </div>
-      )}
-    </>
+        <button type="button" disabled={!locked} onClick={() => graceAction(GraceAction.Cancel)}>
+          Cancel
+        </button>
+      </div>
+      {hint && <div className="grace-menu-hint">{hint}</div>}
+    </div>
   );
 }

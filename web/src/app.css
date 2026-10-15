@@ -722,56 +722,54 @@ button.recipe[aria-disabled="true"] {
   }
 }
 
-/* Grace's action menu and Pause action float above her dot. */
-.grace-menu,
-.grace-pause {
+/* Grace's action menu floats above her dot while she is Paused. */
+.grace-menu {
   position: absolute;
   transform: translate(-50%, -100%);
   z-index: 2;
-}
-
-.grace-menu {
   display: flex;
+  flex-direction: column;
   border: 1px solid var(--ink);
   background: var(--paper);
 }
 
-.grace-menu button,
-.grace-pause,
-.grace-hint button {
-  min-width: 44px;
-  min-height: 36px;
+.grace-menu-row {
+  display: flex;
+}
+
+.grace-menu-row + .grace-menu-row {
+  border-top: 1px solid var(--ink);
+}
+
+.grace-menu button {
+  flex: 1 1 0;
+  min-width: 52px;
+  min-height: 40px;
   padding: 6px 10px;
   background: var(--paper);
   color: var(--ink);
   border: 0;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .grace-menu button + button {
   border-left: 1px solid var(--ink);
 }
 
-.grace-pause {
-  border: 1px solid var(--ink);
-  white-space: nowrap;
+.grace-menu button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--paper);
 }
 
-.grace-hint {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 2px 2px 2px 10px;
-  border: 1px solid var(--ink);
-  background: var(--paper);
+.grace-menu button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.grace-menu-hint {
+  padding: 2px 6px;
+  border-top: 1px solid var(--ink);
   font-size: 12px;
-  z-index: 2;
-}
-
-.grace-hint button {
-  border-left: 1px solid var(--ink);
+  text-align: center;
 }

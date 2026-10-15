@@ -12,6 +12,8 @@ void player_set_cell(int x, int y);
 void player_move_to(int x, int y, player_move_t mode);
 const path_t* player_path(void);
 void player_stop(void);
+// Stop and settle on the nearest cell centre.
+void player_halt(void);
 void player_update(float dt);
 
 float player_x(void);
