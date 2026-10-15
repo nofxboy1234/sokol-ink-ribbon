@@ -121,7 +121,6 @@ a {
   font-size: 12px;
 }
 
-
 .pause-overlay {
   position: fixed;
   inset: 0;
@@ -744,7 +743,24 @@ button.recipe[aria-disabled="true"] {
   pointer-events: auto;
 }
 
-.grace-icon svg {
+/* the current state, bottom-right of the map; display only */
+.grace-status {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ink);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--ink);
+  pointer-events: none;
+}
+
+.grace-icon svg,
+.grace-status svg {
   width: 60%;
   height: 60%;
   fill: none;
@@ -772,7 +788,8 @@ button.recipe[aria-disabled="true"] {
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  max-width: calc(100% - 20px);
+  /* leave room for the status circle in the bottom-right corner */
+  max-width: calc(100% - 2 * 60px);
   border: 1px solid var(--ink);
   border-radius: 22px;
   background: var(--paper);
@@ -781,7 +798,7 @@ button.recipe[aria-disabled="true"] {
 }
 
 .grace-pill-label {
-  padding: 0 12px;
+  padding: 0 10px;
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
@@ -789,9 +806,9 @@ button.recipe[aria-disabled="true"] {
 }
 
 .grace-pill button {
-  min-width: 56px;
+  min-width: 52px;
   min-height: 44px;
-  padding: 0 12px;
+  padding: 0 10px;
   border: 0;
   border-left: 1px solid var(--ink);
   background: var(--paper);

@@ -43,6 +43,22 @@ function WaitIcon() {
   );
 }
 
+function PauseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 6v12M15 6v12" />
+    </svg>
+  );
+}
+
+// What the status circle shows for each grace_mode_t.
+const STATUS = [
+  { label: "Paused", Icon: PauseIcon },
+  { label: "Walking", Icon: WalkIcon },
+  { label: "Running", Icon: RunIcon },
+  { label: "Waiting", Icon: WaitIcon },
+];
+
 const ACTIONS = [
   { label: "Walk", action: GraceAction.Walk, Icon: WalkIcon },
   { label: "Run", action: GraceAction.Run, Icon: RunIcon },
@@ -120,15 +136,27 @@ export function GraceActions() {
     grace.setup === GraceSetup.Wait
       ? "Ok to wait"
       : grace.ready
-        ? "Tap the cell again or Ok"
+        ? "Tap again or Ok"
         : "Pick a cell";
 
   const radius = Math.max(grace.cell * 0.9, pane.size * 0.95) + pane.size / 2;
   const reach = radius + pane.size / 2;
   const centre = arcCentre(grace.x, grace.y, pane.w, pane.h, reach);
 
+  const status = STATUS[grace.mode] ?? STATUS[0];
+
   return (
     <div ref={hostRef} className="grace-actions">
+      {grace.live && (
+        <div
+          className="grace-status"
+          role="status"
+          aria-live="polite"
+          aria-label={`Grace: ${status.label}`}
+        >
+          <status.Icon />
+        </div>
+      )}
       {picking &&
         ACTIONS.map((entry, i) => {
           // keep Walk on the left when the arc opens downwards
