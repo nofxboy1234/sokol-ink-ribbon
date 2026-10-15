@@ -3,6 +3,7 @@ import { Link } from "@void/react";
 import "../src/app.css";
 import { AuthPanel } from "../src/AuthPanel";
 import { GameStateProvider } from "../src/GameState";
+import { GraceActions } from "../src/GraceActions";
 import { MapCanvas } from "../src/MapCanvas";
 import { Crafting, Files, Inventory, PauseMenu, RunPanel, SaveLoadMenu } from "../src/panes";
 import { setPaused as setGamePaused, takeSaveMenu } from "../src/wasmBridge";
@@ -57,6 +58,7 @@ export default function HomePage() {
         <main className="shell">
           <section className="pane pane-map">
             <MapCanvas />
+            <GraceActions />
             <button type="button" className="pause-button" onClick={() => setPaused(true)}>
               Pause
             </button>

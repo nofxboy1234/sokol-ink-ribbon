@@ -34,8 +34,33 @@
 #include <string.h>
 
 
+// What Grace is doing. The world (enemy, doors, run clock) only advances
+// while she is acting: GRACE_MOVING or GRACE_WAITING.
+typedef enum {
+    GRACE_PAUSED = 0,   // idle, time frozen; click her to open the menu
+    GRACE_MENU,         // action menu open above her, time frozen
+    GRACE_TARGET,       // Walk/Run chosen, picking a cell with the rope, time frozen
+    GRACE_MOVING,       // walking or running to the target
+    GRACE_WAITING,      // idling in place while time passes
+} grace_mode_t;
+
+typedef enum {
+    GRACE_ACT_WALK = 0,
+    GRACE_ACT_RUN,
+    GRACE_ACT_WAIT,
+    GRACE_ACT_PAUSE,
+    GRACE_ACT_CANCEL,   // close the menu or leave target selection
+} grace_action_t;
+
+// The one Wait decision: Grace can be paused out of Wait with the Pause
+// action. Set to false to make Wait last until another action instead
+// (there would then be no way back to Paused while waiting).
+#define GRACE_PAUSE_WHILE_WAITING true
+
 static struct {
     sg_pass_action pass_action;
+    grace_mode_t grace;
+    player_move_t grace_move;
     level_t level;
     path_t preview;
     path_t route;
@@ -54,12 +79,9 @@ static struct {
     bool touch_active;
     bool touch_moved;
     float touch_start_x, touch_start_y;
-    float touch_hold;
     int respawn_x, respawn_y;
 } app;
 
-// A long press on the map runs, like a right click.
-#define TOUCH_RUN_HOLD 0.45f
 #define TOUCH_SLOP_PX 14.0f
 
 #define ENEMY_STUN_SECONDS 3.0f
@@ -130,7 +152,85 @@ static void update_hover(void) {
     }
 }
 
-static void handle_click(player_move_t mode) {
+static void set_grace(grace_mode_t mode) {
+    if (app.grace != mode) {
+        app.grace = mode;
+        bump_revision();
+    }
+}
+
+static bool grace_acting(void) {
+    return app.grace == GRACE_MOVING || app.grace == GRACE_WAITING;
+}
+
+static bool grace_can_pause(void) {
+    return app.grace == GRACE_MOVING || (GRACE_PAUSE_WHILE_WAITING && app.grace == GRACE_WAITING);
+}
+
+static bool grace_do(grace_action_t action) {
+    switch (action) {
+        case GRACE_ACT_WALK:
+        case GRACE_ACT_RUN:
+            if (app.grace != GRACE_MENU) {
+                return false;
+            }
+            app.grace_move = action == GRACE_ACT_RUN ? PLAYER_RUN : PLAYER_WALK;
+            set_grace(GRACE_TARGET);
+            return true;
+        case GRACE_ACT_WAIT:
+            if (app.grace != GRACE_MENU) {
+                return false;
+            }
+            set_grace(GRACE_WAITING);
+            return true;
+        case GRACE_ACT_PAUSE:
+            if (!grace_can_pause()) {
+                return false;
+            }
+            player_stop();
+            app.route.count = 0;
+            set_grace(GRACE_PAUSED);
+            return true;
+        case GRACE_ACT_CANCEL:
+            if (app.grace != GRACE_MENU && app.grace != GRACE_TARGET) {
+                return false;
+            }
+            set_grace(GRACE_PAUSED);
+            return true;
+    }
+    return false;
+}
+
+// Is the screen point on Grace's dot? Touch gets a bigger target.
+static bool on_grace(float sx, float sy) {
+    float gx, gy;
+    camera_cell_to_screen(player_x(), player_y(), &gx, &gy);
+    float r = camera_cell_px() * 0.75f;
+    float min_r = (app.touch_pointer ? 28.0f : 14.0f) * sapp_dpi_scale();
+    if (r < min_r) {
+        r = min_r;
+    }
+    float dx = sx - gx, dy = sy - gy;
+    return dx * dx + dy * dy <= r * r;
+}
+
+static void handle_click(void) {
+    switch (app.grace) {
+        case GRACE_PAUSED:
+            if (on_grace(app.mouse_x, app.mouse_y)) {
+                set_grace(GRACE_MENU);
+                return;
+            }
+            break;  // doors and items can still be used while paused
+        case GRACE_MENU:
+            set_grace(GRACE_PAUSED);  // clicking off the menu closes it
+            return;
+        case GRACE_TARGET:
+            break;
+        case GRACE_MOVING:
+        case GRACE_WAITING:
+            return;  // she must be paused before she takes new orders
+    }
     if (app.hover_x < 0 || app.hover_y < 0) {
         return;
     }
@@ -142,11 +242,13 @@ static void handle_click(player_move_t mode) {
         bump_revision();
         return;
     }
-    player_move_to(app.hover_x, app.hover_y, mode);
+    if (app.grace != GRACE_TARGET) {
+        return;
+    }
+    player_move_to(app.hover_x, app.hover_y, app.grace_move);
     if (player_is_moving()) {
         app.route = *player_path();
-    } else {
-        app.route.count = 0;
+        set_grace(GRACE_MOVING);
     }
     bump_revision();
 }
@@ -296,18 +398,13 @@ void _dbgui_extra(void) {
 
 static void frame(void) {
     const float dt = (float)sapp_frame_duration();
-    if (app.touch_active) {
-        app.touch_hold += dt;
-    }
-    if (!app.paused) {
+    if (!app.paused && grace_acting()) {
         player_update(dt);
         float noise = !player_is_moving() ? 0.0f
             : player_move_mode() == PLAYER_RUN ? GRACE_NOISE_RUN : GRACE_NOISE_WALK;
         if (enemy_update(dt, player_x(), player_y(), noise)) {
             enemy_hit();
         }
-        camera_follow(player_x(), player_y());
-        camera_update(dt);
         reveal_sections();
 
         if (doors_update(dt)) {
@@ -321,6 +418,10 @@ static void frame(void) {
                 app.route.count = 0;
             }
         }
+        if (app.grace == GRACE_MOVING && !player_is_moving()) {
+            app.route.count = 0;
+            set_grace(GRACE_PAUSED);  // she pauses on arrival
+        }
         app.elapsed += (double)dt;
 
         int steps = player_steps_taken();
@@ -331,10 +432,16 @@ static void frame(void) {
             bump_revision();
         }
     }
+    if (!app.paused) {
+        camera_follow(player_x(), player_y());
+        camera_update(dt);
+    }
     update_hover();
 
     _dbgui_update();
-    bool hover = !app.touch_pointer || app.touch_active;
+    // The rope only shows while picking a target; touch has no hover, so
+    // only while a finger is down.
+    bool hover = app.grace == GRACE_TARGET && (!app.touch_pointer || app.touch_active);
     render_scene(hover ? app.hover_x : -1,
                  hover ? app.hover_y : -1,
                  hover ? &app.preview : NULL,
@@ -357,9 +464,9 @@ static void cleanup(void) {
     sg_shutdown();
 }
 
-static void click_at(sapp_mousebutton button) {
+static void click_at(void) {
     update_hover();
-    handle_click(button == SAPP_MOUSEBUTTON_RIGHT ? PLAYER_RUN : PLAYER_WALK);
+    handle_click();
 }
 
 static void event(const sapp_event* e) {
@@ -379,7 +486,7 @@ static void event(const sapp_event* e) {
             app.mouse_x = e->mouse_x;
             app.mouse_y = e->mouse_y;
             if (e->mouse_button == SAPP_MOUSEBUTTON_LEFT || e->mouse_button == SAPP_MOUSEBUTTON_RIGHT) {
-                click_at(e->mouse_button);
+                click_at();
             }
             return;
         case SAPP_EVENTTYPE_TOUCHES_BEGAN:
@@ -387,7 +494,6 @@ static void event(const sapp_event* e) {
             if (e->num_touches == 1) {
                 app.touch_active = true;
                 app.touch_moved = false;
-                app.touch_hold = 0.0f;
                 app.touch_start_x = app.mouse_x = e->touches[0].pos_x;
                 app.touch_start_y = app.mouse_y = e->touches[0].pos_y;
             } else {
@@ -414,7 +520,7 @@ static void event(const sapp_event* e) {
                 }
             }
             if (held == 0 && app.touch_active && !app.touch_moved) {
-                click_at(app.touch_hold >= TOUCH_RUN_HOLD ? SAPP_MOUSEBUTTON_RIGHT : SAPP_MOUSEBUTTON_LEFT);
+                click_at();
             }
             if (held == 0) {
                 app.touch_active = false;
@@ -539,6 +645,35 @@ WEB_EXPORT int web_inventory_use(int index) {
     health_set(health - heal);
     bump_revision();
     return 1;
+}
+
+WEB_EXPORT int web_grace_mode(void) {
+    return (int)app.grace;
+}
+
+WEB_EXPORT int web_grace_can_pause(void) {
+    return grace_can_pause() ? 1 : 0;
+}
+
+WEB_EXPORT int web_grace_action(int action) {
+    return grace_do((grace_action_t)action) ? 1 : 0;
+}
+
+// Grace's dot on screen, in CSS pixels from the canvas top-left.
+WEB_EXPORT float web_grace_screen_x(void) {
+    float sx, sy;
+    camera_cell_to_screen(player_x(), player_y(), &sx, &sy);
+    return sx / sapp_dpi_scale();
+}
+
+WEB_EXPORT float web_grace_screen_y(void) {
+    float sx, sy;
+    camera_cell_to_screen(player_x(), player_y(), &sx, &sy);
+    return sy / sapp_dpi_scale();
+}
+
+WEB_EXPORT float web_cell_css_px(void) {
+    return camera_cell_px() / sapp_dpi_scale();
 }
 
 WEB_EXPORT int web_enemy_state(void) {
@@ -678,6 +813,7 @@ WEB_EXPORT void game_reset(void) {
     reveal_sections();
     app.elapsed = 0.0;
     app.paused = false;
+    app.grace = GRACE_PAUSED;
     app.route.count = 0;
     app.preview.count = 0;
     app.last_steps = 0;
@@ -713,6 +849,8 @@ WEB_EXPORT int load_game(int slot) {
         app.elapsed = e / 1000.0;
         player_cell(&app.respawn_x, &app.respawn_y);
         enemy_init(app.respawn_x, app.respawn_y);
+        player_stop();
+        app.grace = GRACE_PAUSED;
         app.route.count = 0;
             app.preview.count = 0;
         camera_follow(player_x(), player_y());
