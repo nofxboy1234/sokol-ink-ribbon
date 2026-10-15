@@ -1,16 +1,11 @@
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MouseEvent,
-  type PointerEvent,
-} from "react";
-import {
+  ITEM_BOTTLE,
   SAVE_SLOTS,
   applyInventoryItem,
   clearInventorySlot,
   craftRecipe,
+  equipBottle,
   gameReset,
   itemAppearance,
   itemCount,
@@ -107,8 +102,9 @@ const ITEM_TEXT = [
   "This is a combination of 2 Green Herbs, and will restore a medium amount of health when used.",
 ];
 
-type ItemAction = "Move" | "Use" | "Discard";
+type ItemAction = "Move" | "Use" | "Equip" | "Unequip" | "Discard";
 
+// The Empty Bottle (0) also gets Equip or Unequip; see actionsFor.
 const ITEM_ACTIONS: ItemAction[][] = [
   ["Move", "Discard"],
   ["Move", "Discard"],
@@ -121,6 +117,17 @@ const ITEM_ACTIONS: ItemAction[][] = [
   ["Move"],
   ["Move", "Use", "Discard"],
 ];
+
+// The only equipable item in this level is the Empty Bottle.
+function actionsFor(item: number, bottleEquipped: boolean): ItemAction[] {
+  const base = ITEM_ACTIONS[item] ?? [];
+  if (item !== ITEM_BOTTLE) {
+    return base;
+  }
+  return [base[0], bottleEquipped ? "Unequip" : "Equip", ...base.slice(1)].filter(
+    (action): action is ItemAction => action !== undefined,
+  );
+}
 
 const STEROID_CHARGES = 0;
 const STABILIZER_CHARGES = 0;
@@ -169,7 +176,7 @@ function ChargePips({
 }
 
 export function Inventory() {
-  const { inventory, health, hasLighter, lighterOn } = useGameState();
+  const { inventory, health, hasLighter, lighterOn, bottleEquipped } = useGameState();
   const [selected, setSelected] = useState(-1);
   const [movingFrom, setMovingFrom] = useState(-1);
   const [menu, setMenu] = useState<{ index: number; x: number; y: number } | null>(null);
@@ -212,7 +219,7 @@ export function Inventory() {
   const selectedItem = selected >= 0 ? inventory[selected] : -1;
   const selectedLook = selectedItem >= 0 ? itemAppearance(selectedItem) : null;
   const menuItem = menu ? inventory[menu.index] : -1;
-  const menuActions = menuItem >= 0 ? (ITEM_ACTIONS[menuItem] ?? []) : [];
+  const menuActions = menuItem >= 0 ? actionsFor(menuItem, bottleEquipped) : [];
 
   const onSlotClick = (index: number) => {
     if (press.current?.fired) {
@@ -236,7 +243,7 @@ export function Inventory() {
       return;
     }
     const item = inventory[index] ?? -1;
-    if (item < 0 || (ITEM_ACTIONS[item] ?? []).length === 0) {
+    if (item < 0 || actionsFor(item, bottleEquipped).length === 0) {
       setMenu(null);
       return;
     }
@@ -244,7 +251,7 @@ export function Inventory() {
     setMenu({
       index,
       x: Math.min(x, window.innerWidth - 120),
-      y: Math.min(y, window.innerHeight - 110),
+      y: Math.min(y, window.innerHeight - 140),
     });
   };
 
@@ -316,6 +323,10 @@ export function Inventory() {
       }
       return;
     }
+    if (action === "Equip" || action === "Unequip") {
+      equipBottle(action === "Equip");
+      return;
+    }
     if (action === "Discard") {
       clearInventorySlot(index);
       if (selected === index) {
@@ -338,6 +349,7 @@ export function Inventory() {
               data-filled={item >= 0}
               data-selected={selected === index}
               data-moving={movingFrom === index}
+              data-equipped={item === ITEM_BOTTLE && bottleEquipped}
               title={look ? look.label : ""}
               onClick={() => onSlotClick(index)}
               onContextMenu={(event) => onSlotMenu(event, index)}
@@ -364,7 +376,13 @@ export function Inventory() {
       <div className="equip-row">
         <div className="gun-slot" title="No gun equipped" />
         <div className="quick-slots">
-          <div className="quick-slot" />
+          {bottleEquipped ? (
+            <div className="quick-slot quick-slot-item" title="Empty Bottle · equipped">
+              <ItemGlyph appearance={itemAppearance(ITEM_BOTTLE)} />
+            </div>
+          ) : (
+            <div className="quick-slot" />
+          )}
           {hasLighter ? (
             <button
               type="button"
@@ -478,7 +496,11 @@ function useCraftHold(onCommit: (index: number) => boolean): {
 
   const endHold = (event: PointerEvent<HTMLButtonElement>, index: number) => {
     const current = holdRef.current;
-    if (current.kind === "idle" || current.index !== index || current.pointerId !== event.pointerId) {
+    if (
+      current.kind === "idle" ||
+      current.index !== index ||
+      current.pointerId !== event.pointerId
+    ) {
       return;
     }
     cancelAnimationFrame(frameRef.current);

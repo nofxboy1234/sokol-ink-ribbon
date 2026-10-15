@@ -1,22 +1,19 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   GraceAction,
   GraceMode,
   GraceSetup,
+  ThrowStance,
   graceAction,
+  quickSelect,
   readGrace,
   type GraceView,
 } from "./wasmBridge";
 
 const same = (a: GraceView, b: GraceView) =>
-  a.live === b.live &&
-  a.menuOpen === b.menuOpen &&
-  a.mode === b.mode &&
-  a.setup === b.setup &&
-  a.ready === b.ready &&
-  Math.round(a.x) === Math.round(b.x) &&
-  Math.round(a.y) === Math.round(b.y) &&
-  a.cell === b.cell;
+  (Object.keys(a) as (keyof GraceView)[]).every((key) =>
+    key === "x" || key === "y" ? Math.round(a[key]) === Math.round(b[key]) : a[key] === b[key],
+  );
 
 function WalkIcon() {
   return (
@@ -51,6 +48,20 @@ function PauseIcon() {
   );
 }
 
+function ThrowIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 19L17 7M11 7h6v6" />
+      <circle cx="6" cy="6" r="1.5" />
+    </svg>
+  );
+}
+
+// The Empty Bottle, drawn like its blue dot on the map.
+function BottleIcon() {
+  return <span className="grace-bottle" aria-hidden="true" />;
+}
+
 // What the status circle shows for each grace_mode_t.
 const STATUS = [
   { label: "Paused", Icon: PauseIcon },
@@ -59,32 +70,80 @@ const STATUS = [
   { label: "Waiting", Icon: WaitIcon },
 ];
 
-const ACTIONS = [
-  { label: "Walk", action: GraceAction.Walk, Icon: WalkIcon },
-  { label: "Run", action: GraceAction.Run, Icon: RunIcon },
-  { label: "Wait", action: GraceAction.Wait, Icon: WaitIcon },
-];
-
 const EDGE = 4;
-const SPREAD = 60; // degrees between icons
 
-// Which way the arc opens: up by default, away from any edge Grace is near.
-function arcCentre(x: number, y: number, w: number, h: number, reach: number): number {
-  if (y - reach < EDGE) {
-    return 90; // down
+// Both circle menus sit on the compass points around her dot: N, E, S, W.
+const COMPASS = [-90, 0, 90, 180];
+const SLOT_NAMES = ["North", "East", "South", "West"];
+// Tried in order when a compass point is taken or off the map.
+const TURNS = [
+  0, 22.5, -22.5, 45, -45, 67.5, -67.5, 90, -90, 112.5, -112.5, 135, -135, 157.5, -157.5, 180,
+];
+// Centre of the status circle from the pane's bottom-right (app.css .grace-status).
+const STATUS_INSET = 10 + 20;
+
+// Where each slot goes: its compass point, or, if that would leave the map
+// or sit on a slot already placed, the nearest free point turning away from
+// it in 22.5° steps (further out if needed).
+function placeSlots(
+  gx: number,
+  gy: number,
+  w: number,
+  h: number,
+  radius: number,
+  size: number,
+): { x: number; y: number }[] {
+  const half = size / 2;
+  const fits = (x: number, y: number) =>
+    x - half >= EDGE && x + half <= w - EDGE && y - half >= EDGE && y + half <= h - EDGE;
+  // the status circle in the bottom-right corner is taken too
+  const placed: { x: number; y: number }[] = [{ x: w - STATUS_INSET, y: h - STATUS_INSET }];
+  const clear = (x: number, y: number) =>
+    placed.every((p) => Math.hypot(p.x - x, p.y - y) >= size * 1.05);
+  const slots: { x: number; y: number }[] = [];
+  for (const base of COMPASS) {
+    let spot: { x: number; y: number } | null = null;
+    for (const turn of TURNS) {
+      for (const r of [radius, radius * 1.6, radius * 2.2]) {
+        const a = ((base + turn) * Math.PI) / 180;
+        const x = gx + Math.cos(a) * r;
+        const y = gy + Math.sin(a) * r;
+        if (fits(x, y) && clear(x, y)) {
+          spot = { x, y };
+          break;
+        }
+      }
+      if (spot) {
+        break;
+      }
+    }
+    if (!spot) {
+      const a = (base * Math.PI) / 180;
+      spot = {
+        x: Math.min(Math.max(gx + Math.cos(a) * radius, EDGE + half), w - EDGE - half),
+        y: Math.min(Math.max(gy + Math.sin(a) * radius, EDGE + half), h - EDGE - half),
+      };
+    }
+    placed.push(spot);
+    slots.push(spot);
   }
-  if (x - reach < EDGE) {
-    return 0; // right
-  }
-  if (x + reach > w - EDGE) {
-    return 180; // left
-  }
-  return -90; // up
+  return slots;
 }
 
-// Grace's actions. While Paused, tapping her dot toggles three icons in an
-// arc around her. Once an action is chosen: an Ok/Cancel pill at the bottom of
-// the map, so the level stays clear for picking a cell.
+type Slot = {
+  label: string;
+  icon: ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  pressed?: boolean;
+  title?: string;
+};
+
+// Grace's circle menus. While Paused her action menu (Walk, Run, Wait and,
+// with the bottle active, Throw) sits on the compass points around her dot;
+// a right click or long press on her dot swaps it for Quick Equip. Once an
+// action is chosen: an Ok/Cancel pill at the bottom of the map, so the level
+// stays clear for picking a cell.
 export function GraceActions() {
   const [grace, setGrace] = useState<GraceView>(readGrace);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -123,7 +182,9 @@ export function GraceActions() {
   const paused = grace.mode === GraceMode.Paused;
   // Nothing shows until the map is up: before that the bridge reports
   // Grace at (0, 0) and the icons would bunch up in the top-left corner.
-  const picking = grace.live && paused && grace.menuOpen && grace.setup === GraceSetup.None;
+  const choosing = grace.live && paused && grace.setup === GraceSetup.None;
+  const picking = choosing && grace.menuOpen;
+  const equipping = choosing && grace.quickOpen;
   const setupName =
     grace.setup === GraceSetup.Walk
       ? "Walk"
@@ -131,19 +192,59 @@ export function GraceActions() {
         ? "Run"
         : grace.setup === GraceSetup.Wait
           ? "Wait"
-          : "";
+          : grace.setup === GraceSetup.Throw
+            ? "Throw"
+            : "";
   const hint =
     grace.setup === GraceSetup.Wait
       ? "Ok to wait"
-      : grace.ready
-        ? "Tap again or Ok"
-        : "Pick a cell";
+      : grace.setup === GraceSetup.Throw
+        ? grace.ready
+          ? `Tap again or Ok · ${grace.hitChance}% vs enemy`
+          : "Pick a cell in range"
+        : grace.ready
+          ? "Tap again or Ok"
+          : "Pick a cell";
 
   const radius = Math.max(grace.cell * 0.9, pane.size * 0.95) + pane.size / 2;
-  const reach = radius + pane.size / 2;
-  const centre = arcCentre(grace.x, grace.y, pane.w, pane.h, reach);
+  const spots = placeSlots(grace.x, grace.y, pane.w, pane.h, radius, pane.size);
 
-  const status = STATUS[grace.mode] ?? STATUS[0];
+  // Action menu: Walk north, Run east, Wait south, Throw west (only with the
+  // bottle active; otherwise an empty circle).
+  const throwSlot: Slot = grace.bottleActive
+    ? {
+        label: "Throw",
+        icon: <ThrowIcon />,
+        disabled: !grace.throwAllowed,
+        title:
+          grace.stance === ThrowStance.Run
+            ? "Throw · not while running"
+            : `Throw the Empty Bottle · ${grace.hitChance}% to hit the enemy`,
+        onClick: () => graceAction(GraceAction.Throw),
+      }
+    : { label: "Empty", icon: null, disabled: true };
+  const actionSlots: Slot[] = [
+    { label: "Walk", icon: <WalkIcon />, onClick: () => graceAction(GraceAction.Walk) },
+    { label: "Run", icon: <RunIcon />, onClick: () => graceAction(GraceAction.Run) },
+    { label: "Wait", icon: <WaitIcon />, onClick: () => graceAction(GraceAction.Wait) },
+    throwSlot,
+  ];
+  // Quick Equip: the bottle sits east once equipped; the rest are empty.
+  const quickSlots: Slot[] = SLOT_NAMES.map((name, i) =>
+    i === 1 && grace.bottleEquipped
+      ? {
+          label: "Empty Bottle",
+          icon: <BottleIcon />,
+          pressed: grace.bottleActive,
+          title: grace.bottleActive ? "Empty Bottle · active" : "Empty Bottle · make active",
+          onClick: () => quickSelect(1),
+        }
+      : { label: `${name} slot empty`, icon: null, disabled: true },
+  );
+
+  const slots = picking ? actionSlots : equipping ? quickSlots : [];
+  const status = STATUS[paused ? grace.last : grace.mode] ?? STATUS[3];
+  const statusLabel = paused ? `Grace: Paused, last ${status.label}` : `Grace: ${status.label}`;
 
   return (
     <div ref={hostRef} className="grace-actions">
@@ -152,38 +253,50 @@ export function GraceActions() {
           className="grace-status"
           role="status"
           aria-live="polite"
-          aria-label={`Grace: ${status.label}`}
+          aria-label={statusLabel}
+          data-paused={paused}
         >
           <status.Icon />
+          {paused && (
+            <span className="grace-status-badge" aria-hidden="true">
+              <PauseIcon />
+            </span>
+          )}
         </div>
       )}
-      {picking &&
-        ACTIONS.map((entry, i) => {
-          // keep Walk on the left when the arc opens downwards
-          const step = centre === 90 ? 1 - i : i - 1;
-          const angle = ((centre + step * SPREAD) * Math.PI) / 180;
-          const x = grace.x + Math.cos(angle) * radius;
-          const y = grace.y + Math.sin(angle) * radius;
-          const half = pane.size / 2;
-          return (
-            <button
-              key={entry.label}
-              type="button"
-              className="grace-icon"
-              aria-label={entry.label}
-              title={entry.label}
-              style={{
-                left: Math.min(Math.max(x, EDGE + half), pane.w - EDGE - half),
-                top: Math.min(Math.max(y, EDGE + half), pane.h - EDGE - half),
-                width: pane.size,
-                height: pane.size,
-              }}
-              onClick={() => graceAction(entry.action)}
-            >
-              <entry.Icon />
-            </button>
-          );
-        })}
+      {slots.length > 0 && (
+        <div
+          className="grace-ring"
+          role="group"
+          aria-label={equipping ? "Quick Equip" : "Actions"}
+          data-kind={equipping ? "quick" : "actions"}
+        >
+          {slots.map((slot, i) => {
+            const spot = spots[i] ?? { x: grace.x, y: grace.y };
+            const empty = slot.icon === null;
+            return (
+              <button
+                key={`${slot.label}-${i}`}
+                type="button"
+                className="grace-icon"
+                data-empty={empty}
+                data-slot={SLOT_NAMES[i]}
+                aria-label={slot.label}
+                aria-pressed={slot.pressed}
+                aria-hidden={empty || undefined}
+                tabIndex={empty ? -1 : undefined}
+                title={slot.title ?? (empty ? "" : slot.label)}
+                disabled={slot.disabled}
+                style={{ left: spot.x, top: spot.y, width: pane.size, height: pane.size }}
+                onClick={slot.onClick}
+                onContextMenu={(event) => event.preventDefault()}
+              >
+                {slot.icon}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {grace.live && paused && grace.setup !== GraceSetup.None && (
         <div className="grace-pill" role="toolbar" aria-label="Confirm action">
           <span className="grace-pill-label">

@@ -22,6 +22,29 @@ export type EmscriptenModule = {
   _web_grace_setup?: () => number;
   _web_grace_ready?: () => number;
   _web_grace_menu_open?: () => number;
+  _web_grace_last?: () => number;
+  _web_grace_stance?: () => number;
+  _web_grace_pending?: () => number;
+  _web_route_length?: () => number;
+  _web_quick_open?: () => number;
+  _web_quick_select?: (slot: number) => number;
+  _web_bottle_equipped?: () => number;
+  _web_bottle_active?: () => number;
+  _web_bottle_equip?: (on: number) => number;
+  _web_throw_hit_chance?: () => number;
+  _web_throw_allowed?: () => number;
+  _web_throw_in_reach?: (x: number, y: number) => number;
+  _web_cell_floor?: (x: number, y: number) => number;
+  _web_enemy_flash?: () => number;
+  _web_grace_flash?: () => number;
+  _web_enemy_focus_x?: () => number;
+  _web_enemy_focus_y?: () => number;
+  _web_impact_age_ms?: () => number;
+  _web_test_seed?: (seed: number) => void;
+  _web_test_give?: (item: number) => number;
+  _web_test_enemy_at?: (x: number, y: number) => void;
+  _web_test_hurt?: () => void;
+  _web_camera_pan?: (dx: number, dy: number) => void;
   _web_grace_action?: (action: number) => number;
   _web_grace_screen_x?: () => number;
   _web_grace_screen_y?: () => number;
@@ -102,6 +125,7 @@ export type GameSnapshot = {
   filesFound: number;
   saves: number;
   goalMet: boolean;
+  bottleEquipped: boolean;
 };
 
 const EMPTY_INVENTORY = [-1, -1, -1, -1, -1, -1, -1, -1];
@@ -128,6 +152,7 @@ export function readSnapshot(revision: number): GameSnapshot {
       filesFound: 0,
       saves: 0,
       goalMet: false,
+      bottleEquipped: false,
     };
   }
   const inventory = EMPTY_INVENTORY.slice();
@@ -153,6 +178,7 @@ export function readSnapshot(revision: number): GameSnapshot {
     filesFound: m._web_files_found?.() ?? 0,
     saves: m._web_saves_made?.() ?? 0,
     goalMet: (m._web_goal_met?.() ?? 0) !== 0,
+    bottleEquipped: (m._web_bottle_equipped?.() ?? 0) !== 0,
   };
 }
 
@@ -180,8 +206,20 @@ export function gameReset(): void {
 
 // Mirrors grace_mode_t / grace_setup_t / grace_action_t in native/src/main.c.
 export const GraceMode = { Paused: 0, Walking: 1, Running: 2, Waiting: 3 } as const;
-export const GraceSetup = { None: 0, Walk: 1, Run: 2, Wait: 3 } as const;
-export const GraceAction = { Walk: 0, Run: 1, Wait: 2, Ok: 3, Cancel: 4, Pause: 5 } as const;
+export const GraceSetup = { None: 0, Walk: 1, Run: 2, Wait: 3, Throw: 4 } as const;
+export const GraceAction = {
+  Walk: 0,
+  Run: 1,
+  Wait: 2,
+  Ok: 3,
+  Cancel: 4,
+  Pause: 5,
+  Throw: 6,
+} as const;
+// Mirrors throw_stance_t in native/src/throw.h.
+export const ThrowStance = { Wait: 0, Walk: 1, Run: 2 } as const;
+// The item ordinal of the Empty Bottle (item_t in native/src/level.h).
+export const ITEM_BOTTLE = 0;
 
 export type GraceView = {
   // false until the wasm map is up and Grace has a real screen position
@@ -190,6 +228,14 @@ export type GraceView = {
   setup: number;
   ready: boolean;
   menuOpen: boolean;
+  // her last action (a GraceMode other than Paused), shown while Paused
+  last: number;
+  quickOpen: boolean;
+  bottleEquipped: boolean;
+  bottleActive: boolean;
+  throwAllowed: boolean;
+  stance: number;
+  hitChance: number;
   x: number;
   y: number;
   cell: number;
@@ -202,6 +248,13 @@ export function readGrace(): GraceView {
     live: (m?._grid_width?.() ?? 0) > 0 && cell > 0,
     mode: m?._web_grace_mode?.() ?? GraceMode.Paused,
     menuOpen: (m?._web_grace_menu_open?.() ?? 0) !== 0,
+    last: m?._web_grace_last?.() ?? GraceMode.Waiting,
+    quickOpen: (m?._web_quick_open?.() ?? 0) !== 0,
+    bottleEquipped: (m?._web_bottle_equipped?.() ?? 0) !== 0,
+    bottleActive: (m?._web_bottle_active?.() ?? 0) !== 0,
+    throwAllowed: (m?._web_throw_allowed?.() ?? 0) !== 0,
+    stance: m?._web_grace_stance?.() ?? ThrowStance.Wait,
+    hitChance: m?._web_throw_hit_chance?.() ?? 0,
     setup: m?._web_grace_setup?.() ?? GraceSetup.None,
     ready: (m?._web_grace_ready?.() ?? 0) !== 0,
     x: m?._web_grace_screen_x?.() ?? 0,
@@ -212,6 +265,15 @@ export function readGrace(): GraceView {
 
 export function graceAction(action: number): boolean {
   return (module()?._web_grace_action?.(action) ?? 0) !== 0;
+}
+
+// Quick Equip slots 0..3 are North, East, South, West.
+export function quickSelect(slot: number): boolean {
+  return (module()?._web_quick_select?.(slot) ?? 0) !== 0;
+}
+
+export function equipBottle(on: boolean): boolean {
+  return (module()?._web_bottle_equip?.(on ? 1 : 0) ?? 0) !== 0;
 }
 
 export function setPaused(paused: boolean): void {
