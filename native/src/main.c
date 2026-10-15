@@ -277,7 +277,12 @@ static void handle_click(void) {
         return;
     }
     if (setup_is_move()) {
-        pick_target(app.hover_x, app.hover_y);
+        // Tapping the picked cell again confirms, like Ok; another cell retargets.
+        if (app.setup_has_target && app.hover_x == app.setup_x && app.hover_y == app.setup_y) {
+            grace_do(GRACE_ACT_OK);
+        } else {
+            pick_target(app.hover_x, app.hover_y);
+        }
     }
 }
 
@@ -708,6 +713,11 @@ WEB_EXPORT float web_grace_screen_y(void) {
     float sx, sy;
     camera_cell_to_screen(player_x(), player_y(), &sx, &sy);
     return sy / sapp_dpi_scale();
+}
+
+// Test hook: move the camera off Grace (CSS pixels) to put her near an edge.
+WEB_EXPORT void web_camera_pan(float dx, float dy) {
+    camera_pan_pixels(dx * sapp_dpi_scale(), dy * sapp_dpi_scale());
 }
 
 WEB_EXPORT float web_cell_css_px(void) {
