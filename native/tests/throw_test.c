@@ -278,7 +278,7 @@ int main(int argc, char** argv) {
     {
         int li = -1;
         for (int i = 0; i < level.obj_count; i++) {
-            if (level.objs[i].kind == OBJ_LIGHT && level.objs[i].state) {
+            if (level.objs[i].kind == OBJ_LIGHT && light_is_on(&level.objs[i])) {
                 li = i;
                 break;
             }
@@ -302,6 +302,46 @@ int main(int argc, char** argv) {
         lighter_toggle();
         CHECK(light_cell_lit(px, py), "the lit Lighter lights her cell (%d,%d)", px, py);
         lighter_toggle();
+    }
+
+    {
+        int li = -1;
+        for (int i = 0; i < level.obj_count; i++) {
+            if (level.objs[i].kind == OBJ_LIGHT && level.objs[i].breakable) {
+                li = i;
+                break;
+            }
+        }
+        CHECK(li >= 0, "the level has a breakable lamp");
+        obj_t* lo = (obj_t*)&grid_level()->objs[li];
+        lo->state = LIGHT_ON;
+        light_update();
+        CHECK(light_cell_lit(lo->x, lo->y), "the breakable lamp lights its cell while on (%d,%d)", lo->x, lo->y);
+
+        bool smashed = false;
+        unsigned int used = 0;
+        for (unsigned int seed = 1; seed <= 100 && !smashed; seed++) {
+            lo->state = LIGHT_ON;
+            fresh_enemy_at(lo->x, lo->y);
+            enemy_seed(seed);
+            for (int i = 0; i < 60 * 6 && !smashed; i++) {
+                enemy_update(1.0f / 60.0f, 500.0f, 500.0f, 0.0f);
+                smashed = lo->state == LIGHT_BROKEN;
+            }
+            used = seed;
+        }
+        CHECK(smashed, "seed %u sets the enemy to smashing the lamp it passes", used);
+        light_update();
+        CHECK(!light_cell_lit(lo->x, lo->y), "broken, its cell is dark");
+        light_toggle(li);
+        light_update();
+        CHECK(lo->state == LIGHT_BROKEN && !light_cell_lit(lo->x, lo->y), "the switch cannot relight a broken lamp");
+
+        savegame_save(3, 0.0);
+        lo->state = LIGHT_OFF;
+        double ms3 = 0.0;
+        savegame_load(3, &ms3);
+        CHECK(lo->state == LIGHT_BROKEN, "broken survives save and load");
     }
 
     // --- the enemy: save round trip, bottle priority, rest, sight and stealth
@@ -498,6 +538,99 @@ int main(int argc, char** argv) {
         ho->x = hx;
         ho->y = hy;
         lo->state = ls;
+    }
+
+    {
+        int li = -1;
+        for (int i = 0; i < level.obj_count; i++) {
+            if (level.objs[i].kind == OBJ_LIGHT && level.objs[i].breakable) {
+                li = i;
+                break;
+            }
+        }
+        CHECK(li >= 0, "the level has a breakable lamp");
+        obj_t* lo = (obj_t*)&grid_level()->objs[li];
+        int ls = lo->state;
+        int lx0 = lo->x, ly0 = lo->y;
+        int broken0 = light_broken_count();
+        const float range = 1.0f;
+        float cx = (float)lo->x + 0.5f, cy = (float)lo->y + 0.5f;
+
+        int dx = 0, dy = 0;
+        const int step[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (int d = 0; d < 4 && dx == 0 && dy == 0; d++) {
+            int nx = lo->x + step[d][0], ny = lo->y + step[d][1];
+            if (grid_is_floor(nx, ny) && sight_clear(nx, ny, lo->x, lo->y)) {
+                dx = step[d][0];
+                dy = step[d][1];
+            }
+        }
+        CHECK(dx != 0 || dy != 0, "the breakable lamp has an open neighbour");
+        float in_x = cx + (float)dx * 0.9f, in_y = cy + (float)dy * 0.9f;
+        float out_x = cx + (float)dx * 1.1f, out_y = cy + (float)dy * 1.1f;
+
+        lo->state = LIGHT_OFF;
+        CHECK(light_breakable_near(in_x, in_y, range) < 0, "an off lamp is not a target");
+        lo->state = LIGHT_BROKEN;
+        CHECK(light_breakable_near(in_x, in_y, range) < 0, "a broken lamp is not a target");
+        lo->state = LIGHT_ON;
+        CHECK(light_breakable_near(in_x, in_y, range) == li, "a lit breakable lamp in reach is found");
+        CHECK(light_breakable_near(out_x, out_y, range) < 0, "and the same lamp out of reach is not");
+
+        int ni = -1;
+        for (int i = 0; i < level.obj_count; i++) {
+            if (level.objs[i].kind == OBJ_LIGHT && !level.objs[i].breakable) {
+                ni = i;
+                break;
+            }
+        }
+        obj_t* no = (obj_t*)&grid_level()->objs[ni];
+        int ns = no->state;
+        no->state = LIGHT_ON;
+        CHECK(light_breakable_near((float)no->x + 0.5f, (float)no->y + 0.5f, range) < 0, "a non-breakable lamp is not a target");
+        no->state = ns;
+
+        int wxp = -1, wyp = -1;
+        for (int y = 0; y < level.rows && wxp < 0; y++) {
+            for (int x = 0; x + 1 < level.cols && wxp < 0; x++) {
+                if (grid_is_floor(x, y) && grid_is_floor(x + 1, y) && sight_edge_blocked(x, y, x + 1, y)) {
+                    wxp = x;
+                    wyp = y;
+                }
+            }
+        }
+        CHECK(wxp >= 0, "the level has two floor cells with a wall between");
+        if (wxp >= 0) {
+            lo->x = wxp;
+            lo->y = wyp;
+            lo->state = LIGHT_ON;
+            CHECK(light_breakable_near((float)wxp + 1.5f, (float)wyp + 0.5f, 1.5f) < 0,
+                  "the wall at (%d,%d) blocks the smash from the next cell", wxp, wyp);
+            lo->x = lx0;
+            lo->y = ly0;
+        }
+
+        lo->state = LIGHT_OFF;
+        light_break(li);
+        CHECK(lo->state == LIGHT_OFF, "breaking an off lamp does nothing");
+        lo->state = LIGHT_ON;
+        light_break(li);
+        CHECK(lo->state == LIGHT_BROKEN, "breaking a lit breakable lamp works");
+        light_break(li);
+        CHECK(lo->state == LIGHT_BROKEN, "breaking it again leaves it broken");
+        light_toggle(li);
+        CHECK(lo->state == LIGHT_BROKEN, "the switch cannot relight a broken lamp");
+        lo->state = LIGHT_ON;
+        light_toggle(li);
+        bool to_off = lo->state == LIGHT_OFF;
+        light_toggle(li);
+        CHECK(to_off && lo->state == LIGHT_ON, "the switch flips on to off and back");
+
+        int c0 = light_broken_count();
+        lo->state = LIGHT_BROKEN;
+        CHECK(light_broken_count() == c0 + 1, "the count rises by one for a broken lamp");
+        lo->state = ls;
+        CHECK(light_broken_count() == broken0, "and the entry count is restored with the lamp");
     }
 
     printf(failures ? "%d FAILED\n" : "ALL PASS\n", failures);
