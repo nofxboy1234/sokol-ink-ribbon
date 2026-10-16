@@ -10,7 +10,7 @@ embedded in a React app, plus a dear-imgui level editor. It is split into:
   - `main` (`native/src/main.c`) — the map runtime: grid, smooth follow camera,
     A* movement, section reveal, doors, items, inventory and health. It builds
     for the host **and** for Emscripten (the wasm canvas).
-  - `editor` (`native/src/editor.cc`) — a desktop-only dear-imgui level editor:
+  - `editor` (`native/editor/editor.cc`) — a desktop-only dear-imgui level editor:
     a snapping wall line tool, an object palette, property/link editing and
     JSON save/load. It shares the `level` module with the runtime.
 - **`web/`** — a [Void](https://void.cloud) + React + Vite app. Its index page

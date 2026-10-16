@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
-//  tooltip.cc
+//  imgui-glue/tooltip.cc
 //  A small dear-imgui helper for the runtime (main.c is C, so the C++ ImGui
 //  call lives here).
 //------------------------------------------------------------------------------
-#include "tooltip.h"
+#include "../src/tooltip.h"
 #include "imgui.h"
 
 extern "C" void game_tooltip(const char* text, float x, float y, bool alert) {
