@@ -14,6 +14,7 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #define ENEMY_EPSILON 0.02f
@@ -53,6 +54,13 @@
 #define ENEMY_SEARCH_RADIUS 6
 #define ENEMY_ANGRY_SEARCH_RADIUS 9
 #define ENEMY_ANGRY_SEARCH_STEPS 14
+// A bottle's impact: walk there (up to this many steps), look around for a
+// moment, then sweep a few cells around the point.
+#define ENEMY_INVESTIGATE_STEPS 40
+#define ENEMY_INVESTIGATE_LOOK 1.2f
+#define ENEMY_INVESTIGATE_SWEEPS 4
+#define ENEMY_INVESTIGATE_RADIUS 3
+#define ENEMY_INVESTIGATE_SWEEP_STEPS 6
 
 static struct {
     enemy_state_t state;
@@ -73,7 +81,12 @@ static struct {
     unsigned int rng;
     float flash;  // seconds of damage flashing left (counts down with the stun)
     float angry;  // seconds of anger left (counts down once the stun ends)
+    bool grace_lit;  // she can be seen (lit); otherwise only heard or smelt
+    int impact_x, impact_y;  // the bottle being investigated
+    bool at_impact;          // reached it, now looking around
 } e;
+
+_Static_assert(sizeof(e) <= ENEMY_SAVE_BYTES, "enemy save size");
 
 static bool is_angry(void) {
     return e.angry > 0.0f;
@@ -182,7 +195,19 @@ static void enter(enemy_state_t state) {
             e.timer = rnd_range(2.0f, 3.0f);
             break;
         case ENEMY_STUNNED:
+        case ENEMY_WAIT:
             e.path.count = 0;
+            break;
+        case ENEMY_INVESTIGATE:
+            e.speed = rnd_range(2.8f, 3.4f) * (is_angry() ? ENEMY_ANGRY_SPEED : 1.0f);
+            e.at_impact = false;
+            e.sweeps = ENEMY_INVESTIGATE_SWEEPS;
+            e.timer = 0.0f;
+            if (!route_to(e.impact_x, e.impact_y, ENEMY_INVESTIGATE_STEPS)) {
+                e.path.count = 0;  // can't get there: look around from here
+            }
+            break;
+        case ENEMY_BREAKING:
             break;
     }
 }
@@ -210,6 +235,7 @@ void enemy_init(int avoid_x, int avoid_y) {
     e.stamina = ENEMY_STAMINA_MAX;
     e.flash = 0.0f;
     e.angry = 0.0f;
+    e.grace_lit = true;
     enter(ENEMY_LOOK);
 }
 
@@ -217,16 +243,18 @@ void enemy_seed(unsigned int seed) {
     e.rng = seed ? seed : 1u;
 }
 
-// A clear straight line between the two dots: walls and closed doors block it.
+// A clear straight line between the two dots: walls, closed doors and
+// obstacles block it.
 static bool line_of_sight(float gx, float gy) {
-    return sight_clear((int)floorf(e.x), (int)floorf(e.y), (int)floorf(gx), (int)floorf(gy));
+    return sight_clear_eyes((int)floorf(e.x), (int)floorf(e.y), (int)floorf(gx), (int)floorf(gy));
 }
 
-// Spotting needs a clear line inside the sight radius, from a cell Grace has
-// revealed; once on her trail it keeps her out to the wider track radius.
-// Smell follows walkable paths a few steps out, so it rounds corners but not
-// walls. Hearing ignores walls and doors and reaches as far as her footsteps
-// carry. Smell and hearing work in every direction and from the fog.
+// Spotting needs Grace lit (her Lighter, or a level light), a clear line
+// (walls, closed doors and obstacles block it) inside the sight radius, from
+// a cell Grace has revealed; once on her trail it keeps her out to the wider
+// track radius. Smell reaches a few cells and hearing as far as her
+// footsteps carry; neither is blocked by anything, and both work in every
+// direction, in the dark and from the fog.
 static enemy_sense_t senses(float gx, float gy, float noise, bool tracking) {
     float dx = gx - e.x;
     float dy = gy - e.y;
@@ -236,13 +264,12 @@ static enemy_sense_t senses(float gx, float gy, float noise, bool tracking) {
     if (noise > 0.0f && is_angry()) {
         noise += ENEMY_ANGRY_HEAR_BONUS;
     }
-    if (grid_is_revealed((int)floorf(e.x), (int)floorf(e.y)) && d2 <= radius * radius && line_of_sight(gx, gy)) {
+    if (e.grace_lit && grid_is_revealed((int)floorf(e.x), (int)floorf(e.y)) && d2 <= radius * radius &&
+        line_of_sight(gx, gy)) {
         return SENSE_SIGHT;
     }
-    int cx, cy;
-    cell_of(&cx, &cy);
-    if (d2 <= (float)(smell * smell) &&
-        pathfind_within(cx, cy, (int)floorf(gx), (int)floorf(gy), smell, false, &scratch)) {
+    // smell, like hearing, is pure distance: walls, doors and obstacles don't stop it
+    if (d2 <= (float)(smell * smell)) {
         return SENSE_SMELL;
     }
     if (noise > 0.0f && d2 <= noise * noise) {
@@ -322,7 +349,7 @@ bool enemy_update(float dt, float gx, float gy, float noise) {
             e.angry = 0.0f;
         }
     }
-    if (e.state == ENEMY_STUNNED) {
+    if (e.state == ENEMY_STUNNED || e.state == ENEMY_WAIT) {
         e.timer -= dt;
         if (e.timer <= 0.0f) {
             enter(ENEMY_SEARCH);
@@ -336,7 +363,9 @@ bool enemy_update(float dt, float gx, float gy, float noise) {
     bool tracking = e.state == ENEMY_CHASE || e.state == ENEMY_SEARCH;
     e.sense = e.state == ENEMY_WINDED ? SENSE_NONE : senses(gx, gy, noise, tracking);
     bool sensed = e.sense != SENSE_NONE;
-    if (sensed) {
+    // a bottle comes first: only seeing Grace herself pulls it off
+    bool busy = e.state == ENEMY_INVESTIGATE && e.sense != SENSE_SIGHT;
+    if (sensed && !busy) {
         remember(gx, gy);
         if (e.state != ENEMY_CHASE && e.state != ENEMY_BREAKING && e.stamina > ENEMY_STAMINA_MIN) {
             enter(ENEMY_CHASE);
@@ -414,7 +443,29 @@ bool enemy_update(float dt, float gx, float gy, float noise) {
                 }
             }
             break;
+        case ENEMY_INVESTIGATE:
+            if (e.timer > 0.0f) {
+                e.timer -= dt;
+                break;
+            }
+            if (walk(dt)) {
+                if (!e.at_impact) {
+                    e.at_impact = true;
+                    e.timer = ENEMY_INVESTIGATE_LOOK;  // stop and look at it
+                    break;
+                }
+                if (e.sweeps-- <= 0) {
+                    enter(ENEMY_PATROL);
+                    break;
+                }
+                e.timer = rnd_range(0.3f, 0.8f);
+                if (!route_random(e.impact_x, e.impact_y, ENEMY_INVESTIGATE_RADIUS, ENEMY_INVESTIGATE_SWEEP_STEPS)) {
+                    e.path.count = 0;
+                }
+            }
+            break;
         case ENEMY_STUNNED:
+        case ENEMY_WAIT:
             break;
     }
 
@@ -449,20 +500,43 @@ float enemy_flash(void) {
 // like footsteps), it goes to look. Search heads for the remembered cell and
 // then sweeps around it. A stunned, winded or door-smashing enemy ignores it.
 bool enemy_hear_noise(int x, int y, float radius) {
-    if (e.state == ENEMY_STUNNED || e.state == ENEMY_WINDED || e.state == ENEMY_BREAKING) {
+    if (e.state == ENEMY_STUNNED || e.state == ENEMY_WINDED || e.state == ENEMY_BREAKING || e.state == ENEMY_WAIT) {
         return false;
+    }
+    if (e.state == ENEMY_CHASE && e.sense == SENSE_SIGHT) {
+        return false;  // it has her in sight: the bottle doesn't distract it
     }
     float dx = (float)x + 0.5f - e.x;
     float dy = (float)y + 0.5f - e.y;
     if (dx * dx + dy * dy > radius * radius) {
         return false;
     }
+    e.impact_x = x;
+    e.impact_y = y;
     e.seen_x = x;
     e.seen_y = y;
     e.heading_x = 0;
     e.heading_y = 0;
-    enter(ENEMY_SEARCH);
+    enter(ENEMY_INVESTIGATE);
     return true;
+}
+
+void enemy_rest(float seconds) {
+    enter(ENEMY_WAIT);
+    e.timer = seconds;
+}
+
+void enemy_set_grace_lit(bool lit) {
+    e.grace_lit = lit;
+}
+
+void enemy_export(enemy_save_t* out) {
+    memset(out, 0, sizeof(*out));
+    memcpy(out->bytes, &e, sizeof(e));
+}
+
+void enemy_import(const enemy_save_t* in) {
+    memcpy(&e, in->bytes, sizeof(e));
 }
 
 int enemy_focus_x(void) {

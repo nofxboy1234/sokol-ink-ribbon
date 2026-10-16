@@ -5,6 +5,7 @@
 //------------------------------------------------------------------------------
 #include "savegame.h"
 #include "doors.h"
+#include "enemy.h"
 #include "grid.h"
 #include "health.h"
 #include "interact.h"
@@ -18,7 +19,9 @@
 
 // 2 added the equipped bottle and the active weapon; older slots load unequipped.
 // 3 keeps an equipped slot with no bottle left (greyed out).
-#define SAVE_VERSION 3
+// 4 adds the enemy (position, state, timers, anger, route) and the items the
+// Lighter has shown; older slots respawn the enemy away from Grace as before.
+#define SAVE_VERSION 4
 
 typedef struct {
     bool used;
@@ -39,6 +42,8 @@ typedef struct {
     int file_obj[LEVEL_MAX_OBJECTS];
     bool equipped;
     bool active;
+    unsigned char item_seen[LEVEL_MAX_OBJECTS];
+    enemy_save_t enemy;
 } save_slot_t;
 
 static save_slot_t g_slots[SAVE_SLOTS];
@@ -81,7 +86,13 @@ bool savegame_save(int slot, double elapsed_ms) {
     interact_export(&s->lighter, &s->saves, &s->goal, &s->file_count, s->file_obj);
     s->equipped = throw_equipped();
     s->active = throw_active();
+    items_export_seen(s->item_seen, LEVEL_MAX_OBJECTS);
+    enemy_export(&s->enemy);
     return true;
+}
+
+bool savegame_has_enemy(int slot) {
+    return savegame_used(slot) && g_slots[slot].version >= 4;
 }
 
 bool savegame_load(int slot, double* elapsed_ms) {
@@ -105,6 +116,11 @@ bool savegame_load(int slot, double* elapsed_ms) {
     bool keep_empty = s->version >= 3;
     bool equipped = v2 && s->equipped && (keep_empty || inventory_has(ITEM_BOTTLE));
     throw_restore(equipped, equipped && s->active);
+    bool v4 = s->version >= 4;
+    items_import_seen(v4 ? s->item_seen : NULL, LEVEL_MAX_OBJECTS);
+    if (v4) {
+        enemy_import(&s->enemy);
+    }
     if (elapsed_ms) {
         *elapsed_ms = s->elapsed_ms;
     }

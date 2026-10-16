@@ -11,8 +11,36 @@ bool sight_edge_blocked(int ax, int ay, int bx, int by) {
     return doors_on_edge(ax, ay, bx, by) ? doors_block_sight(ax, ay, bx, by) : grid_blocked(ax, ay, bx, by);
 }
 
-// Bresenham from cell to cell; a diagonal step passes if either corner route is open.
+// An obstacle or movable object covering the cell (they block eyes, not ears or noses).
+bool sight_cell_obstructed(int x, int y) {
+    const level_t* lv = grid_level();
+    for (int i = 0; i < lv->obj_count; i++) {
+        const obj_t* o = &lv->objs[i];
+        if (o->kind != OBJ_OBSTACLE && o->kind != OBJ_MOVABLE) {
+            continue;
+        }
+        int w = o->kind == OBJ_OBSTACLE && o->w > 0 ? o->w : 1;
+        int h = o->kind == OBJ_OBSTACLE && o->h > 0 ? o->h : 1;
+        if (x >= o->x && x < o->x + w && y >= o->y && y < o->y + h) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool line_clear(int x, int y, int tx, int ty, bool obstacles);
+
 bool sight_clear(int x, int y, int tx, int ty) {
+    return line_clear(x, y, tx, ty, false);
+}
+
+bool sight_clear_eyes(int x, int y, int tx, int ty) {
+    return line_clear(x, y, tx, ty, true);
+}
+
+// Bresenham from cell to cell; a diagonal step passes if either corner route is open.
+// With obstacles, a cell in between covered by one blocks too.
+static bool line_clear(int x, int y, int tx, int ty, bool obstacles) {
     int dx = abs(tx - x);
     int dy = -abs(ty - y);
     int sx = x < tx ? 1 : -1;
@@ -41,6 +69,9 @@ bool sight_clear(int x, int y, int tx, int ty) {
         }
         x = nx;
         y = ny;
+        if (obstacles && (x != tx || y != ty) && sight_cell_obstructed(x, y)) {
+            return false;
+        }
     }
     return true;
 }
