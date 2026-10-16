@@ -18,6 +18,7 @@ const sources = [
     'savegame.c',
     'sight.c',
     'throw.c',
+    'light.c',
     'tooltip.cc',
 ];
 

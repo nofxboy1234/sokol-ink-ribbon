@@ -19,7 +19,6 @@ import {
   saveGame,
   saveTimeMs,
   saveUsed,
-  setLighter,
   type ItemAppearance,
 } from "./wasmBridge";
 import { useElapsed, useGameState } from "./GameState";
@@ -92,14 +91,14 @@ const HEALTH_COLORS = ["var(--green)", "var(--orange)", "var(--red)"];
 const ITEM_TEXT = [
   "A clear glass bottle. It could hold a mixed herb.",
   "A worn coin stamped with a crest. It has no spendable value here.",
-  "A fresh green herb. It can be ground, or used to steady Grace.",
+  "A fresh green herb. Used on its own it restores one level of health (Danger to Caution, Caution to Fine).",
   "A typewriter ribbon. Saving at a typewriter spends one.",
   "A small flat-head screwdriver. It pries panels and tightens fittings.",
-  "A prepared dose in a glass syringe. It is meant for an emergency.",
+  "A prepared dose in a glass syringe. It restores Grace to full health.",
   "A glass cartridge fuse. The basement fuse box will take it.",
-  "A pocket lighter. It throws a small circle of light when it is lit.",
+  "A pocket lighter. It sits in the top slot of Quick Equip; pick it there to light it or put it out.",
   "A key topped with a small cherub. It opens a matching lock.",
-  "This is a combination of 2 Green Herbs, and will restore a medium amount of health when used.",
+  "This is a combination of 2 Green Herbs. It restores Grace to full health.",
 ];
 
 type ItemAction = "Move" | "Use" | "Equip" | "Unequip" | "Discard";
@@ -176,7 +175,7 @@ function ChargePips({
 }
 
 export function Inventory() {
-  const { inventory, health, hasLighter, lighterOn, bottleEquipped } = useGameState();
+  const { inventory, health, bottleEquipped, bottleEmpty } = useGameState();
   const [selected, setSelected] = useState(-1);
   const [movingFrom, setMovingFrom] = useState(-1);
   const [menu, setMenu] = useState<{ index: number; x: number; y: number } | null>(null);
@@ -377,22 +376,15 @@ export function Inventory() {
         <div className="gun-slot" title="No gun equipped" />
         <div className="quick-slots">
           {bottleEquipped ? (
-            <div className="quick-slot quick-slot-item" title="Empty Bottle · equipped">
+            <div
+              className="quick-slot quick-slot-item"
+              data-empty={bottleEmpty}
+              title={
+                bottleEmpty ? "Empty Bottle · equipped (none left)" : "Empty Bottle · equipped"
+              }
+            >
               <ItemGlyph appearance={itemAppearance(ITEM_BOTTLE)} />
             </div>
-          ) : (
-            <div className="quick-slot" />
-          )}
-          {hasLighter ? (
-            <button
-              type="button"
-              className="quick-slot quick-slot-btn"
-              data-on={lighterOn}
-              title={lighterOn ? "Lighter on" : "Lighter"}
-              onClick={() => setLighter(!lighterOn)}
-            >
-              <span className="lighter-swatch" />
-            </button>
           ) : (
             <div className="quick-slot" />
           )}

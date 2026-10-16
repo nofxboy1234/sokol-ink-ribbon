@@ -37,6 +37,22 @@
 #define ENEMY_STAMINA_MAX 12.0f
 #define ENEMY_STAMINA_MIN 4.0f
 #define ENEMY_STAMINA_REGEN 1.5f
+// Angry after a hit (counted from when the stun wears off): it hunts harder
+// for a while, then snaps back to normal. Still fair: even angry it is
+// slower than Grace running (6.5 cells/s), it still gets winded (stamina
+// drains at half the rate, same recovery threshold), and it still needs a
+// revealed cell to see her from.
+#define ENEMY_ANGRY_SECONDS 20.0f
+#define ENEMY_ANGRY_SPEED 1.25f        // chase and search speed multiplier
+#define ENEMY_ANGRY_DRAIN 0.5f         // stamina drain multiplier while chasing
+#define ENEMY_ANGRY_SIGHT_BONUS 2.0f   // extra cells of sight and tracking
+#define ENEMY_ANGRY_SMELL_BONUS 2      // extra smell steps
+#define ENEMY_ANGRY_HEAR_BONUS 2.0f    // extra cells her footsteps carry
+#define ENEMY_ANGRY_LOSE_BONUS 1.5f    // extra seconds before it gives up a chase
+#define ENEMY_ANGRY_SWEEPS 3           // extra search sweeps
+#define ENEMY_SEARCH_RADIUS 6
+#define ENEMY_ANGRY_SEARCH_RADIUS 9
+#define ENEMY_ANGRY_SEARCH_STEPS 14
 
 static struct {
     enemy_state_t state;
@@ -56,7 +72,12 @@ static struct {
     enemy_state_t resume;
     unsigned int rng;
     float flash;  // seconds of damage flashing left (counts down with the stun)
+    float angry;  // seconds of anger left (counts down once the stun ends)
 } e;
+
+static bool is_angry(void) {
+    return e.angry > 0.0f;
+}
 
 static path_t scratch;
 
@@ -140,14 +161,14 @@ static void enter(enemy_state_t state) {
             e.timer = rnd_range(0.6f, 2.4f);
             break;
         case ENEMY_CHASE:
-            e.speed = rnd_range(3.4f, 4.4f);
+            e.speed = rnd_range(3.4f, 4.4f) * (is_angry() ? ENEMY_ANGRY_SPEED : 1.0f);
             e.unseen = 0.0f;
-            e.lose_after = rnd_range(2.2f, 3.2f);
+            e.lose_after = rnd_range(2.2f, 3.2f) + (is_angry() ? ENEMY_ANGRY_LOSE_BONUS : 0.0f);
             e.timer = 0.0f;
             break;
         case ENEMY_SEARCH: {
-            e.speed = rnd_range(2.6f, 3.4f);
-            e.sweeps = 4 + (int)(rnd() % 3u);
+            e.speed = rnd_range(2.6f, 3.4f) * (is_angry() ? ENEMY_ANGRY_SPEED : 1.0f);
+            e.sweeps = 4 + (int)(rnd() % 3u) + (is_angry() ? ENEMY_ANGRY_SWEEPS : 0);
             int tx, ty;
             predicted_cell(&tx, &ty);
             if (!route_to(tx, ty, ENEMY_CHASE_STEPS) && !route_to(e.seen_x, e.seen_y, ENEMY_CHASE_STEPS)) {
@@ -188,6 +209,7 @@ void enemy_init(int avoid_x, int avoid_y) {
     e.heading_y = 0;
     e.stamina = ENEMY_STAMINA_MAX;
     e.flash = 0.0f;
+    e.angry = 0.0f;
     enter(ENEMY_LOOK);
 }
 
@@ -209,14 +231,18 @@ static enemy_sense_t senses(float gx, float gy, float noise, bool tracking) {
     float dx = gx - e.x;
     float dy = gy - e.y;
     float d2 = dx * dx + dy * dy;
-    float radius = tracking ? ENEMY_TRACK_RADIUS : ENEMY_SIGHT_RADIUS;
+    float radius = (tracking ? ENEMY_TRACK_RADIUS : ENEMY_SIGHT_RADIUS) + (is_angry() ? ENEMY_ANGRY_SIGHT_BONUS : 0.0f);
+    int smell = ENEMY_SMELL_STEPS + (is_angry() ? ENEMY_ANGRY_SMELL_BONUS : 0);
+    if (noise > 0.0f && is_angry()) {
+        noise += ENEMY_ANGRY_HEAR_BONUS;
+    }
     if (grid_is_revealed((int)floorf(e.x), (int)floorf(e.y)) && d2 <= radius * radius && line_of_sight(gx, gy)) {
         return SENSE_SIGHT;
     }
     int cx, cy;
     cell_of(&cx, &cy);
-    if (d2 <= (float)(ENEMY_SMELL_STEPS * ENEMY_SMELL_STEPS) &&
-        pathfind_within(cx, cy, (int)floorf(gx), (int)floorf(gy), ENEMY_SMELL_STEPS, false, &scratch)) {
+    if (d2 <= (float)(smell * smell) &&
+        pathfind_within(cx, cy, (int)floorf(gx), (int)floorf(gy), smell, false, &scratch)) {
         return SENSE_SMELL;
     }
     if (noise > 0.0f && d2 <= noise * noise) {
@@ -290,6 +316,12 @@ bool enemy_update(float dt, float gx, float gy, float noise) {
     if (e.flash > 0.0f) {
         e.flash -= dt;
     }
+    if (e.state != ENEMY_STUNNED && e.angry > 0.0f) {
+        e.angry -= dt;
+        if (e.angry < 0.0f) {
+            e.angry = 0.0f;
+        }
+    }
     if (e.state == ENEMY_STUNNED) {
         e.timer -= dt;
         if (e.timer <= 0.0f) {
@@ -340,7 +372,7 @@ bool enemy_update(float dt, float gx, float gy, float noise) {
             }
             break;
         case ENEMY_CHASE:
-            e.stamina -= dt;
+            e.stamina -= dt * (is_angry() ? ENEMY_ANGRY_DRAIN : 1.0f);
             if (e.stamina <= 0.0f) {
                 e.stamina = 0.0f;
                 enter(ENEMY_WINDED);
@@ -376,7 +408,8 @@ bool enemy_update(float dt, float gx, float gy, float noise) {
                 e.timer = rnd_range(0.3f, 1.0f);
                 int tx, ty;
                 predicted_cell(&tx, &ty);
-                if (!route_random(tx, ty, 6, ENEMY_SEARCH_STEPS)) {
+                if (!route_random(tx, ty, is_angry() ? ENEMY_ANGRY_SEARCH_RADIUS : ENEMY_SEARCH_RADIUS,
+                                  is_angry() ? ENEMY_ANGRY_SEARCH_STEPS : ENEMY_SEARCH_STEPS)) {
                     e.path.count = 0;
                 }
             }
@@ -401,6 +434,11 @@ void enemy_stun(float seconds) {
 void enemy_damage(float seconds) {
     enemy_stun(seconds);
     e.flash = seconds;
+    e.angry = ENEMY_ANGRY_SECONDS;  // a fresh hit restarts the anger
+}
+
+float enemy_angry(void) {
+    return e.angry;
 }
 
 float enemy_flash(void) {

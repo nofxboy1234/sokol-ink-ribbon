@@ -1,5 +1,5 @@
 // Native checks for the bottle throw: hit chances, Run blocking, bottle use,
-// the stun and noise-led investigation. Build and run with tests/run.sh.
+// the stun and noise-led investigation, the kept equip slot, anger and light. Build and run with tests/run.sh.
 #include "enemy.h"
 #include "grid.h"
 #include "inventory.h"
@@ -11,6 +11,8 @@
 #include "interact.h"
 #include "player.h"
 #include "health.h"
+#include "light.h"
+#include "savegame.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -139,7 +141,7 @@ int main(int argc, char** argv) {
     CHECK(!throw_resolve(gx, gy, tx, ty, THROW_STANCE_RUN, &r), "no throwing while running");
     CHECK(inventory_count_of(ITEM_BOTTLE) == 1 && throw_active(), "the bottle is kept after a blocked throw");
 
-    // the bottle is spent; the last one unequips
+    // the bottle is spent; the last one leaves the slot equipped but empty
     inventory_init();
     inventory_add(ITEM_BOTTLE);
     arm();
@@ -148,8 +150,24 @@ int main(int argc, char** argv) {
     throw_resolve(gx, gy, tx, ty, THROW_STANCE_WAIT, &r);
     CHECK(inventory_count_of(ITEM_BOTTLE) == 1 && throw_equipped() && throw_active(), "one spent, still equipped");
     throw_resolve(gx, gy, tx, ty, THROW_STANCE_WAIT, &r);
-    CHECK(inventory_count_of(ITEM_BOTTLE) == 0 && !throw_equipped() && !throw_active(), "last bottle spent: unequipped");
+    CHECK(inventory_count_of(ITEM_BOTTLE) == 0 && throw_equipped() && throw_empty() && !throw_active(),
+          "last bottle spent: the slot stays equipped, greyed out and inactive");
     CHECK(!throw_resolve(gx, gy, tx, ty, THROW_STANCE_WAIT, &r), "no bottle, no throw");
+    CHECK(!throw_set_active(true), "an empty slot can't be made active");
+    savegame_init();
+    savegame_save(0, 0.0);
+    throw_restore(false, false);
+    double ms = 0.0;
+    savegame_load(0, &ms);
+    CHECK(throw_equipped() && throw_empty() && !throw_active(), "the empty slot survives save and load (v3)");
+    inventory_add(ITEM_BOTTLE);
+    throw_sync();
+    CHECK(throw_equipped() && !throw_empty() && throw_active(), "finding a bottle fills the slot and makes it active");
+    throw_set_equipped(false);
+    CHECK(!throw_equipped() && !throw_active(), "Unequip clears the slot");
+    inventory_add(ITEM_BOTTLE);
+    throw_sync();
+    CHECK(!throw_equipped() && !throw_active(), "with no slot, a found bottle is not equipped");
 
     // stun: a guaranteed hit (seed until one lands), then 3 s of stun and flashing
     bool landed = false;
@@ -219,6 +237,72 @@ int main(int argc, char** argv) {
         dmin = d < dmin ? d : dmin;
     }
     CHECK(dmin < 1.5f, "it walked from %.1f cells to within %.1f of the impact", d0, dmin);
+
+    // anger: a hit makes it angry for ENEMY_ANGRY_SECONDS once the stun ends
+    fresh_enemy_at(ex, ey);
+    CHECK(enemy_angry() == 0.0f, "calm to begin with");
+    enemy_damage(THROW_STUN_SECONDS);
+    for (int i = 0; i < 60 * 3; i++) {
+        enemy_update(1.0f / 60.0f, 500.0f, 500.0f, 0.0f);
+    }
+    CHECK(enemy_angry() > 19.5f, "the anger only counts down after the stun (%.1f s left)", enemy_angry());
+    for (int i = 0; i < 60 * 21; i++) {
+        enemy_update(1.0f / 60.0f, 500.0f, 500.0f, 0.0f);
+    }
+    CHECK(enemy_angry() == 0.0f, "and cools down after 20 s");
+    // angry, it sees further: find Grace 7.5 cells off in a clear line
+    {
+        int ax = -1, ay = -1;
+        for (int y = 0; y < level.rows && ax < 0; y++) {
+            for (int x = 0; x + 8 < level.cols && ax < 0; x++) {
+                if (grid_is_floor(x, y) && grid_is_floor(x + 7, y) && sight_clear(x, y, x + 7, y) && grid_is_floor(x + 8, y)) {
+                    ax = x;
+                    ay = y;
+                }
+            }
+        }
+        CHECK(ax >= 0, "a 7-cell sight line at (%d,%d)", ax, ay);
+        float gxf = (float)ax + 8.0f, gyf = (float)ay + 0.5f;  // 7.5 cells away
+        fresh_enemy_at(ax, ay);
+        enemy_update(1.0f / 60.0f, gxf, gyf, 0.0f);
+        bool calm_sees = enemy_sense() == SENSE_SIGHT;
+        fresh_enemy_at(ax, ay);
+        enemy_damage(0.01f);
+        enemy_update(0.02f, 500.0f, 500.0f, 0.0f);
+        enemy_place((float)ax + 0.5f, (float)ay + 0.5f);
+        enemy_update(1.0f / 60.0f, gxf, gyf, 0.0f);
+        CHECK(!calm_sees && enemy_sense() == SENSE_SIGHT, "calm it misses her at 7.5 cells; angry it sees her");
+    }
+
+    // light: a level light on, its cell lit; off, dark; the Lighter around Grace
+    {
+        int li = -1;
+        for (int i = 0; i < level.obj_count; i++) {
+            if (level.objs[i].kind == OBJ_LIGHT && level.objs[i].state) {
+                li = i;
+                break;
+            }
+        }
+        obj_t* lo = (obj_t*)&grid_level()->objs[li];
+        light_update();
+        CHECK(light_cell_lit(lo->x, lo->y) || !grid_is_floor(lo->x, lo->y), "a light that is on lights its cell (%d,%d)", lo->x, lo->y);
+        int far = (int)light_radius_of(lo->radius) + 2;
+        CHECK(!light_cell_lit(lo->x + far, lo->y), "but not %d cells off", far);
+        lo->state = 0;
+        light_update();
+        CHECK(!light_cell_lit(lo->x, lo->y), "switched off, it is dark");
+        lo->state = 1;
+        inventory_init();
+        int px, py;
+        player_cell(&px, &py);
+        if (lighter_on()) {
+            lighter_toggle();
+        }
+        inventory_add(ITEM_LIGHTER);
+        lighter_toggle();
+        CHECK(light_cell_lit(px, py), "the lit Lighter lights her cell (%d,%d)", px, py);
+        lighter_toggle();
+    }
 
     printf(failures ? "%d FAILED\n" : "ALL PASS\n", failures);
     return failures ? 1 : 0;

@@ -3,6 +3,7 @@
 #include "grid.h"
 #include "inventory.h"
 #include "items.h"
+#include "light.h"
 #include "level.h"
 #include "player.h"
 
@@ -26,16 +27,28 @@ void interact_init(void) {
     in.level = (level_t*)grid_level();
 }
 
-static void toggle_group(int group) {
+// A switch toggles the lights linked to it (a light's "link" names its
+// switch). A switch with no linked lights toggles the unlinked lights in its
+// group, as before.
+static void toggle_switch(const obj_t* sw) {
+    bool linked = false;
     for (int i = 0; i < in.level->obj_count; i++) {
         obj_t* o = &in.level->objs[i];
-        if (o->kind == OBJ_LIGHT && o->group_id == group) {
+        if (o->kind == OBJ_LIGHT && o->link_id == sw->id) {
+            o->state = !o->state;
+            linked = true;
+        }
+    }
+    for (int i = 0; i < in.level->obj_count; i++) {
+        obj_t* o = &in.level->objs[i];
+        if (!linked && o->kind == OBJ_LIGHT && o->link_id <= 0 && o->group_id == sw->group_id) {
             o->state = !o->state;
         }
-        if (o->kind == OBJ_SWITCH && o->group_id == group) {
+        if (o->kind == OBJ_SWITCH && (linked ? o == sw : o->group_id == sw->group_id)) {
             o->state = !o->state;
         }
     }
+    light_update();
 }
 
 static bool file_found(int obj_index) {
@@ -59,6 +72,9 @@ bool interact_at(int x, int y) {
         if (o->kind == OBJ_ITEM && openable_covers_closed(o->x, o->y)) {
             continue;
         }
+        if (o->kind == OBJ_ITEM && !light_cell_lit(o->x, o->y)) {
+            continue;  // unlit items can't be seen, so they can't be picked up
+        }
         if (interact_distance(i) > 1) {
             continue;
         }
@@ -77,7 +93,7 @@ bool interact_at(int x, int y) {
             return true;
         }
         if (o->kind == OBJ_SWITCH) {
-            toggle_group(o->group_id);
+            toggle_switch(o);
             return true;
         }
         if (o->kind == OBJ_TYPEWRITER) {
@@ -209,6 +225,7 @@ bool lighter_on(void) {
 
 void lighter_toggle(void) {
     in.lighter = !in.lighter;
+    light_update();
 }
 
 int files_found(void) {

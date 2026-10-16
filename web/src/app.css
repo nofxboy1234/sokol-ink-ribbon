@@ -810,6 +810,28 @@ button.recipe[aria-disabled="true"] {
     0 0 0 5px #1efff8;
 }
 
+.grace-icon[data-spent="true"] {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+.grace-lighter {
+  width: 30%;
+  height: 48%;
+  border-radius: 50% 50% 40% 40%;
+  background: #9d9d9d;
+}
+
+.grace-icon[aria-pressed="true"] .grace-lighter {
+  background: #f2ff00;
+  box-shadow: 0 0 6px 2px #f2ff00;
+}
+
+.quick-slot-item[data-empty="true"] {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
 .grace-bottle {
   width: 42%;
   height: 42%;

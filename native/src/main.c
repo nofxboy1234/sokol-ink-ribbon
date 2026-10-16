@@ -19,6 +19,7 @@
 #include "interact.h"
 #include "inventory.h"
 #include "items.h"
+#include "light.h"
 #include "level.h"
 #include "pathfind.h"
 #include "player.h"
@@ -71,6 +72,8 @@ typedef enum {
 #define LONG_PRESS_SECONDS 0.5f
 // How long Grace flashes after a hit.
 #define GRACE_FLASH_SECONDS 1.0f
+// Then she breathes fast (stressed) until this long after the hit.
+#define GRACE_STRESS_SECONDS 5.0f
 // The bottle's impact: the ring pulses out, then everything fades.
 #define IMPACT_PULSE_SECONDS 0.25f
 #define IMPACT_FADE_SECONDS 0.35f
@@ -91,9 +94,11 @@ static struct {
     double touch_start_at;
     bool long_fired;
     double grace_flash_until;
+    double grace_stress_until;  // fast, stressed breathing after a hit
     double impact_at;       // real clock of the last impact, < 0 for none
     int impact_x, impact_y;
     bool setup_has_target;  // Walk/Run: a reachable cell was picked
+    bool aim_enemy;         // Throw: the aim is locked onto the enemy itself
     int setup_x, setup_y;
     path_t setup_route;     // the rope to the picked cell
     double clock;           // real seconds, for double-click timing
@@ -250,6 +255,43 @@ static bool grace_resume(void) {
     return false;
 }
 
+// The pointer is over the enemy's drawn circle (where it actually is, which
+// may be between cells), and it is in view.
+#define AIM_ENEMY_RADIUS 0.64f  // cells: the enemy's drawn radius
+static bool pointer_on_enemy(void) {
+    if (app.ui_captured) {
+        return false;
+    }
+    if (!grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
+        return false;
+    }
+    float ex, ey;
+    camera_cell_to_screen(enemy_x(), enemy_y(), &ex, &ey);
+    float dx = app.mouse_x - ex, dy = app.mouse_y - ey;
+    float r = AIM_ENEMY_RADIUS * camera_cell_px();
+    return dx * dx + dy * dy <= r * r;
+}
+
+static void enemy_cell(int* x, int* y) {
+    *x = (int)floorf(enemy_x());
+    *y = (int)floorf(enemy_y());
+}
+
+// Lock the aim onto the enemy, if a throw can reach its cell.
+static void pick_throw_enemy(void) {
+    int px, py, ex, ey;
+    player_cell(&px, &py);
+    enemy_cell(&ex, &ey);
+    if (!throw_in_reach(px, py, ex, ey)) {
+        return;
+    }
+    app.setup_has_target = true;
+    app.aim_enemy = true;
+    app.setup_x = ex;
+    app.setup_y = ey;
+    bump_revision();
+}
+
 static void pick_throw(int x, int y) {
     int px, py;
     player_cell(&px, &py);
@@ -257,6 +299,7 @@ static void pick_throw(int x, int y) {
         return;  // out of range, a wall in the way, or her own cell
     }
     app.setup_has_target = true;
+    app.aim_enemy = false;
     app.setup_x = x;
     app.setup_y = y;
     bump_revision();
@@ -268,7 +311,9 @@ static bool throw_confirm(void) {
     player_cell(&px, &py);
     throw_stance_t stance = grace_stance();
     throw_result_t result;
-    if (!throw_resolve(px, py, app.setup_x, app.setup_y, stance, &result)) {
+    bool ok = app.aim_enemy ? throw_resolve_at_enemy(px, py, app.setup_x, app.setup_y, stance, &result)
+                            : throw_resolve(px, py, app.setup_x, app.setup_y, stance, &result);
+    if (!ok) {
         return false;
     }
     app.impact_at = app.clock;
@@ -284,6 +329,7 @@ static bool throw_confirm(void) {
 static void clear_setup(void) {
     app.setup = SETUP_NONE;
     app.setup_has_target = false;
+    app.aim_enemy = false;
     app.setup_route.count = 0;
     bump_revision();
 }
@@ -476,11 +522,20 @@ static void handle_click(void) {
         return;
     }
     if (app.setup == SETUP_THROW) {
-        // Aiming: no doors or items, just pick a cell; the same cell again throws.
+        // Aiming: no doors or items, just pick a cell; the same cell again
+        // throws. Over the enemy the aim locks onto it; the enemy again throws.
+        if (pointer_on_enemy()) {
+            if (app.setup_has_target && app.aim_enemy) {
+                grace_do(GRACE_ACT_OK);
+            } else {
+                pick_throw_enemy();
+            }
+            return;
+        }
         if (app.hover_x < 0 || app.hover_y < 0) {
             return;
         }
-        if (app.setup_has_target && app.hover_x == app.setup_x && app.hover_y == app.setup_y) {
+        if (app.setup_has_target && !app.aim_enemy && app.hover_x == app.setup_x && app.hover_y == app.setup_y) {
             grace_do(GRACE_ACT_OK);
         } else {
             pick_throw(app.hover_x, app.hover_y);
@@ -523,6 +578,7 @@ static void grace_hurt(void) {
         health_set(health + 1);
     }
     app.grace_flash_until = app.clock + GRACE_FLASH_SECONDS;
+    app.grace_stress_until = app.clock + GRACE_STRESS_SECONDS;
     bump_revision();
 }
 
@@ -581,6 +637,7 @@ static void init(void) {
     app.resume_wait = false;
     app.impact_at = -1.0;
     app.grace_flash_until = -1.0;
+    app.grace_stress_until = -1.0;
     app.pass_action = (sg_pass_action){
         .colors[0] = {
             .load_action = SG_LOADACTION_CLEAR,
@@ -617,6 +674,9 @@ static const obj_t* hover_interactable(void) {
             continue;
         }
         if (o->kind == OBJ_ITEM && openable_covers_closed(o->x, o->y)) {
+            continue;
+        }
+        if (o->kind == OBJ_ITEM && !light_cell_lit(o->x, o->y)) {
             continue;
         }
         if (o->kind == OBJ_OPENABLE && o->open) {
@@ -669,11 +729,12 @@ void _dbgui_extra(void) {
 static void frame(void) {
     const float dt = (float)sapp_frame_duration();
     app.clock += (double)dt;
-    if (throw_equipped()) {
-        throw_sync();  // a used, discarded or crafted-away last bottle unequips
-        if (!throw_equipped()) {
-            bump_revision();
-        }
+    if (throw_sync()) {  // a used-up slot greys out; a found bottle fills it again
+        bump_revision();
+    }
+    if (lighter_on() && !inventory_has(ITEM_LIGHTER)) {
+        lighter_toggle();  // no lighter, no light
+        bump_revision();
     }
     if (app.touch_active && !app.touch_moved && !app.long_fired &&
         app.clock - app.touch_start_at >= LONG_PRESS_SECONDS) {
@@ -720,14 +781,19 @@ static void frame(void) {
         camera_follow(player_x(), player_y());
         camera_update(dt);
     }
+    light_update();
     update_hover();
 
     _dbgui_update();
     render_fx_t fx = { 0 };
     if (app.setup == SETUP_THROW) {
         bool hover = !app.touch_pointer || app.touch_active;
+        bool on_enemy = app.setup_has_target ? app.aim_enemy : hover && pointer_on_enemy();
         int ax = app.setup_has_target ? app.setup_x : hover ? app.hover_x : -1;
         int ay = app.setup_has_target ? app.setup_y : hover ? app.hover_y : -1;
+        if (on_enemy) {
+            enemy_cell(&ax, &ay);
+        }
         if (ax >= 0 && ay >= 0) {
             int px, py;
             player_cell(&px, &py);
@@ -735,6 +801,9 @@ static void frame(void) {
             fx.aim_x = ax;
             fx.aim_y = ay;
             fx.aim_ok = throw_in_reach(px, py, ax, ay);
+            fx.aim_enemy = on_enemy;
+            fx.aim_ex = enemy_x();
+            fx.aim_ey = enemy_y();
         }
     }
     if (app.impact_at >= 0.0) {
@@ -749,6 +818,9 @@ static void frame(void) {
         }
     }
     fx.grace_flash = app.clock < app.grace_flash_until ? (float)(app.grace_flash_until - app.clock) : 0.0f;
+    fx.grace_stress = app.clock < app.grace_stress_until ? (float)(app.grace_stress_until - app.clock) : 0.0f;
+    fx.grace_waiting = app.grace == GRACE_WAITING;
+    fx.clock = (float)fmod(app.clock, 1000.0);
     render_set_fx(&fx);
     // While setting up Walk/Run the rope shows the picked cell's route, or
     // follows the pointer until one is picked (touch: only while a finger is
@@ -781,6 +853,7 @@ static void cleanup(void) {
 }
 
 static void click_at(void) {
+    light_update();
     update_hover();
     handle_click();
 }
@@ -954,10 +1027,11 @@ WEB_EXPORT int health_value(void) {
     return health_state();
 }
 
-// Green Herb heals one step, Mixed Herb (G+G) heals fully.
+// Green Herb heals one step (Danger -> Caution -> Fine); a Mixed Herb (G+G)
+// and a Med Injector heal fully.
 WEB_EXPORT int web_inventory_use(int index) {
     int item = inventory_slot(index);
-    int heal = item == ITEM_HERB ? 1 : item == ITEM_MIXED_HERB ? HEALTH_DANGER : 0;
+    int heal = item == ITEM_HERB ? 1 : (item == ITEM_MIXED_HERB || item == ITEM_INJECTOR) ? HEALTH_DANGER : 0;
     int health = health_state();
     if (heal == 0 || health == 0 || !inventory_clear_slot(index)) {
         return 0;
@@ -1006,7 +1080,13 @@ WEB_EXPORT int web_quick_open(void) {
 // Quick Equip slot 0..3 = N, E, S, W. Only East holds anything (the bottle):
 // picking it toggles it as the active weapon and returns to the action menu.
 WEB_EXPORT int web_quick_select(int slot) {
-    if (!app.quick_open || slot != 1 || !throw_equipped()) {
+    if (app.quick_open && slot == 0 && inventory_has(ITEM_LIGHTER)) {
+        // the Lighter (North) toggles in place; Quick Equip stays open
+        lighter_toggle();
+        bump_revision();
+        return 1;
+    }
+    if (!app.quick_open || slot != 1 || !throw_equipped() || throw_empty()) {
         return 0;
     }
     throw_set_active(!throw_active());
@@ -1018,6 +1098,31 @@ WEB_EXPORT int web_quick_select(int slot) {
 
 WEB_EXPORT int web_bottle_equipped(void) {
     return throw_equipped() ? 1 : 0;
+}
+
+WEB_EXPORT int web_light_at(int x, int y) {
+    return light_cell_lit(x, y) ? 1 : 0;
+}
+
+WEB_EXPORT int web_enemy_angry(void) {
+    return enemy_angry() > 0.0f ? 1 : 0;
+}
+
+TEST_EXPORT int web_aim_enemy(void) {
+    return app.aim_enemy ? 1 : 0;
+}
+
+TEST_EXPORT int web_grace_stress_ms(void) {
+    return app.clock < app.grace_stress_until ? (int)((app.grace_stress_until - app.clock) * 1000.0) : 0;
+}
+
+// Tests: make the enemy angry (as if hit) without a throw.
+TEST_EXPORT void web_test_anger(void) {
+    enemy_damage(0.05f);
+}
+
+WEB_EXPORT int web_bottle_empty(void) {
+    return throw_empty() ? 1 : 0;
 }
 
 WEB_EXPORT int web_bottle_active(void) {
@@ -1088,6 +1193,23 @@ TEST_EXPORT int web_test_give(int item) {
 
 TEST_EXPORT void web_test_enemy_at(int x, int y) {
     enemy_place((float)x + 0.5f, (float)y + 0.5f);
+}
+
+// Tests: put the enemy anywhere, between cells too (hundredths of a cell).
+TEST_EXPORT void web_test_enemy_place(int x100, int y100) {
+    enemy_place((float)x100 / 100.0f, (float)y100 / 100.0f);
+}
+
+TEST_EXPORT float web_enemy_screen_x(void) {
+    float sx, sy;
+    camera_cell_to_screen(enemy_x(), enemy_y(), &sx, &sy);
+    return sx / sapp_dpi_scale();
+}
+
+TEST_EXPORT float web_enemy_screen_y(void) {
+    float sx, sy;
+    camera_cell_to_screen(enemy_x(), enemy_y(), &sx, &sy);
+    return sy / sapp_dpi_scale();
 }
 
 TEST_EXPORT void web_test_grace_at(int x, int y) {
@@ -1171,7 +1293,7 @@ WEB_EXPORT int lighter_value(void) {
     return lighter_on() ? 1 : 0;
 }
 
-WEB_EXPORT void lighter_set(int on) {
+TEST_EXPORT void lighter_set(int on) {
     if ((on != 0) != lighter_on()) {
         lighter_toggle();
         bump_revision();
@@ -1280,8 +1402,10 @@ WEB_EXPORT void game_reset(void) {
     app.resume_wait = false;
     app.impact_at = -1.0;
     app.grace_flash_until = -1.0;
+    app.grace_stress_until = -1.0;
     app.setup = SETUP_NONE;
     app.setup_has_target = false;
+    app.aim_enemy = false;
     app.route.count = 0;
     app.preview.count = 0;
     app.last_steps = 0;
@@ -1326,6 +1450,7 @@ WEB_EXPORT int load_game(int slot) {
         app.resume_wait = false;
         app.setup = SETUP_NONE;
         app.setup_has_target = false;
+        app.aim_enemy = false;
         app.route.count = 0;
         app.preview.count = 0;
         throw_sync();

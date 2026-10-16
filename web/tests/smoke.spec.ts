@@ -311,9 +311,11 @@ test("right click on Grace opens Quick Equip and an active bottle can be thrown"
   expect(
     await page.evaluate(() => window.Module?._web_impact_age_ms?.() ?? -1),
   ).toBeGreaterThanOrEqual(0);
-  // the bottle is spent (and unequipped), and she stays Paused
+  // the last bottle is spent: its slot stays equipped but greyed out, and she stays Paused
   await expect(slot).toHaveCount(0);
-  expect(await page.evaluate(() => window.Module?._web_bottle_equipped?.())).toBe(0);
+  expect(await page.evaluate(() => window.Module?._web_bottle_equipped?.())).toBe(1);
+  expect(await page.evaluate(() => window.Module?._web_bottle_empty?.())).toBe(1);
+  expect(await page.evaluate(() => window.Module?._web_bottle_active?.())).toBe(0);
   expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(0);
 });
 
@@ -418,4 +420,146 @@ test("left click toggles only the action menu, right click only Quick Equip", as
   await expect.poll(state).toEqual([0, 1]);
   await left();
   await expect.poll(state).toEqual([1, 0]);
+});
+
+// Calls a wasm export by name (without the leading underscore).
+function wasm(page: Page, name: string, ...args: number[]) {
+  return page.evaluate(
+    ([n, a]) =>
+      (window.Module as unknown as Record<string, (...x: number[]) => number>)[`_${n}`](...a),
+    [name, args] as const,
+  );
+}
+
+async function boot(page: Page) {
+  await page.goto("/");
+  await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
+    timeout: 30_000,
+  });
+  const box = await page.locator("canvas#canvas").boundingBox();
+  if (!box) {
+    throw new Error("canvas has no box");
+  }
+  return box;
+}
+
+test("aiming over the enemy locks onto it, even between cells", async ({ page }) => {
+  const box = await boot(page);
+  await wasm(page, "web_test_give", 0);
+  await wasm(page, "web_bottle_equip", 1);
+  const gx = await wasm(page, "player_cell_x");
+  const gy = await wasm(page, "player_cell_y");
+  // find an open cell in reach and put the enemy half a cell off it
+  const target = await page.evaluate(
+    ([px, py]) => {
+      const m = window.Module as unknown as Record<string, (...x: number[]) => number>;
+      for (let d = 4; d >= 2; d--) {
+        for (const [dx, dy] of [
+          [d, 0],
+          [-d, 0],
+          [0, d],
+          [0, -d],
+        ]) {
+          if (m._web_throw_in_reach(px + dx, py + dy)) {
+            return [px + dx, py + dy];
+          }
+        }
+      }
+      return null;
+    },
+    [gx, gy] as const,
+  );
+  expect(target).not.toBeNull();
+  const [tx, ty] = target ?? [0, 0];
+  await wasm(page, "web_test_enemy_place", tx * 100 + 50, ty * 100 + 80);
+  // make the bottle active from Quick Equip, then Throw
+  const at = {
+    x: await wasm(page, "web_grace_screen_x"),
+    y: await wasm(page, "web_grace_screen_y"),
+  };
+  await page.mouse.click(box.x + at.x, box.y + at.y, { button: "right" });
+  await page
+    .getByRole("group", { name: "Quick Equip" })
+    .getByRole("button", { name: "Empty Bottle" })
+    .click();
+  await page.getByRole("button", { name: "Throw", exact: true }).click();
+  const ex = await wasm(page, "web_enemy_screen_x");
+  const ey = await wasm(page, "web_enemy_screen_y");
+  await page.mouse.move(box.x + ex + 3, box.y + ey - 3);
+  await page.mouse.click(box.x + ex + 3, box.y + ey - 3);
+  expect(await wasm(page, "web_aim_enemy")).toBe(1);
+  expect(await wasm(page, "web_grace_ready")).toBe(1);
+  // tapping the enemy again throws at it
+  await page.mouse.click(box.x + ex, box.y + ey);
+  expect(await wasm(page, "web_impact_age_ms")).toBeGreaterThanOrEqual(0);
+  expect(await wasm(page, "web_aim_enemy")).toBe(0);
+});
+
+test("a Med Injector heals fully and a Green Herb one level", async ({ page }) => {
+  await boot(page);
+  await wasm(page, "web_test_hurt");
+  await wasm(page, "web_test_hurt");
+  expect(await wasm(page, "health_value")).toBe(2);
+  await wasm(page, "web_test_give", 2);
+  await wasm(page, "web_inventory_use", 0);
+  expect(await wasm(page, "health_value")).toBe(1);
+  await wasm(page, "web_test_hurt");
+  await wasm(page, "web_test_give", 5);
+  await wasm(page, "web_inventory_use", 0);
+  expect(await wasm(page, "health_value")).toBe(0);
+  // and she breathes fast for a while after a hit
+  await wasm(page, "web_test_hurt");
+  expect(await wasm(page, "web_grace_stress_ms")).toBeGreaterThan(4000);
+});
+
+test("the Lighter sits North in Quick Equip, starts off and toggles", async ({ page }) => {
+  const box = await boot(page);
+  await wasm(page, "web_test_give", 7);
+  const at = {
+    x: await wasm(page, "web_grace_screen_x"),
+    y: await wasm(page, "web_grace_screen_y"),
+  };
+  await page.mouse.click(box.x + at.x, box.y + at.y, { button: "right" });
+  const lighter = page
+    .getByRole("group", { name: "Quick Equip" })
+    .getByRole("button", { name: "Lighter" });
+  await expect(lighter).toHaveAttribute("data-slot", "North");
+  await expect(lighter).toHaveAttribute("aria-pressed", "false");
+  await lighter.click();
+  await expect(lighter).toHaveAttribute("aria-pressed", "true");
+  expect(await wasm(page, "lighter_value")).toBe(1);
+  await lighter.click();
+  expect(await wasm(page, "lighter_value")).toBe(0);
+  // no lighter control left in the Inventory
+  await expect(page.locator(".quick-slot-btn")).toHaveCount(0);
+});
+
+test("items in the dark can't be picked up until lit", async ({ page }) => {
+  const box = await boot(page);
+  // the herb at (79,49) has no light near it
+  await wasm(page, "web_test_grace_at", 78, 49);
+  await page.waitForTimeout(200);
+  expect(await wasm(page, "web_light_at", 79, 49)).toBe(0);
+  const cell = await wasm(page, "web_cell_css_px");
+  const tap = async () => {
+    const x = await wasm(page, "web_grace_screen_x");
+    const y = await wasm(page, "web_grace_screen_y");
+    await page.mouse.click(box.x + x + cell, box.y + y);
+  };
+  const before = await wasm(page, "items_collected");
+  await tap();
+  expect(await wasm(page, "items_collected")).toBe(before);
+  await wasm(page, "web_test_give", 7);
+  await wasm(page, "lighter_set", 1);
+  await page.waitForTimeout(100);
+  expect(await wasm(page, "web_light_at", 79, 49)).toBe(1);
+  await tap();
+  expect(await wasm(page, "items_collected")).toBe(before + 1);
+});
+
+test("a hit makes the enemy angry", async ({ page }) => {
+  await boot(page);
+  expect(await wasm(page, "web_enemy_angry")).toBe(0);
+  await wasm(page, "web_test_anger");
+  expect(await wasm(page, "web_enemy_angry")).toBe(1);
 });
