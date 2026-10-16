@@ -12,11 +12,16 @@
 #include "items.h"
 #include "level.h"
 #include "player.h"
+#include "throw.h"
 
 #include <string.h>
 
+// 2 added the equipped bottle and the active weapon; older slots load unequipped.
+#define SAVE_VERSION 2
+
 typedef struct {
     bool used;
+    int version;
     double elapsed_ms;
     int px, py;
     int health;
@@ -31,6 +36,8 @@ typedef struct {
     bool goal;
     int file_count;
     int file_obj[LEVEL_MAX_OBJECTS];
+    bool equipped;
+    bool active;
 } save_slot_t;
 
 static save_slot_t g_slots[SAVE_SLOTS];
@@ -55,6 +62,7 @@ bool savegame_save(int slot, double elapsed_ms) {
     const level_t* lv = grid_level();
     memset(s, 0, sizeof(*s));
     s->used = true;
+    s->version = SAVE_VERSION;
     s->elapsed_ms = elapsed_ms;
     player_cell(&s->px, &s->py);
     s->health = health_state();
@@ -70,6 +78,8 @@ bool savegame_save(int slot, double elapsed_ms) {
     }
     items_export(s->item_taken, LEVEL_MAX_OBJECTS);
     interact_export(&s->lighter, &s->saves, &s->goal, &s->file_count, s->file_obj);
+    s->equipped = throw_equipped();
+    s->active = throw_active();
     return true;
 }
 
@@ -90,6 +100,9 @@ bool savegame_load(int slot, double* elapsed_ms) {
     interact_restore(s->lighter, s->saves, s->goal, s->file_count, s->file_obj);
     player_set_cell(s->px, s->py);
     doors_restore_from_level();
+    bool v2 = s->version >= 2;
+    throw_set_equipped(v2 && s->equipped);  // refuses (stays off) without a bottle
+    throw_set_active(v2 && s->equipped && s->active);
     if (elapsed_ms) {
         *elapsed_ms = s->elapsed_ms;
     }

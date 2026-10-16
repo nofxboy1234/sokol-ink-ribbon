@@ -86,6 +86,7 @@ static struct {
     // cyan route stays drawn and a throw can resume it.
     bool pending;
     bool pending_run;
+    bool resume_wait;       // paused mid-wait: a double click goes back to waiting
     int pending_x, pending_y;
     double touch_start_at;
     bool long_fired;
@@ -222,7 +223,31 @@ static throw_stance_t grace_stance(void) {
 
 static void clear_pending(void) {
     app.pending = false;
+    app.resume_wait = false;
     app.route.count = 0;
+}
+
+// Carry on with the action she was paused in (a double click on the map):
+// the remembered walk or run to its target, or waiting. False if there is none.
+static bool grace_resume(void) {
+    if (app.pending) {
+        bool run = app.pending_run;
+        player_move_to(app.pending_x, app.pending_y, run ? PLAYER_RUN : PLAYER_WALK);
+        if (!player_is_moving()) {
+            clear_pending();
+            return false;
+        }
+        app.route = *player_path();
+        app.pending = false;
+        set_grace(run ? GRACE_RUNNING : GRACE_WALKING);
+        return true;
+    }
+    if (app.resume_wait) {
+        app.resume_wait = false;
+        set_grace(GRACE_WAITING);
+        return true;
+    }
+    return false;
 }
 
 static void pick_throw(int x, int y) {
@@ -237,7 +262,7 @@ static void pick_throw(int x, int y) {
     bump_revision();
 }
 
-// Throw the bottle, then carry on: a paused walk resumes, otherwise she waits.
+// Throw the bottle; she stays Paused.
 static bool throw_confirm(void) {
     int px, py;
     player_cell(&px, &py);
@@ -249,17 +274,10 @@ static bool throw_confirm(void) {
     app.impact_at = app.clock;
     app.impact_x = app.setup_x;
     app.impact_y = app.setup_y;
-    if (stance == THROW_STANCE_WALK) {
-        player_move_to(app.pending_x, app.pending_y, PLAYER_WALK);
-    }
-    if (stance == THROW_STANCE_WALK && player_is_moving()) {
-        app.route = *player_path();
-        app.pending = false;
-        set_grace(GRACE_WALKING);
-    } else {
-        clear_pending();
-        set_grace(GRACE_WAITING);
-    }
+    // She stays Paused (time frozen) with whatever she was doing remembered;
+    // a double click on the map carries on with it.
+    app.menu_open = true;
+    bump_revision();
     return true;
 }
 
@@ -323,6 +341,7 @@ static bool grace_do(grace_action_t action) {
                 if (player_is_moving()) {
                     app.route = *player_path();
                     app.pending = false;
+                    app.resume_wait = false;
                     set_grace(run ? GRACE_RUNNING : GRACE_WALKING);
                 }
             }
@@ -347,6 +366,7 @@ static bool grace_do(grace_action_t action) {
                 app.pending_run = app.grace == GRACE_RUNNING;
                 app.pending = true;
             }
+            app.resume_wait = app.grace == GRACE_WAITING;
             player_halt();  // stop at the nearest cell
             app.route.count = 0;
             if (app.pending) {
@@ -400,7 +420,7 @@ static void handle_quick_equip(void) {
         return;
     }
     app.quick_open = !app.quick_open;
-    app.menu_open = !app.quick_open;
+    app.menu_open = false;  // never both: right click only toggles Quick Equip
     bump_revision();
 }
 
@@ -434,6 +454,26 @@ static void handle_click(void) {
             app.quick_open = false;
             bump_revision();
         }
+        if (app.hover_x >= 0 && app.hover_y >= 0 &&
+            (doors_interact(app.hover_x, app.hover_y) || interact_at(app.hover_x, app.hover_y))) {
+            app.last_click_at = -1.0;
+            bump_revision();
+            return;
+        }
+        // A double click on empty map carries on with the paused action.
+        // Only here, with no setup pending, so picking and re-tapping a
+        // target, her dot and pickups never count towards one.
+        float dx = app.mouse_x - app.last_click_x, dy = app.mouse_y - app.last_click_y;
+        float slop = DOUBLE_CLICK_SLOP_PX * sapp_dpi_scale();
+        if (app.clock - app.last_click_at <= DOUBLE_CLICK_SECONDS && dx * dx + dy * dy <= slop * slop) {
+            app.last_click_at = -1.0;
+            grace_resume();
+        } else {
+            app.last_click_at = app.clock;
+            app.last_click_x = app.mouse_x;
+            app.last_click_y = app.mouse_y;
+        }
+        return;
     }
     if (app.setup == SETUP_THROW) {
         // Aiming: no doors or items, just pick a cell; the same cell again throws.
@@ -538,6 +578,7 @@ static void init(void) {
     app.menu_open = true;  // start with the action menu open
     app.quick_open = false;
     app.pending = false;
+    app.resume_wait = false;
     app.impact_at = -1.0;
     app.grace_flash_until = -1.0;
     app.pass_action = (sg_pass_action){
@@ -946,6 +987,10 @@ WEB_EXPORT int web_grace_stance(void) {
     return (int)grace_stance();
 }
 
+TEST_EXPORT int web_grace_resumable(void) {
+    return app.pending || app.resume_wait ? 1 : 0;
+}
+
 TEST_EXPORT int web_grace_pending(void) {
     return app.pending ? 1 : 0;
 }
@@ -1232,6 +1277,7 @@ WEB_EXPORT void game_reset(void) {
     app.menu_open = true;
     app.quick_open = false;
     app.pending = false;
+    app.resume_wait = false;
     app.impact_at = -1.0;
     app.grace_flash_until = -1.0;
     app.setup = SETUP_NONE;
@@ -1277,6 +1323,7 @@ WEB_EXPORT int load_game(int slot) {
         app.menu_open = true;
         app.quick_open = false;
         app.pending = false;
+        app.resume_wait = false;
         app.setup = SETUP_NONE;
         app.setup_has_target = false;
         app.route.count = 0;
