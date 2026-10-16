@@ -24,6 +24,8 @@ typedef enum {
     OBJ_MOVABLE,
     OBJ_OPENABLE,
     OBJ_START,
+    // a marker for where the level ends (the game itself ignores it)
+    OBJ_GOAL,
     OBJ_KIND_COUNT,
 } obj_kind_t;
 

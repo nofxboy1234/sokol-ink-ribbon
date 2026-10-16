@@ -14,6 +14,7 @@
 #include "sokol_imgui.h"
 
 #include "level.h"
+#include "light.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -309,7 +310,7 @@ static void add_object(int kind, int x, int y) {
     o->w = 1;
     o->h = 1;
     o->item_type = ed.place_item;
-    o->radius = 4.0f;
+    o->radius = LIGHT_DEFAULT_RADIUS;
     o->state = (kind == OBJ_LIGHT) ? 1 : 0;
     if (kind == OBJ_DOOR) {
         o->span = 3;
@@ -692,6 +693,15 @@ static void draw_map(void) {
                 }
             }
         } else if (o->kind == OBJ_LIGHT) {
+            // its light radius, as a plain circle (the game also stops light at walls)
+            float lr = (o->radius > 0.0f ? o->radius : LIGHT_DEFAULT_RADIUS) * scale;
+            bool picked = ed.selected == i;
+            float k = o->state ? 1.0f : 0.45f;
+            for (int seg = 0; seg < 64; seg++) {
+                float a0 = (float)seg / 64.0f * 6.2831853f, a1 = (float)(seg + 1) / 64.0f * 6.2831853f;
+                draw_line(cx + cosf(a0) * lr, cy + sinf(a0) * lr, cx + cosf(a1) * lr, cy + sinf(a1) * lr,
+                          picked ? 2.5f : 1.5f, 0.949f * k, 1.0f * k, 0.0f, 1.0f);
+            }
             if (o->state) {
                 fill_circle(cx, cy, scale * 0.55f, 0.949f, 1.0f, 0.0f, 0.18f);
                 fill_circle(cx, cy, scale * 0.35f, 0.949f, 1.0f, 0.0f, 0.35f);
@@ -740,6 +750,7 @@ static void draw_map(void) {
                 case OBJ_OPENABLE: r = 0.0f; g = 1.0f; b = 0.733f; break;
                 case OBJ_FUSEBOX: r = 0.95f; g = 0.85f; b = 0.0f; break;
                 case OBJ_START: r = 0.588f; g = 0.118f; b = 1.0f; break;
+                case OBJ_GOAL: r = 1.0f; g = 1.0f; b = 1.0f; break;
                 default: break;
             }
             float size = scale * 0.3f;
@@ -979,7 +990,9 @@ static void ui_properties(void) {
             }
             changed |= ImGui::Combo("item", &o->item_type, items, ITEM_COUNT);
         } else if (o->kind == OBJ_LIGHT) {
-            changed |= ImGui::InputFloat("radius", &o->radius);
+            changed |= ImGui::SliderFloat("light radius", &o->radius, LIGHT_RADIUS_MIN, LIGHT_RADIUS_MAX, "%.1f cells");
+            ImGui::TextDisabled("game: unlit items are hidden");
+            ImGui::TextDisabled("link: the switch that toggles it");
             changed |= ImGui::Checkbox("on", (bool*)&o->state);
             changed |= ImGui::InputInt("group_id", &o->group_id);
             changed |= ImGui::Checkbox("breakable", (bool*)&o->breakable);

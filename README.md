@@ -150,7 +150,11 @@ selected (`sapp-gl-linux-ninja-release` on Linux):
 
 It reads and writes `native/src/level_01.json` (relative to `native/`). Use the
 wall line tool to draw walls, the place tool to add doors/items/lights/etc., and
-the properties panel to edit the selected object. Saving rewrites the level JSON;
+the properties panel to edit the selected object. A selected light shows a
+**light radius** slider (1–16 cells, saved as `"radius"` in the level JSON);
+its circle is drawn on the map, and its `link` names the switch that toggles
+it. In the game, items outside every lit radius (switch lights that are on,
+and the Lighter around Grace) are hidden and can't be picked up. Saving rewrites the level JSON;
 the runtime picks it up on the next `npm run wasm` (the file is embedded as
 `native/src/levels.h`).
 

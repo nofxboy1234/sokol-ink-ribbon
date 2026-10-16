@@ -117,10 +117,11 @@
     { "kind": "start", "id": 35, "x": 89, "y": 4, "name": "Grace start" },
     { "kind": "door", "id": 36, "x": 77, "y": 61, "horizontal": 0, "span": 3, "state": "unlocked", "open": false, "key_id": 0, "auto_close": 0.00, "breakable": false, "name": "door" },
     { "kind": "item", "id": 37, "x": 95, "y": 8, "item": "herb", "name": "item" },
-    { "kind": "light", "id": 38, "x": 89, "y": 7, "radius": 4.00, "state": 1, "group_id": 0, "breakable": false, "link": 39, "name": "light" },
+    { "kind": "light", "id": 38, "x": 89, "y": 7, "radius": 7.00, "state": 1, "group_id": 0, "breakable": false, "link": 39, "name": "light" },
     { "kind": "switch", "id": 39, "x": 91, "y": 16, "group_id": 0, "name": "switch" },
     { "kind": "door", "id": 40, "x": 69, "y": 49, "horizontal": 1, "span": 3, "state": "unknown", "discover": "locked", "open": false, "key_id": 0, "auto_close": 0.00, "breakable": false, "name": "door" },
     { "kind": "obstacle", "id": 41, "x": 13, "y": 19, "w": 3, "h": 4, "climbable": false, "name": "obstacle" },
-    { "kind": "goal", "id": 42, "x": 9, "y": 71, "name": "goal" }
+    { "kind": "goal", "id": 42, "x": 9, "y": 71, "name": "goal" },
+    { "kind": "light", "id": 43, "x": 2, "y": 22, "radius": 5.00, "state": 1, "group_id": 0, "breakable": false, "name": "light" }
   ]
 }
