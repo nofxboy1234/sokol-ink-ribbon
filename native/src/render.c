@@ -6,6 +6,7 @@
 #include "items.h"
 #include "level.h"
 #include "light.h"
+#include "palette.h"
 #include "player.h"
 
 #include "sokol_app.h"
@@ -15,16 +16,16 @@
 #include <math.h>
 
 // Reference palette (ref/map.kra)
-#define C_INK_R 0.118f, 0.118f, 0.118f, 1.0f
-#define C_GREEN_R 0.0f, 1.0f, 0.149f, 1.0f
-#define C_CYAN_R 0.118f, 1.0f, 0.973f, 1.0f
-#define C_YELLOW_R 0.949f, 1.0f, 0.0f, 1.0f
-#define C_MAGENTA_R 1.0f, 0.0f, 0.416f, 1.0f
-#define C_RED_R 1.0f, 0.0f, 0.165f, 1.0f
-#define C_PURPLE_R 0.588f, 0.118f, 1.0f, 1.0f
-#define C_BLUE_R 0.0f, 0.867f, 1.0f, 1.0f
-#define C_GRAY_R 0.616f, 0.616f, 0.616f, 1.0f
-#define C_DARK_R 0.118f, 0.118f, 0.118f, 1.0f
+#define C_INK_R PAL_INK, 1.0f
+#define C_GREEN_R PAL_GREEN, 1.0f
+#define C_CYAN_R PAL_CYAN, 1.0f
+#define C_YELLOW_R PAL_YELLOW, 1.0f
+#define C_MAGENTA_R PAL_MAGENTA, 1.0f
+#define C_RED_R PAL_RED, 1.0f
+#define C_PURPLE_R PAL_PURPLE, 1.0f
+#define C_BLUE_R PAL_BLUE, 1.0f
+#define C_GRAY_R PAL_GRAY, 1.0f
+#define C_DARK_R PAL_INK, 1.0f
 
 static struct {
     sgl_pipeline pip;
@@ -156,7 +157,7 @@ static void draw_objects_pass(int item_pass) {
         if (o->kind == OBJ_ITEM && openable_covers_closed(o->x, o->y)) {
             continue;
         }
-        if (o->kind == OBJ_ITEM && !light_cell_lit(o->x, o->y)) {
+        if (o->kind == OBJ_ITEM && !light_item_visible(i)) {
             continue;  // in the dark
         }
         if (o->kind == OBJ_DOOR && o->state == DOOR_BROKEN) {
@@ -302,7 +303,7 @@ static void draw_discovery_markers(void) {
         if (o->kind == OBJ_ITEM && openable_covers_closed(o->x, o->y)) {
             continue;
         }
-        if (o->kind == OBJ_ITEM && !light_cell_lit(o->x, o->y)) {
+        if (o->kind == OBJ_ITEM && !light_item_visible(i)) {
             continue;
         }
         if (o->kind == OBJ_OPENABLE && o->open) {
