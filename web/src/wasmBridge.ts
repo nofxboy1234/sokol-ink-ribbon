@@ -44,6 +44,7 @@ export type EmscriptenModule = {
   _web_test_give?: (item: number) => number;
   _web_test_enemy_at?: (x: number, y: number) => void;
   _web_test_hurt?: () => void;
+  _web_test_grace_at?: (x: number, y: number) => void;
   _web_camera_pan?: (dx: number, dy: number) => void;
   _web_grace_action?: (action: number) => number;
   _web_grace_screen_x?: () => number;

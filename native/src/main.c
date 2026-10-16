@@ -362,8 +362,11 @@ static bool grace_do(grace_action_t action) {
     return false;
 }
 
+static const obj_t* hover_interactable(void);
+static void update_hover(void);
+
 // Is the screen point on Grace's dot? Touch gets a bigger target.
-static bool on_grace(float sx, float sy) {
+static bool near_grace(float sx, float sy) {
     float gx, gy;
     camera_cell_to_screen(player_x(), player_y(), &gx, &gy);
     float r = camera_cell_px() * 0.75f;
@@ -373,6 +376,21 @@ static bool on_grace(float sx, float sy) {
     }
     float dx = sx - gx, dy = sy - gy;
     return dx * dx + dy * dy <= r * r;
+}
+
+// A tap meant for Grace: on her own cell, or close to her dot on a cell
+// with nothing to use. The generous dot radius (28 px on touch) reaches
+// into the neighbouring cells, so an item or door there wins: tapping a
+// herb next to her picks it up instead of toggling her menu.
+static bool on_grace(float sx, float sy) {
+    int px, py, cx, cy;
+    player_cell(&px, &py);
+    camera_screen_to_cell(sx, sy, &cx, &cy);
+    if (cx == px && cy == py) {
+        return true;
+    }
+    update_hover();
+    return hover_interactable() == NULL && near_grace(sx, sy);
 }
 
 // Right click (or a long press) on her dot while Paused opens Quick Equip
@@ -843,11 +861,11 @@ WEB_EXPORT int player_is_walking(void) {
     return player_is_moving() ? 1 : 0;
 }
 
-WEB_EXPORT float player_px(void) {
+TEST_EXPORT float player_px(void) {
     return player_x();
 }
 
-WEB_EXPORT float player_py(void) {
+TEST_EXPORT float player_py(void) {
     return player_y();
 }
 
@@ -863,7 +881,7 @@ WEB_EXPORT int level_cell_px(void) {
     return (int)camera_cell_px();
 }
 
-WEB_EXPORT int web_inventory_count(void) {
+TEST_EXPORT int web_inventory_count(void) {
     return inventory_count();
 }
 
@@ -928,11 +946,11 @@ WEB_EXPORT int web_grace_stance(void) {
     return (int)grace_stance();
 }
 
-WEB_EXPORT int web_grace_pending(void) {
+TEST_EXPORT int web_grace_pending(void) {
     return app.pending ? 1 : 0;
 }
 
-WEB_EXPORT int web_route_length(void) {
+TEST_EXPORT int web_route_length(void) {
     return app.route.count;
 }
 
@@ -973,13 +991,13 @@ WEB_EXPORT int web_throw_hit_chance(void) {
     return throw_hit_chance(grace_stance());
 }
 
-WEB_EXPORT int web_throw_in_reach(int x, int y) {
+TEST_EXPORT int web_throw_in_reach(int x, int y) {
     int px, py;
     player_cell(&px, &py);
     return throw_in_reach(px, py, x, y) ? 1 : 0;
 }
 
-WEB_EXPORT int web_cell_floor(int x, int y) {
+TEST_EXPORT int web_cell_floor(int x, int y) {
     return grid_is_floor(x, y) && grid_is_revealed(x, y) ? 1 : 0;
 }
 
@@ -987,35 +1005,35 @@ WEB_EXPORT int web_throw_allowed(void) {
     return throw_active() && throw_allowed(grace_stance()) ? 1 : 0;
 }
 
-WEB_EXPORT float web_enemy_flash(void) {
+TEST_EXPORT float web_enemy_flash(void) {
     return enemy_flash();
 }
 
-WEB_EXPORT float web_grace_flash(void) {
+TEST_EXPORT float web_grace_flash(void) {
     return app.clock < app.grace_flash_until ? (float)(app.grace_flash_until - app.clock) : 0.0f;
 }
 
-WEB_EXPORT int web_enemy_focus_x(void) {
+TEST_EXPORT int web_enemy_focus_x(void) {
     return enemy_focus_x();
 }
 
-WEB_EXPORT int web_enemy_focus_y(void) {
+TEST_EXPORT int web_enemy_focus_y(void) {
     return enemy_focus_y();
 }
 
 // Milliseconds since the last bottle impact, or -1.
-WEB_EXPORT double web_impact_age_ms(void) {
+TEST_EXPORT double web_impact_age_ms(void) {
     return app.impact_at < 0.0 ? -1.0 : (app.clock - app.impact_at) * 1000.0;
 }
 
 // Test hooks: seed the throw and enemy dice, hand Grace an item, put the
 // enemy somewhere, and hit Grace.
-WEB_EXPORT void web_test_seed(unsigned int seed) {
+TEST_EXPORT void web_test_seed(unsigned int seed) {
     throw_seed(seed);
     enemy_seed(seed * 2654435761u + 1u);
 }
 
-WEB_EXPORT int web_test_give(int item) {
+TEST_EXPORT int web_test_give(int item) {
     if (item < 0 || item >= ITEM_COUNT || !inventory_add(item)) {
         return 0;
     }
@@ -1023,11 +1041,21 @@ WEB_EXPORT int web_test_give(int item) {
     return 1;
 }
 
-WEB_EXPORT void web_test_enemy_at(int x, int y) {
+TEST_EXPORT void web_test_enemy_at(int x, int y) {
     enemy_place((float)x + 0.5f, (float)y + 0.5f);
 }
 
-WEB_EXPORT void web_test_hurt(void) {
+TEST_EXPORT void web_test_grace_at(int x, int y) {
+    player_set_cell(x, y);
+    app.route.count = 0;
+    app.pending = false;
+    camera_follow(player_x(), player_y());
+    camera_recentre();
+    reveal_sections();
+    bump_revision();
+}
+
+TEST_EXPORT void web_test_hurt(void) {
     grace_hurt();
 }
 
@@ -1053,7 +1081,7 @@ WEB_EXPORT float web_grace_screen_y(void) {
 }
 
 // Test hook: move the camera off Grace (CSS pixels) to put her near an edge.
-WEB_EXPORT void web_camera_pan(float dx, float dy) {
+TEST_EXPORT void web_camera_pan(float dx, float dy) {
     camera_pan_pixels(dx * sapp_dpi_scale(), dy * sapp_dpi_scale());
 }
 
@@ -1061,11 +1089,11 @@ WEB_EXPORT float web_cell_css_px(void) {
     return camera_cell_px() / sapp_dpi_scale();
 }
 
-WEB_EXPORT int web_enemy_state(void) {
+TEST_EXPORT int web_enemy_state(void) {
     return (int)enemy_state();
 }
 
-WEB_EXPORT int web_doors_broken(void) {
+TEST_EXPORT int web_doors_broken(void) {
     int count = 0;
     for (int i = 0; i < app.level.obj_count; i++) {
         const obj_t* o = &app.level.objs[i];
@@ -1074,15 +1102,15 @@ WEB_EXPORT int web_doors_broken(void) {
     return count;
 }
 
-WEB_EXPORT int web_enemy_sense(void) {
+TEST_EXPORT int web_enemy_sense(void) {
     return (int)enemy_sense();
 }
 
-WEB_EXPORT float web_enemy_px(void) {
+TEST_EXPORT float web_enemy_px(void) {
     return enemy_x();
 }
 
-WEB_EXPORT float web_enemy_py(void) {
+TEST_EXPORT float web_enemy_py(void) {
     return enemy_y();
 }
 
