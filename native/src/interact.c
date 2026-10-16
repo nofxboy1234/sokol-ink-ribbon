@@ -35,14 +35,14 @@ static void toggle_switch(const obj_t* sw) {
     for (int i = 0; i < in.level->obj_count; i++) {
         obj_t* o = &in.level->objs[i];
         if (o->kind == OBJ_LIGHT && o->link_id == sw->id) {
-            o->state = !o->state;
+            light_toggle(i);
             linked = true;
         }
     }
     for (int i = 0; i < in.level->obj_count; i++) {
         obj_t* o = &in.level->objs[i];
         if (!linked && o->kind == OBJ_LIGHT && o->link_id <= 0 && o->group_id == sw->group_id) {
-            o->state = !o->state;
+            light_toggle(i);
         }
         if (o->kind == OBJ_SWITCH && (linked ? o == sw : o->group_id == sw->group_id)) {
             o->state = !o->state;

@@ -1396,6 +1396,10 @@ TEST_EXPORT int web_doors_broken(void) {
     return count;
 }
 
+TEST_EXPORT int web_lights_broken(void) {
+    return light_broken_count();
+}
+
 TEST_EXPORT int web_enemy_sense(void) {
     return (int)enemy_sense();
 }
