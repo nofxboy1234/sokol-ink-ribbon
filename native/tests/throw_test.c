@@ -456,6 +456,48 @@ int main(int argc, char** argv) {
         double ms2 = 0.0;
         savegame_load(2, &ms2);
         CHECK(items_seen(hi), "seen items survive save and load");
+
+        // a switched-on lamp's finds stay too: move the herb next to a lamp
+        int li = -1;
+        for (int i = 0; i < level.obj_count; i++) {
+            if (level.objs[i].kind == OBJ_LIGHT) {
+                li = i;
+                break;
+            }
+        }
+        obj_t* lo = (obj_t*)&grid_level()->objs[li];
+        obj_t* ho = (obj_t*)&grid_level()->objs[hi];
+        int hx = ho->x, hy = ho->y, ls = lo->state;
+        player_set_cell(500 % level.cols, 0);
+        lo->state = 1;
+        light_update();
+        for (int dy = -1; dy <= 1 && ho->x == hx; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                if ((dx || dy) && light_cell_lit(lo->x + dx, lo->y + dy)) {
+                    ho->x = lo->x + dx;
+                    ho->y = lo->y + dy;
+                    break;
+                }
+            }
+        }
+        items_import_seen(NULL, 0);
+        lo->state = 0;
+        light_update();
+        bool dark_before = !light_item_visible(hi);
+        lo->state = 1;
+        light_update();
+        bool shown = items_seen(hi);
+        lo->state = 0;
+        light_update();
+        CHECK(dark_before && shown && light_item_visible(hi),
+              "a switch light reveals the item at (%d,%d) and it stays after switching off", ho->x, ho->y);
+        savegame_save(2, 0.0);
+        items_import_seen(NULL, 0);
+        savegame_load(2, &ms2);
+        CHECK(items_seen(hi), "and that survives save and load");
+        ho->x = hx;
+        ho->y = hy;
+        lo->state = ls;
     }
 
     printf(failures ? "%d FAILED\n" : "ALL PASS\n", failures);
