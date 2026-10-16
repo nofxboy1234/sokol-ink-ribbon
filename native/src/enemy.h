@@ -27,6 +27,8 @@ void enemy_stun(float seconds);
 void enemy_damage(float seconds);
 // Seconds of damage flashing left (0 when not flashing).
 float enemy_flash(void);
+// Seconds of anger left after a hit (0 when calm).
+float enemy_angry(void);
 // A noise at a cell carrying radius cells; returns true if it went to look.
 bool enemy_hear_noise(int x, int y, float radius);
 // The cell it last sensed Grace at, or the noise it is investigating.

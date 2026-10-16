@@ -12,8 +12,11 @@
 static struct {
     bool equipped;
     bool active;
+    bool had;  // a bottle was in the inventory at the last sync
     unsigned int rng;
 } t;
+
+static bool throw_finish(throw_result_t* rp, throw_stance_t stance, int tx, int ty, throw_result_t* out);
 
 static unsigned int rnd(void) {
     t.rng ^= t.rng << 13;
@@ -25,6 +28,7 @@ static unsigned int rnd(void) {
 void throw_init(void) {
     t.equipped = false;
     t.active = false;
+    t.had = false;
     if (t.rng == 0u) {
         t.rng = (unsigned int)time(NULL) * 2246822519u + 7u;
     }
@@ -47,25 +51,55 @@ bool throw_set_equipped(bool on) {
         return false;
     }
     t.equipped = on;
+    t.had = inventory_has(ITEM_BOTTLE);
     if (!on) {
         t.active = false;
     }
     return true;
 }
 
+void throw_restore(bool equipped, bool active) {
+    t.had = inventory_has(ITEM_BOTTLE);
+    t.equipped = equipped;
+    t.active = equipped && active && t.had;
+}
+
+bool throw_empty(void) {
+    return t.equipped && !inventory_has(ITEM_BOTTLE);
+}
+
 bool throw_set_active(bool on) {
-    if (on && !t.equipped) {
+    if (on && (!t.equipped || !inventory_has(ITEM_BOTTLE))) {
         return false;
     }
     t.active = on;
     return true;
 }
 
-void throw_sync(void) {
-    if (!inventory_has(ITEM_BOTTLE)) {
-        t.equipped = false;
+// The slot outlives the bottles: with none left it stays equipped (greyed
+// out, inactive). When she finds another it is ready in the same slot and
+// becomes the active weapon unless another weapon already is (the bottle is
+// the only weapon so far, so it always does).
+bool throw_sync(void) {
+    bool has = inventory_has(ITEM_BOTTLE);
+    bool changed = false;
+    if (!has && t.active) {
         t.active = false;
+        changed = true;
     }
+    if (has && !t.had && t.equipped && !t.active && !throw_other_weapon_active()) {
+        t.active = true;
+        changed = true;
+    }
+    if (has != t.had) {
+        changed = true;
+    }
+    t.had = has;
+    return changed;
+}
+
+bool throw_other_weapon_active(void) {
+    return false;
 }
 
 bool throw_allowed(throw_stance_t stance) {
@@ -104,6 +138,22 @@ bool throw_resolve(int px, int py, int tx, int ty, throw_stance_t stance, throw_
     }
     throw_sync();
     r.aimed = throw_aims_at_enemy(tx, ty);
+    return throw_finish(&r, stance, tx, ty, out);
+}
+
+bool throw_resolve_at_enemy(int px, int py, int tx, int ty, throw_stance_t stance, throw_result_t* out) {
+    throw_result_t r = { 0 };
+    if (!t.active || !throw_allowed(stance) || !throw_in_reach(px, py, tx, ty) ||
+        !inventory_remove(ITEM_BOTTLE)) {
+        return false;
+    }
+    throw_sync();
+    r.aimed = true;
+    return throw_finish(&r, stance, tx, ty, out);
+}
+
+static bool throw_finish(throw_result_t* rp, throw_stance_t stance, int tx, int ty, throw_result_t* out) {
+    throw_result_t r = *rp;
     r.hit = r.aimed && (int)(rnd() % 100u) < throw_hit_chance(stance);
     if (r.hit) {
         enemy_damage(THROW_STUN_SECONDS);

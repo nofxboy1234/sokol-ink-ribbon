@@ -62,6 +62,11 @@ function BottleIcon() {
   return <span className="grace-bottle" aria-hidden="true" />;
 }
 
+// The Lighter: a yellow flame swatch, lit or not.
+function LighterIcon() {
+  return <span className="grace-lighter" aria-hidden="true" />;
+}
+
 // What the status circle shows for each grace_mode_t.
 const STATUS = [
   { label: "Paused", Icon: PauseIcon },
@@ -150,6 +155,8 @@ type Slot = {
   onClick?: () => void;
   disabled?: boolean;
   pressed?: boolean;
+  // equipped, but none left (greyed out)
+  spent?: boolean;
   title?: string;
 };
 
@@ -245,18 +252,40 @@ export function GraceActions() {
     { label: "Wait", icon: <WaitIcon />, onClick: () => graceAction(GraceAction.Wait) },
     throwSlot,
   ];
-  // Quick Equip: the bottle sits east once equipped; the rest are empty.
-  const quickSlots: Slot[] = SLOT_NAMES.map((name, i) =>
-    i === 1 && grace.bottleEquipped
-      ? {
-          label: "Empty Bottle",
-          icon: <BottleIcon />,
-          pressed: grace.bottleActive,
-          title: grace.bottleActive ? "Empty Bottle · active" : "Empty Bottle · make active",
-          onClick: () => quickSelect(1),
-        }
-      : { label: `${name} slot empty`, icon: null, disabled: true },
-  );
+  // Quick Equip: the Lighter sits north once picked up (off until picked here),
+  // the bottle east once equipped. With every bottle used up the bottle stays
+  // in its slot, greyed out, until she finds another.
+  const quickSlots: Slot[] = SLOT_NAMES.map((name, i): Slot => {
+    if (i === 0 && grace.hasLighter) {
+      return {
+        label: "Lighter",
+        icon: <LighterIcon />,
+        pressed: grace.lighterOn,
+        title: grace.lighterOn
+          ? "Lighter · on (pick to put it out)"
+          : "Lighter · off (pick to light it)",
+        onClick: () => quickSelect(0),
+      };
+    }
+    if (i === 1 && grace.bottleEquipped) {
+      return grace.bottleEmpty
+        ? {
+            label: "Empty Bottle",
+            icon: <BottleIcon />,
+            spent: true,
+            disabled: true,
+            title: "Empty Bottle · none left",
+          }
+        : {
+            label: "Empty Bottle",
+            icon: <BottleIcon />,
+            pressed: grace.bottleActive,
+            title: grace.bottleActive ? "Empty Bottle · active" : "Empty Bottle · make active",
+            onClick: () => quickSelect(1),
+          };
+    }
+    return { label: `${name} slot empty`, icon: null, disabled: true };
+  });
 
   const slots = picking ? actionSlots : equipping ? quickSlots : [];
   const status = STATUS[paused ? grace.last : grace.mode] ?? STATUS[3];
@@ -296,6 +325,7 @@ export function GraceActions() {
                 type="button"
                 className="grace-icon"
                 data-empty={empty}
+                data-spent={slot.spent || undefined}
                 data-slot={SLOT_NAMES[i]}
                 aria-label={slot.label}
                 aria-pressed={slot.pressed}

@@ -17,7 +17,8 @@
 #include <string.h>
 
 // 2 added the equipped bottle and the active weapon; older slots load unequipped.
-#define SAVE_VERSION 2
+// 3 keeps an equipped slot with no bottle left (greyed out).
+#define SAVE_VERSION 3
 
 typedef struct {
     bool used;
@@ -101,8 +102,9 @@ bool savegame_load(int slot, double* elapsed_ms) {
     player_set_cell(s->px, s->py);
     doors_restore_from_level();
     bool v2 = s->version >= 2;
-    throw_set_equipped(v2 && s->equipped);  // refuses (stays off) without a bottle
-    throw_set_active(v2 && s->equipped && s->active);
+    bool keep_empty = s->version >= 3;
+    bool equipped = v2 && s->equipped && (keep_empty || inventory_has(ITEM_BOTTLE));
+    throw_restore(equipped, equipped && s->active);
     if (elapsed_ms) {
         *elapsed_ms = s->elapsed_ms;
     }

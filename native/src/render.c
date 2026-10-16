@@ -5,6 +5,7 @@
 #include "interact.h"
 #include "items.h"
 #include "level.h"
+#include "light.h"
 #include "player.h"
 
 #include "sokol_app.h"
@@ -86,6 +87,20 @@ static void thick_line(float x0, float y0, float x1, float y1, float t, float cr
     sgl_end();
 }
 
+// Breathing: her dot eases down to BREATH_MIN of its size and back.
+#define BREATH_MIN 0.88f
+#define BREATH_WAIT_PERIOD 2.5f    // seconds per breath while she waits
+#define BREATH_STRESS_PERIOD 0.9f  // fast, stressed breaths after a hit
+static float breath_scale(float clock, float period) {
+    float phase = fmodf(clock, period) / period;
+    return 1.0f - (1.0f - BREATH_MIN) * (0.5f - 0.5f * cosf(phase * 6.2831853f));
+}
+
+// The aim reticle on the enemy: a green ring a bit wider than its dot.
+#define RETICLE_RADIUS 0.82f
+// Angry enemy: a darker red with a slow pulsing outer ring.
+#define ANGRY_PULSE_PERIOD 0.8f
+
 // Damage flashing: on/off a few times a second while time is left.
 #define FLASH_PERIOD 0.16f
 static bool flash_on(float left) {
@@ -140,6 +155,9 @@ static void draw_objects_pass(int item_pass) {
         }
         if (o->kind == OBJ_ITEM && openable_covers_closed(o->x, o->y)) {
             continue;
+        }
+        if (o->kind == OBJ_ITEM && !light_cell_lit(o->x, o->y)) {
+            continue;  // in the dark
         }
         if (o->kind == OBJ_DOOR && o->state == DOOR_BROKEN) {
             continue;
@@ -284,6 +302,9 @@ static void draw_discovery_markers(void) {
         if (o->kind == OBJ_ITEM && openable_covers_closed(o->x, o->y)) {
             continue;
         }
+        if (o->kind == OBJ_ITEM && !light_cell_lit(o->x, o->y)) {
+            continue;
+        }
         if (o->kind == OBJ_OPENABLE && o->open) {
             continue;
         }
@@ -354,6 +375,9 @@ void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* ro
             float sx, sy;
             camera_cell_to_screen((float)x, (float)y, &sx, &sy);
             fill_rect(sx, sy, scale, scale, 1.0f, 1.0f, 1.0f, 1.0f);
+            if (light_cell_lit(x, y)) {
+                fill_rect(sx, sy, scale, scale, 0.949f, 1.0f, 0.0f, LIGHT_OVERLAY_ALPHA);
+            }
         }
     }
 
@@ -447,6 +471,11 @@ void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* ro
             // hit by a bottle: blinks white inside a red ring while stunned
             fill_circle(ex, ey, scale * 0.64f, 1.0f, 1.0f, 1.0f, 1.0f);
             ring_circle(ex, ey, scale * 0.64f, scale * 0.12f, C_RED_R);
+        } else if (enemy_angry() > 0.0f) {
+            // angry after a hit: darker red, with a pulsing outer ring
+            float k = 0.5f - 0.5f * cosf(fmodf(r.fx.clock, ANGRY_PULSE_PERIOD) / ANGRY_PULSE_PERIOD * 6.2831853f);
+            fill_circle(ex, ey, scale * 0.64f, 0.6f, 0.0f, 0.08f, alpha);
+            ring_circle(ex, ey, scale * (0.74f + 0.1f * k), scale * 0.08f, 0.6f, 0.0f, 0.08f, alpha * (0.9f - 0.6f * k));
         } else {
             fill_circle(ex, ey, scale * 0.64f, 1.0f, 0.0f, 0.165f, alpha);
         }
@@ -461,14 +490,38 @@ void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* ro
     {
         float px, py;
         camera_cell_to_screen(player_x(), player_y(), &px, &py);
+        // Waiting: slow breathing; after a hit: the flash, with fast breathing
+        // that carries on for a few seconds. Paused: still.
+        float gr = scale * 0.51f;
+        if (r.fx.grace_stress > 0.0f) {
+            gr *= breath_scale(r.fx.clock, BREATH_STRESS_PERIOD);
+        } else if (r.fx.grace_waiting) {
+            gr *= breath_scale(r.fx.clock, BREATH_WAIT_PERIOD);
+        }
         if (flash_on(r.fx.grace_flash)) {
-            fill_circle(px, py, scale * 0.51f, 1.0f, 1.0f, 1.0f, 1.0f);
-            ring_circle(px, py, scale * 0.51f, scale * 0.12f, C_PURPLE_R);
+            fill_circle(px, py, gr, 1.0f, 1.0f, 1.0f, 1.0f);
+            ring_circle(px, py, gr, scale * 0.12f, C_PURPLE_R);
         } else {
-            fill_circle(px, py, scale * 0.51f, C_PURPLE_R);
+            fill_circle(px, py, gr, C_PURPLE_R);
+        }
+        // on the enemy: a round reticle at its real position
+        if (r.fx.aim && r.fx.aim_enemy) {
+            float cx, cy;
+            camera_cell_to_screen(r.fx.aim_ex, r.fx.aim_ey, &cx, &cy);
+            float rr = scale * RETICLE_RADIUS;
+            float t = scale * 0.1f > 2.0f ? scale * 0.1f : 2.0f;
+            float cr = r.fx.aim_ok ? 0.0f : 0.616f, cg = r.fx.aim_ok ? 1.0f : 0.616f, cb = r.fx.aim_ok ? 0.149f : 0.616f;
+            thick_line(px, py, cx, cy, 2.0f, cr, cg, cb, 0.9f);
+            ring_circle(cx, cy, rr, t, cr, cg, cb, 1.0f);
+            float a = rr + scale * 0.22f, b = rr - scale * 0.22f;
+            thick_line(cx - a, cy, cx - b, cy, t, cr, cg, cb, 1.0f);
+            thick_line(cx + b, cy, cx + a, cy, t, cr, cg, cb, 1.0f);
+            thick_line(cx, cy - a, cx, cy - b, t, cr, cg, cb, 1.0f);
+            thick_line(cx, cy + b, cx, cy + a, t, cr, cg, cb, 1.0f);
+            fill_circle(cx, cy, t * 0.8f, cr, cg, cb, 1.0f);
         }
         // the aim line runs straight from her centre to the cell's centre
-        if (r.fx.aim) {
+        else if (r.fx.aim) {
             float cx, cy, sx, sy;
             camera_cell_to_screen((float)r.fx.aim_x + 0.5f, (float)r.fx.aim_y + 0.5f, &cx, &cy);
             camera_cell_to_screen((float)r.fx.aim_x, (float)r.fx.aim_y, &sx, &sy);

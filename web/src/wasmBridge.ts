@@ -30,6 +30,9 @@ export type EmscriptenModule = {
   _web_quick_select?: (slot: number) => number;
   _web_bottle_equipped?: () => number;
   _web_bottle_active?: () => number;
+  _web_bottle_empty?: () => number;
+  _web_enemy_angry?: () => number;
+  _web_light_at?: (x: number, y: number) => number;
   _web_bottle_equip?: (on: number) => number;
   _web_throw_hit_chance?: () => number;
   _web_throw_allowed?: () => number;
@@ -41,6 +44,12 @@ export type EmscriptenModule = {
   _web_enemy_focus_y?: () => number;
   _web_impact_age_ms?: () => number;
   _web_test_seed?: (seed: number) => void;
+  _web_test_anger?: () => void;
+  _web_test_enemy_place?: (x100: number, y100: number) => void;
+  _web_enemy_screen_x?: () => number;
+  _web_enemy_screen_y?: () => number;
+  _web_aim_enemy?: () => number;
+  _web_grace_stress_ms?: () => number;
   _web_test_give?: (item: number) => number;
   _web_test_enemy_at?: (x: number, y: number) => void;
   _web_test_hurt?: () => void;
@@ -127,6 +136,7 @@ export type GameSnapshot = {
   saves: number;
   goalMet: boolean;
   bottleEquipped: boolean;
+  bottleEmpty: boolean;
 };
 
 const EMPTY_INVENTORY = [-1, -1, -1, -1, -1, -1, -1, -1];
@@ -154,6 +164,7 @@ export function readSnapshot(revision: number): GameSnapshot {
       saves: 0,
       goalMet: false,
       bottleEquipped: false,
+      bottleEmpty: false,
     };
   }
   const inventory = EMPTY_INVENTORY.slice();
@@ -180,6 +191,7 @@ export function readSnapshot(revision: number): GameSnapshot {
     saves: m._web_saves_made?.() ?? 0,
     goalMet: (m._web_goal_met?.() ?? 0) !== 0,
     bottleEquipped: (m._web_bottle_equipped?.() ?? 0) !== 0,
+    bottleEmpty: (m._web_bottle_empty?.() ?? 0) !== 0,
   };
 }
 
@@ -195,10 +207,6 @@ export function readFiles(): FoundFile[] {
     files.push({ name, code: m?._file_code?.(i) ?? 0 });
   }
   return files;
-}
-
-export function setLighter(on: boolean): void {
-  module()?._lighter_set?.(on ? 1 : 0);
 }
 
 export function gameReset(): void {
@@ -221,6 +229,7 @@ export const GraceAction = {
 export const ThrowStance = { Wait: 0, Walk: 1, Run: 2 } as const;
 // The item ordinal of the Empty Bottle (item_t in native/src/level.h).
 export const ITEM_BOTTLE = 0;
+export const ITEM_LIGHTER = 7;
 
 export type GraceView = {
   // false until the wasm map is up and Grace has a real screen position
@@ -234,6 +243,9 @@ export type GraceView = {
   quickOpen: boolean;
   bottleEquipped: boolean;
   bottleActive: boolean;
+  bottleEmpty: boolean;
+  hasLighter: boolean;
+  lighterOn: boolean;
   throwAllowed: boolean;
   stance: number;
   hitChance: number;
@@ -253,6 +265,9 @@ export function readGrace(): GraceView {
     quickOpen: (m?._web_quick_open?.() ?? 0) !== 0,
     bottleEquipped: (m?._web_bottle_equipped?.() ?? 0) !== 0,
     bottleActive: (m?._web_bottle_active?.() ?? 0) !== 0,
+    bottleEmpty: (m?._web_bottle_empty?.() ?? 0) !== 0,
+    hasLighter: (m?._web_inventory_has?.(ITEM_LIGHTER) ?? 0) !== 0,
+    lighterOn: (m?._lighter_value?.() ?? 0) !== 0,
     throwAllowed: (m?._web_throw_allowed?.() ?? 0) !== 0,
     stance: m?._web_grace_stance?.() ?? ThrowStance.Wait,
     hitChance: m?._web_throw_hit_chance?.() ?? 0,

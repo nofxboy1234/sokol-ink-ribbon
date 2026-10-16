@@ -30,8 +30,14 @@ bool throw_active(void);
 // Equipping needs a bottle in the inventory; activating needs it equipped.
 bool throw_set_equipped(bool on);
 bool throw_set_active(bool on);
-// Drops the equip once the last bottle is gone.
-void throw_sync(void);
+// Equipped but none left: the slot shows greyed out.
+bool throw_empty(void);
+// Loading a save: the slot may be equipped with no bottle left.
+void throw_restore(bool equipped, bool active);
+// Call each frame: deactivates with no bottle left, re-activates on finding
+// one (unless another weapon is active). True if anything changed.
+bool throw_sync(void);
+bool throw_other_weapon_active(void);
 
 bool throw_allowed(throw_stance_t stance);
 int throw_hit_chance(throw_stance_t stance);
@@ -40,4 +46,7 @@ bool throw_in_reach(int px, int py, int tx, int ty);
 bool throw_aims_at_enemy(int tx, int ty);
 // Spends a bottle and resolves the throw. False (and nothing spent) if the
 // throw isn't allowed.
+// The aim locked onto the enemy itself (the target is the enemy's cell):
+// counts as aimed at it for the hit roll.
+bool throw_resolve_at_enemy(int px, int py, int tx, int ty, throw_stance_t stance, throw_result_t* out);
 bool throw_resolve(int px, int py, int tx, int ty, throw_stance_t stance, throw_result_t* out);
