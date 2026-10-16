@@ -20,6 +20,7 @@
 #include "inventory.h"
 #include "items.h"
 #include "light.h"
+#include "grace_state.h"
 #include "level.h"
 #include "pathfind.h"
 #include "player.h"
@@ -88,6 +89,7 @@ static struct {
     sg_pass_action pass_action;
     grace_mode_t grace;
     grace_mode_t last;      // her last action (Walk/Run/Wait), shown while Paused
+    grace_mode_t prev;      // the state before the current action (it returns there)
     grace_setup_t setup;
     bool menu_open;         // the action icons around Grace (Paused only)
     bool quick_open;        // the Quick Equip icons around Grace (Paused only)
@@ -201,10 +203,26 @@ static void update_hover(void) {
     }
 }
 
+static grace_state_t state_of(grace_mode_t m) {
+    return m == GRACE_WALKING ? GS_WALK : m == GRACE_RUNNING ? GS_RUN : m == GRACE_HURT ? GS_HURT : GS_WAIT;
+}
+
+static grace_mode_t mode_of(grace_state_t s) {
+    return s == GS_WALK ? GRACE_WALKING : s == GS_RUN ? GRACE_RUNNING : s == GS_HURT ? GRACE_HURT : GRACE_WAITING;
+}
+
+// May she go from the state she is in (or paused in) to this one?
+static bool grace_can(grace_state_t to) {
+    return grace_state_allowed(state_of(app.last), to);
+}
+
 static void set_grace(grace_mode_t mode) {
     if (app.grace != mode) {
         app.grace = mode;
         if (mode != GRACE_PAUSED) {
+            if (mode != app.last) {
+                app.prev = app.last;
+            }
             app.last = mode;
         }
         app.menu_open = mode == GRACE_PAUSED;  // open whenever she pauses, closed during actions
@@ -230,6 +248,26 @@ static throw_stance_t grace_stance(void) {
         return app.pending_run ? THROW_STANCE_RUN : THROW_STANCE_WALK;
     }
     return THROW_STANCE_WAIT;
+}
+
+static void clear_pending(void);
+
+// A state that finished on its own: back to the one before it, paused.
+// A walk or run carries on from the remembered route (pending) on resume;
+// Wait resumes waiting.
+static void grace_finish(grace_state_t finished, grace_state_t previous) {
+    grace_state_t next = grace_state_finish(finished, previous, app.pending);
+    if (next == GS_WAIT) {
+        clear_pending();
+        app.resume_wait = true;
+    }
+    if (app.grace != GRACE_PAUSED) {
+        player_halt();
+    }
+    app.last = mode_of(next);
+    app.prev = GRACE_WAITING;
+    app.grace = GRACE_WAITING;  // so set_grace sees a change
+    set_grace(GRACE_PAUSED);
 }
 
 static void clear_pending(void) {
@@ -325,10 +363,9 @@ static bool throw_confirm(void) {
     app.impact_at = app.clock;
     app.impact_x = app.setup_x;
     app.impact_y = app.setup_y;
-    // The throw done, she waits (time runs). Waiting gives up a paused walk
-    // or run, as choosing Wait does.
-    clear_pending();
-    set_grace(GRACE_WAITING);
+    // The throw is done at once: back to what she was doing, still paused
+    // (a paused walk keeps its route; a double click carries on).
+    grace_finish(GS_THROW, state_of(app.last));
     bump_revision();
     return true;
 }
@@ -362,7 +399,8 @@ static bool grace_do(grace_action_t action) {
         case GRACE_ACT_RUN:
         case GRACE_ACT_WAIT:
             // Picking an action locks the others until Ok or Cancel.
-            if (app.grace != GRACE_PAUSED || app.setup != SETUP_NONE) {
+            if (app.grace != GRACE_PAUSED || app.setup != SETUP_NONE ||
+                !grace_can(action == GRACE_ACT_WALK ? GS_WALK : action == GRACE_ACT_RUN ? GS_RUN : GS_WAIT)) {
                 return false;
             }
             app.setup = action == GRACE_ACT_WALK ? SETUP_WALK
@@ -373,7 +411,7 @@ static bool grace_do(grace_action_t action) {
             return true;
         case GRACE_ACT_THROW:
             if (app.grace != GRACE_PAUSED || app.setup != SETUP_NONE || !throw_active() ||
-                !throw_allowed(grace_stance())) {
+                !grace_can(GS_THROW) || !throw_allowed(grace_stance())) {
                 return false;
             }
             app.setup = SETUP_THROW;
@@ -663,11 +701,12 @@ static void init(void) {
     app.paused = false;
     app.save_menu = false;
     app.grace = GRACE_PAUSED;
-    app.last = GRACE_WAITING;  // nothing done yet: she is standing still
+    app.last = GRACE_WAITING;
+    app.prev = GRACE_WAITING;
     app.menu_open = true;  // start with the action menu open
     app.quick_open = false;
     app.pending = false;
-    app.resume_wait = false;
+    app.resume_wait = true;  // Paused Wait: a double click waits
     app.impact_at = -1.0;
     app.grace_flash_until = -1.0;
     app.grace_stress_until = -1.0;
@@ -778,7 +817,7 @@ static void frame(void) {
         handle_quick_equip();
     }
     if (!app.paused && app.grace == GRACE_HURT && app.clock >= app.grace_hurt_until) {
-        set_grace(GRACE_WAITING);
+        grace_finish(GS_HURT, state_of(app.prev));  // Hurt over: Paused Wait
     }
     if (!app.paused && app.grace != GRACE_PAUSED) {
         {
@@ -808,7 +847,7 @@ static void frame(void) {
         }
         if ((app.grace == GRACE_WALKING || app.grace == GRACE_RUNNING) && !player_is_moving()) {
             clear_pending();
-            set_grace(GRACE_WAITING);  // arrived: she waits
+            grace_finish(state_of(app.grace), state_of(app.prev));  // arrived: back to before, paused
         }
         app.elapsed += (double)dt;
 
@@ -1175,6 +1214,35 @@ TEST_EXPORT int web_grace_stress_ms(void) {
     return app.clock < app.grace_stress_until ? (int)((app.grace_stress_until - app.clock) * 1000.0) : 0;
 }
 
+// Tests: give, equip and ready a bottle.
+TEST_EXPORT int web_test_bottle_ready(void) {
+    inventory_add(ITEM_BOTTLE);
+    throw_set_equipped(true);
+    throw_set_active(true);
+    bump_revision();
+    return throw_active() ? 1 : 0;
+}
+
+// Tests: from Paused, Throw at a cell and confirm (as the menu would).
+TEST_EXPORT int web_test_throw_at(int x, int y) {
+    if (!grace_do(GRACE_ACT_THROW)) {
+        return 0;
+    }
+    pick_throw(x, y);
+    if (!grace_do(GRACE_ACT_OK)) {
+        grace_do(GRACE_ACT_CANCEL);
+        return 0;
+    }
+    return 1;
+}
+
+// Tests: use a switch (or other interactable) at a cell.
+TEST_EXPORT int web_test_interact(int x, int y) {
+    bool used = interact_at(x, y);
+    bump_revision();
+    return used ? 1 : 0;
+}
+
 // Tests: make the enemy angry (as if hit) without a throw.
 TEST_EXPORT void web_test_anger(void) {
     enemy_damage(0.05f);
@@ -1211,7 +1279,7 @@ TEST_EXPORT int web_cell_floor(int x, int y) {
 }
 
 WEB_EXPORT int web_throw_allowed(void) {
-    return throw_active() && throw_allowed(grace_stance()) ? 1 : 0;
+    return throw_active() && grace_can(GS_THROW) && throw_allowed(grace_stance()) ? 1 : 0;
 }
 
 TEST_EXPORT float web_enemy_flash(void) {
@@ -1455,10 +1523,11 @@ WEB_EXPORT void game_reset(void) {
     app.paused = false;
     app.grace = GRACE_PAUSED;
     app.last = GRACE_WAITING;
+    app.prev = GRACE_WAITING;
     app.menu_open = true;
     app.quick_open = false;
     app.pending = false;
-    app.resume_wait = false;
+    app.resume_wait = true;  // Paused Wait: a double click waits
     app.impact_at = -1.0;
     app.grace_flash_until = -1.0;
     app.grace_stress_until = -1.0;
@@ -1506,10 +1575,11 @@ WEB_EXPORT int load_game(int slot) {
         player_stop();
         app.grace = GRACE_PAUSED;
         app.last = GRACE_WAITING;
+        app.prev = GRACE_WAITING;
         app.menu_open = true;
         app.quick_open = false;
         app.pending = false;
-        app.resume_wait = false;
+        app.resume_wait = true;  // Paused Wait: a double click waits
         app.setup = SETUP_NONE;
         app.setup_has_target = false;
         app.aim_enemy = false;

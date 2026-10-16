@@ -95,8 +95,9 @@ test("walking records a replay", async ({ page }) => {
   await page.waitForTimeout(1500);
   const after = await page.evaluate(() => window.Module?._replay_length?.() ?? 0);
   expect(after).toBeGreaterThan(before);
-  // she waits once she arrives
-  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
+  // arrived: back to what she did before (Wait), paused
+  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(0);
+  expect(await page.evaluate(() => window.Module?._web_grace_last?.())).toBe(3);
 });
 
 test("the world is frozen while Grace is paused", async ({ page }) => {
@@ -316,8 +317,9 @@ test("right click on Grace opens Quick Equip and an active bottle can be thrown"
   expect(await page.evaluate(() => window.Module?._web_bottle_equipped?.())).toBe(1);
   expect(await page.evaluate(() => window.Module?._web_bottle_empty?.())).toBe(1);
   expect(await page.evaluate(() => window.Module?._web_bottle_active?.())).toBe(0);
-  // the throw done, she waits
-  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
+  // the throw done, back to Paused Wait
+  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(0);
+  expect(await page.evaluate(() => window.Module?._web_grace_last?.())).toBe(3);
 });
 
 test("a tap on an item next to Grace picks it up instead of toggling her menu", async ({
@@ -353,7 +355,7 @@ test("a tap on an item next to Grace picks it up instead of toggling her menu", 
   await expect.poll(() => page.evaluate(() => window.Module?._web_grace_menu_open?.())).toBe(0);
 });
 
-test("a double click while Paused resumes the paused walk, and does nothing at start", async ({
+test("a double click while Paused resumes the paused walk, and starts waiting at start", async ({
   page,
 }) => {
   await page.goto("/");
@@ -377,15 +379,15 @@ test("a double click while Paused resumes the paused walk, and does nothing at s
   await page.mouse.dblclick(x, y);
   await expect.poll(mode).toBe(1);
 
-  // nothing to resume at the start
+  // the game starts in Paused Wait: a double click carries on waiting
   await page.reload();
   await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
     timeout: 30_000,
   });
-  await page.mouse.dblclick(x, y);
-  await page.waitForTimeout(400);
   expect(await mode()).toBe(0);
-  expect(await page.evaluate(() => window.Module?._web_grace_resumable?.())).toBe(0);
+  expect(await page.evaluate(() => window.Module?._web_grace_resumable?.())).toBe(1);
+  await page.mouse.dblclick(x, y);
+  await expect.poll(mode).toBe(3);
 });
 
 test("left click toggles only the action menu, right click only Quick Equip", async ({ page }) => {
@@ -582,7 +584,9 @@ test("a hit leaves Grace Hurt for 5 s, unable to move, then she waits", async ({
   await page.waitForTimeout(1500);
   expect(await wasm(page, "web_grace_mode")).toBe(4);
   expect(await wasm(page, "player_cell_x")).toBe(x0);
-  await expect.poll(() => wasm(page, "web_grace_mode"), { timeout: 6000 }).toBe(3);
+  // Hurt over: Paused Wait
+  await expect.poll(() => wasm(page, "web_grace_mode"), { timeout: 6000 }).toBe(0);
+  expect(await wasm(page, "web_grace_last")).toBe(3);
   expect(await wasm(page, "web_grace_hurt_ms")).toBe(0);
 });
 
@@ -624,4 +628,58 @@ test("a typewriter save keeps the enemy where it was", async ({ page }) => {
   expect(await wasm(page, "load_game", 0)).toBe(1);
   expect(await wasm(page, "web_enemy_px")).toBeCloseTo(90.5, 3);
   expect(await wasm(page, "web_enemy_py")).toBeCloseTo(12.3, 3);
+});
+
+test("a throw while walking returns to Paused Walking; a double click carries on", async ({
+  page,
+}) => {
+  const box = await boot(page);
+  await orderGrace(page, "Walk", 6);
+  await page.waitForTimeout(300);
+  const x = box.x + box.width / 2 + 60;
+  const y = box.y + box.height / 2 + 60;
+  await page.mouse.dblclick(x, y);
+  await expect.poll(() => wasm(page, "web_grace_mode")).toBe(0);
+  expect(await wasm(page, "web_grace_last")).toBe(1);
+  expect(await wasm(page, "web_test_bottle_ready")).toBe(1);
+  const px = await wasm(page, "player_cell_x");
+  const py = await wasm(page, "player_cell_y");
+  let thrown = 0;
+  for (const [dx, dy] of [[0, 2], [0, -2], [-2, 0], [2, 0], [0, 3], [0, -3]]) {
+    if (await wasm(page, "web_throw_in_reach", px + dx, py + dy)) {
+      thrown = await wasm(page, "web_test_throw_at", px + dx, py + dy);
+      if (thrown) break;
+    }
+  }
+  expect(thrown).toBe(1);
+  // back to Paused Walking, the route kept
+  expect(await wasm(page, "web_grace_mode")).toBe(0);
+  expect(await wasm(page, "web_grace_last")).toBe(1);
+  expect(await wasm(page, "web_grace_resumable")).toBe(1);
+  await page.mouse.dblclick(x, y);
+  await expect.poll(() => wasm(page, "web_grace_mode")).toBe(1);
+});
+
+test("Throw is disabled while paused running", async ({ page }) => {
+  const box = await boot(page);
+  expect(await wasm(page, "web_test_bottle_ready")).toBe(1);
+  await orderGrace(page, "Run", 6);
+  await page.waitForTimeout(150);
+  await page.mouse.dblclick(box.x + box.width / 2 + 60, box.y + box.height / 2 + 60);
+  await expect.poll(() => wasm(page, "web_grace_mode")).toBe(0);
+  expect(await wasm(page, "web_grace_last")).toBe(2);
+  expect(await wasm(page, "web_throw_allowed")).toBe(0);
+  await expect(page.getByRole("button", { name: "Throw", exact: true })).toBeDisabled();
+  expect(await wasm(page, "web_grace_action", 6)).toBe(0);
+});
+
+test("items lit by a switch light stay visible after it is switched off", async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => window.Module?._web_test_grace_at?.(90, 58));
+  await page.waitForTimeout(200);
+  expect(await wasm(page, "web_item_visible_at", 88, 63)).toBe(1);
+  expect(await wasm(page, "web_test_interact", 91, 58)).toBe(1);
+  await page.waitForTimeout(200);
+  expect(await wasm(page, "web_light_at", 88, 63)).toBe(0);
+  expect(await wasm(page, "web_item_visible_at", 88, 63)).toBe(1);
 });

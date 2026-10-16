@@ -19,16 +19,24 @@ const sources = [
     'sight.c',
     'throw.c',
     'light.c',
-    'tooltip.cc',
+    'grace_state.c',
 ];
 
 export function addMain(b: Builder) {
+    // Dear ImGui is C++, so the runtime's one ImGui call is a tiny C++ library
+    // outside src/ (src/ stays pure C).
+    b.addTarget('imgui-glue', 'lib', (t) => {
+        t.setDir('imgui-glue');
+        t.addSources(['tooltip.cc']);
+        t.addIncludeDirectories({ system: true, dirs: ['../libs'] });
+        t.addDependencies(['imgui']);
+    });
     b.addTarget('main', 'windowed-exe', (t) => {
         t.setDir('src');
         t.addSources(sources);
         t.addIncludeDirectories({ system: true, dirs: ['../libs'] });
         t.addIncludeDirectories([t.buildDir()]);
-        t.addDependencies(['sokol-static', 'dbgui']);
+        t.addDependencies(['sokol-static', 'dbgui', 'imgui-glue']);
         t.addCompileDefinitions({ USE_DBG_UI: '1' });
         // TEST_HOOKS=1 at config time keeps the test-only exports (Playwright build)
         if (Deno.env.get('TEST_HOOKS') === '1') {

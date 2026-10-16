@@ -13,9 +13,9 @@
 #define SOKOL_IMGUI_IMPL
 #include "sokol_imgui.h"
 
-#include "level.h"
-#include "light.h"
-#include "palette.h"
+#include "../src/level.h"
+#include "../src/light.h"
+#include "../src/palette.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
