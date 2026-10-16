@@ -6,6 +6,7 @@
     "dev": "vite",
     "prebuild": "npm --prefix .. run build:wasm && npm --prefix .. run copy:wasm",
     "build": "vite build",
+    "build:test": "npm --prefix .. run wasm:test && vite build",
     "predeploy:cloudflare": "npm --prefix .. run build:wasm && npm --prefix .. run copy:wasm",
     "deploy:cloudflare": "void deploy --platform cloudflare",
     "prepreview": "void db migrate",

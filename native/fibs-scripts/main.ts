@@ -29,6 +29,10 @@ export function addMain(b: Builder) {
         t.addIncludeDirectories([t.buildDir()]);
         t.addDependencies(['sokol-static', 'dbgui']);
         t.addCompileDefinitions({ USE_DBG_UI: '1' });
+        // TEST_HOOKS=1 at config time keeps the test-only exports (Playwright build)
+        if (Deno.env.get('TEST_HOOKS') === '1') {
+            t.addCompileDefinitions({ TEST_HOOKS: '1' });
+        }
         if (b.activeConfig().platform === 'emscripten') {
             t.addLinkOptions(['-sEXPORTED_RUNTIME_METHODS=UTF8ToString']);
         }

@@ -316,3 +316,36 @@ test("right click on Grace opens Quick Equip and an active bottle can be thrown"
   expect(await page.evaluate(() => window.Module?._web_bottle_equipped?.())).toBe(0);
   expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
 });
+
+test("a tap on an item next to Grace picks it up instead of toggling her menu", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
+    timeout: 30_000,
+  });
+  // stand just west of the Green Herb at (95, 8), menu open
+  await page.evaluate(() => window.Module?._web_test_grace_at?.(94, 8));
+  await page.waitForTimeout(250);
+  const box = await page.locator("canvas#canvas").boundingBox();
+  if (!box) {
+    throw new Error("canvas has no box");
+  }
+  const at = await page.evaluate(() => ({
+    x: window.Module?._web_grace_screen_x?.() ?? 0,
+    y: window.Module?._web_grace_screen_y?.() ?? 0,
+    cell: window.Module?._web_cell_css_px?.() ?? 0,
+  }));
+  expect(await page.evaluate(() => window.Module?._web_grace_menu_open?.())).toBe(1);
+  const before = await page.evaluate(() => window.Module?._items_collected?.() ?? 0);
+  // just inside the herb's cell, within the old generous dot radius
+  await page.mouse.click(box.x + at.x + at.cell * 0.5 + 3, box.y + at.y);
+  await expect
+    .poll(() => page.evaluate(() => window.Module?._items_collected?.() ?? 0))
+    .toBe(before + 1);
+  // a tap on her own cell still toggles the menu
+  await page.mouse.click(box.x + at.x, box.y + at.y);
+  await expect.poll(() => page.evaluate(() => window.Module?._web_grace_menu_open?.())).toBe(1);
+  await page.mouse.click(box.x + at.x, box.y + at.y);
+  await expect.poll(() => page.evaluate(() => window.Module?._web_grace_menu_open?.())).toBe(0);
+});
