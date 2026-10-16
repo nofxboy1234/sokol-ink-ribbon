@@ -19,6 +19,7 @@ const sources = [
     'sight.c',
     'throw.c',
     'light.c',
+    'grace_state.c',
 ];
 
 export function addMain(b: Builder) {
