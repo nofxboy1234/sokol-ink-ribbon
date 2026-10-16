@@ -72,7 +72,7 @@ bool interact_at(int x, int y) {
         if (o->kind == OBJ_ITEM && openable_covers_closed(o->x, o->y)) {
             continue;
         }
-        if (o->kind == OBJ_ITEM && !light_cell_lit(o->x, o->y)) {
+        if (o->kind == OBJ_ITEM && !light_item_visible(i)) {
             continue;  // unlit items can't be seen, so they can't be picked up
         }
         if (interact_distance(i) > 1) {

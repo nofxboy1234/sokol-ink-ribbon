@@ -15,6 +15,7 @@
 
 #include "level.h"
 #include "light.h"
+#include "palette.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -608,7 +609,7 @@ static void draw_map(void) {
         for (int x = 0; x < cols; x++) {
             float sx = view_x((float)x);
             float sy = view_y((float)y);
-            fill_rect(sx, sy, ed.scale, ed.scale, 0.06f, 0.09f, 0.16f, 1.0f);
+            fill_rect(sx, sy, ed.scale, ed.scale, PAL_PAPER, 1.0f);
         }
     }
     if (ed.ref_loaded && ed.ref_show) {
@@ -630,7 +631,7 @@ static void draw_map(void) {
     for (int i = 0; i < ed.level.wall_count; i++) {
         wall_seg_t* w = &ed.level.walls[i];
         draw_line(view_x((float)w->x0), view_y((float)w->y0), view_x((float)w->x1), view_y((float)w->y1),
-                  3.0f, 0.5f, 0.75f, 1.0f, 0.95f);
+                  PAL_WALL_PX + 1.0f, PAL_INK, 1.0f);
     }
     if (ed.wall_selected >= 0 && ed.wall_selected < ed.level.wall_count) {
         wall_seg_t* w = &ed.level.walls[ed.wall_selected];
@@ -666,7 +667,10 @@ static void draw_map(void) {
                 fill_rect(cx - rad, cy - rad, rad * 2.0f, rad * 2.0f, r, g, b, 1.0f);
             } else if (shape == 2) {
                 fill_circle(cx, cy, rad, r, g, b, 1.0f);
-                fill_circle(cx, cy, rad * 0.55f, 0.06f, 0.09f, 0.16f, 1.0f);
+                fill_circle(cx, cy, rad * 0.55f, PAL_PAPER, 1.0f);
+            } else if (shape == 3) {
+                fill_circle(cx, cy, rad, PAL_INK, 1.0f);
+                fill_circle(cx, cy, rad * 0.8f, r, g, b, 1.0f);
             } else {
                 fill_circle(cx, cy, rad, r, g, b, 1.0f);
             }
@@ -700,7 +704,7 @@ static void draw_map(void) {
             for (int seg = 0; seg < 64; seg++) {
                 float a0 = (float)seg / 64.0f * 6.2831853f, a1 = (float)(seg + 1) / 64.0f * 6.2831853f;
                 draw_line(cx + cosf(a0) * lr, cy + sinf(a0) * lr, cx + cosf(a1) * lr, cy + sinf(a1) * lr,
-                          picked ? 2.5f : 1.5f, 0.949f * k, 1.0f * k, 0.0f, 1.0f);
+                          picked ? 3.0f : 2.0f, 0.8f * k, 0.84f * k, 0.0f, 1.0f);  // the game's yellow, darkened to read on paper
             }
             if (o->state) {
                 fill_circle(cx, cy, scale * 0.55f, 0.949f, 1.0f, 0.0f, 0.18f);
@@ -718,10 +722,10 @@ static void draw_map(void) {
             float rh = (float)(o->h > 0 ? o->h : 1) * scale;
             if (o->kind == OBJ_OBSTACLE) {
                 float t = scale * 0.12f;
-                fill_rect(rx, ry, rw, t, 0.5f, 0.75f, 1.0f, 1.0f);
-                fill_rect(rx, ry + rh - t, rw, t, 0.5f, 0.75f, 1.0f, 1.0f);
-                fill_rect(rx, ry, t, rh, 0.5f, 0.75f, 1.0f, 1.0f);
-                fill_rect(rx + rw - t, ry, t, rh, 0.5f, 0.75f, 1.0f, 1.0f);
+                fill_rect(rx, ry, rw, t, PAL_INK, 1.0f);
+                fill_rect(rx, ry + rh - t, rw, t, PAL_INK, 1.0f);
+                fill_rect(rx, ry, t, rh, PAL_INK, 1.0f);
+                fill_rect(rx + rw - t, ry, t, rh, PAL_INK, 1.0f);
             } else {
                 float t = scale * 0.12f;
                 fill_rect(rx, ry, rw, t, 0.0f, 1.0f, 0.2f, 1.0f);
@@ -737,20 +741,20 @@ static void draw_map(void) {
             }
         } else if (o->kind == OBJ_START) {
             float size = scale * 0.6f;
-            fill_rect(cx - size, cy - size, size * 2.0f, size * 2.0f, 0.588f, 0.118f, 1.0f, 1.0f);
+            fill_circle(cx, cy, scale * 0.51f, PAL_PURPLE, 1.0f);  // Grace's dot
         } else {
             float r = 0.6f, g = 0.6f, b = 0.6f;
             switch (o->kind) {
-                case OBJ_SWITCH: r = 0.95f; g = 1.0f; b = 0.0f; break;
+                case OBJ_SWITCH: r = 0.949f; g = 1.0f; b = 0.0f; break;
                 case OBJ_TYPEWRITER: r = 1.0f; g = 0.0f; b = 0.416f; break;
-                case OBJ_FILE: r = 0.95f; g = 0.95f; b = 0.9f; break;
+                case OBJ_FILE: r = 0.85f; g = 0.85f; b = 0.85f; break;  // white in the game, a shade darker here to show on paper
                 case OBJ_SAFE: r = 0.616f; g = 0.616f; b = 0.616f; break;
                 case OBJ_OBSTACLE: r = 0.5f; g = 0.45f; b = 0.4f; break;
-                case OBJ_MOVABLE: r = 0.6f; g = 0.5f; b = 0.3f; break;
+                case OBJ_MOVABLE: r = 0.616f; g = 0.616f; b = 0.616f; break;
                 case OBJ_OPENABLE: r = 0.0f; g = 1.0f; b = 0.733f; break;
-                case OBJ_FUSEBOX: r = 0.95f; g = 0.85f; b = 0.0f; break;
+                case OBJ_FUSEBOX: r = 0.118f; g = 0.118f; b = 0.118f; break;
                 case OBJ_START: r = 0.588f; g = 0.118f; b = 1.0f; break;
-                case OBJ_GOAL: r = 1.0f; g = 1.0f; b = 1.0f; break;
+                case OBJ_GOAL: r = 0.118f; g = 0.118f; b = 0.118f; break;
                 default: break;
             }
             float size = scale * 0.3f;
@@ -758,10 +762,10 @@ static void draw_map(void) {
         }
         if (i == ed.selected) {
             float size = scale * 0.45f;
-            draw_line(cx - size, cy - size, cx + size, cy - size, 2.0f, 1, 1, 1, 1);
-            draw_line(cx + size, cy - size, cx + size, cy + size, 2.0f, 1, 1, 1, 1);
-            draw_line(cx + size, cy + size, cx - size, cy + size, 2.0f, 1, 1, 1, 1);
-            draw_line(cx - size, cy + size, cx - size, cy - size, 2.0f, 1, 1, 1, 1);
+            draw_line(cx - size, cy - size, cx + size, cy - size, 2.0f, PAL_CYAN, 1);
+            draw_line(cx + size, cy - size, cx + size, cy + size, 2.0f, PAL_CYAN, 1);
+            draw_line(cx + size, cy + size, cx - size, cy + size, 2.0f, PAL_CYAN, 1);
+            draw_line(cx - size, cy + size, cx - size, cy - size, 2.0f, PAL_CYAN, 1);
         }
     }
     }
@@ -1355,9 +1359,10 @@ static void init(void) {
     simgui_desc_t simgui_desc = {};
     simgui_desc.logger.func = slog_func;
     simgui_setup(&simgui_desc);
+    ImGui::StyleColorsLight();  // panels on paper, like the game's UI
 
     ed.pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
-    ed.pass_action.colors[0].clear_value = { 0.02f, 0.03f, 0.06f, 1.0f };
+    ed.pass_action.colors[0].clear_value = { 0.85f, 0.85f, 0.85f, 1.0f };  // outside the level
     ed.tool = TOOL_SELECT;
     ed.place_kind = OBJ_DOOR;
     ed.place_item = ITEM_HERB;

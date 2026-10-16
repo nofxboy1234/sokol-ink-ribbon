@@ -95,8 +95,8 @@ test("walking records a replay", async ({ page }) => {
   await page.waitForTimeout(1500);
   const after = await page.evaluate(() => window.Module?._replay_length?.() ?? 0);
   expect(after).toBeGreaterThan(before);
-  // she is Paused again once she arrives
-  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(0);
+  // she waits once she arrives
+  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
 });
 
 test("the world is frozen while Grace is paused", async ({ page }) => {
@@ -311,12 +311,13 @@ test("right click on Grace opens Quick Equip and an active bottle can be thrown"
   expect(
     await page.evaluate(() => window.Module?._web_impact_age_ms?.() ?? -1),
   ).toBeGreaterThanOrEqual(0);
-  // the last bottle is spent: its slot stays equipped but greyed out, and she stays Paused
+  // the last bottle is spent: its slot stays equipped but greyed out
   await expect(slot).toHaveCount(0);
   expect(await page.evaluate(() => window.Module?._web_bottle_equipped?.())).toBe(1);
   expect(await page.evaluate(() => window.Module?._web_bottle_empty?.())).toBe(1);
   expect(await page.evaluate(() => window.Module?._web_bottle_active?.())).toBe(0);
-  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(0);
+  // the throw done, she waits
+  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
 });
 
 test("a tap on an item next to Grace picks it up instead of toggling her menu", async ({
@@ -562,4 +563,65 @@ test("a hit makes the enemy angry", async ({ page }) => {
   expect(await wasm(page, "web_enemy_angry")).toBe(0);
   await wasm(page, "web_test_anger");
   expect(await wasm(page, "web_enemy_angry")).toBe(1);
+});
+
+test("a hit leaves Grace Hurt for 5 s, unable to move, then she waits", async ({ page }) => {
+  const box = await boot(page);
+  await orderGrace(page, "Walk", 6);
+  await page.waitForTimeout(200);
+  await wasm(page, "web_test_hurt");
+  expect(await wasm(page, "web_grace_mode")).toBe(4);
+  await expect(page.getByRole("status", { name: "Grace: Hurt" })).toBeVisible();
+  const x0 = await wasm(page, "player_cell_x");
+  // a double click (pause) and a tap on her do nothing; she doesn't move
+  const gx = await wasm(page, "web_grace_screen_x");
+  const gy = await wasm(page, "web_grace_screen_y");
+  await page.mouse.dblclick(box.x + gx + 60, box.y + gy + 60);
+  await page.mouse.click(box.x + gx, box.y + gy);
+  expect(await wasm(page, "web_grace_action", 0)).toBe(0);
+  await page.waitForTimeout(1500);
+  expect(await wasm(page, "web_grace_mode")).toBe(4);
+  expect(await wasm(page, "player_cell_x")).toBe(x0);
+  await expect.poll(() => wasm(page, "web_grace_mode"), { timeout: 6000 }).toBe(3);
+  expect(await wasm(page, "web_grace_hurt_ms")).toBe(0);
+});
+
+test("waiting, a tap on Grace pauses her and opens the action menu", async ({ page }) => {
+  const box = await boot(page);
+  await page.getByRole("button", { name: "Wait", exact: true }).click();
+  await page
+    .getByRole("toolbar", { name: "Confirm action" })
+    .getByRole("button", { name: "Ok" })
+    .click();
+  expect(await wasm(page, "web_grace_mode")).toBe(3);
+  await page.waitForTimeout(400);
+  await page.mouse.click(
+    box.x + (await wasm(page, "web_grace_screen_x")),
+    box.y + (await wasm(page, "web_grace_screen_y")),
+  );
+  expect(await wasm(page, "web_grace_mode")).toBe(0);
+  await expect(page.getByRole("button", { name: "Walk", exact: true })).toBeVisible();
+});
+
+test("an item the Lighter has shown stays visible", async ({ page }) => {
+  await boot(page);
+  await wasm(page, "web_test_grace_at", 78, 49);
+  await wasm(page, "web_test_give", 7);
+  expect(await wasm(page, "web_item_visible_at", 79, 49)).toBe(0);
+  await wasm(page, "lighter_set", 1);
+  expect(await wasm(page, "web_item_visible_at", 79, 49)).toBe(1);
+  await wasm(page, "lighter_set", 0);
+  expect(await wasm(page, "web_light_at", 79, 49)).toBe(0);
+  expect(await wasm(page, "web_item_visible_at", 79, 49)).toBe(1);
+});
+
+test("a typewriter save keeps the enemy where it was", async ({ page }) => {
+  await boot(page);
+  await wasm(page, "web_test_give", 3);
+  await wasm(page, "web_test_enemy_place", 9050, 1230);
+  expect(await wasm(page, "save_game", 0)).toBe(1);
+  await wasm(page, "web_test_enemy_place", 2050, 4050);
+  expect(await wasm(page, "load_game", 0)).toBe(1);
+  expect(await wasm(page, "web_enemy_px")).toBeCloseTo(90.5, 3);
+  expect(await wasm(page, "web_enemy_py")).toBeCloseTo(12.3, 3);
 });

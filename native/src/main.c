@@ -44,6 +44,8 @@ typedef enum {
     GRACE_WALKING,
     GRACE_RUNNING,
     GRACE_WAITING,
+    // just hurt: can't move or act for GRACE_HURT_SECONDS (time runs), then Waiting
+    GRACE_HURT,
 } grace_mode_t;
 
 // The action being set up in the Paused menu, before Ok.
@@ -74,6 +76,10 @@ typedef enum {
 #define GRACE_FLASH_SECONDS 1.0f
 // Then she breathes fast (stressed) until this long after the hit.
 #define GRACE_STRESS_SECONDS 5.0f
+// She is Hurt (can't move) this long, then waits.
+#define GRACE_HURT_SECONDS 5.0f
+// The enemy stands and waits this long after hurting her.
+#define ENEMY_REST_SECONDS 8.0f
 // The bottle's impact: the ring pulses out, then everything fades.
 #define IMPACT_PULSE_SECONDS 0.25f
 #define IMPACT_FADE_SECONDS 0.35f
@@ -95,6 +101,7 @@ static struct {
     bool long_fired;
     double grace_flash_until;
     double grace_stress_until;  // fast, stressed breathing after a hit
+    double grace_hurt_until;    // Hurt ends (then Waiting)
     double impact_at;       // real clock of the last impact, < 0 for none
     int impact_x, impact_y;
     bool setup_has_target;  // Walk/Run: a reachable cell was picked
@@ -127,7 +134,6 @@ static struct {
 
 #define TOUCH_SLOP_PX 14.0f
 
-#define ENEMY_STUN_SECONDS 3.0f
 #define HEALTH_DANGER 2
 // How far Grace's footsteps carry, in cells; standing still is silent.
 #define GRACE_NOISE_WALK 4.0f
@@ -319,9 +325,10 @@ static bool throw_confirm(void) {
     app.impact_at = app.clock;
     app.impact_x = app.setup_x;
     app.impact_y = app.setup_y;
-    // She stays Paused (time frozen) with whatever she was doing remembered;
-    // a double click on the map carries on with it.
-    app.menu_open = true;
+    // The throw done, she waits (time runs). Waiting gives up a paused walk
+    // or run, as choosing Wait does.
+    clear_pending();
+    set_grace(GRACE_WAITING);
     bump_revision();
     return true;
 }
@@ -347,6 +354,9 @@ static void pick_target(int x, int y) {
 }
 
 static bool grace_do(grace_action_t action) {
+    if (app.grace == GRACE_HURT) {
+        return false;  // she can't do anything while hurt
+    }
     switch (action) {
         case GRACE_ACT_WALK:
         case GRACE_ACT_RUN:
@@ -462,6 +472,9 @@ static bool on_grace(float sx, float sy) {
 // Right click (or a long press) on her dot while Paused opens Quick Equip
 // and closes the action menu; again closes it.
 static void handle_quick_equip(void) {
+    if (app.grace == GRACE_WAITING && on_grace(app.mouse_x, app.mouse_y)) {
+        grace_do(GRACE_ACT_PAUSE);  // waiting: pause, then Quick Equip
+    }
     if (app.grace != GRACE_PAUSED || app.setup != SETUP_NONE || !on_grace(app.mouse_x, app.mouse_y)) {
         return;
     }
@@ -471,6 +484,15 @@ static void handle_quick_equip(void) {
 }
 
 static void handle_click(void) {
+    if (app.grace == GRACE_HURT) {
+        return;  // no moving, no pausing while hurt
+    }
+    if (app.grace == GRACE_WAITING && on_grace(app.mouse_x, app.mouse_y)) {
+        // waiting, a tap on her pauses and opens the action menu
+        app.last_click_at = -1.0;
+        grace_do(GRACE_ACT_PAUSE);
+        return;
+    }
     if (app.grace != GRACE_PAUSED) {
         // During an action a single click does nothing; a double click pauses.
         float dx = app.mouse_x - app.last_click_x, dy = app.mouse_y - app.last_click_y;
@@ -579,13 +601,24 @@ static void grace_hurt(void) {
     }
     app.grace_flash_until = app.clock + GRACE_FLASH_SECONDS;
     app.grace_stress_until = app.clock + GRACE_STRESS_SECONDS;
+    // Hurt: she stops where she is, drops what she was doing and can't act.
+    // A second hit while Hurt starts the 5 s again.
+    player_halt();
+    clear_pending();
+    if (app.setup != SETUP_NONE) {
+        clear_setup();
+    }
+    app.grace_hurt_until = app.clock + GRACE_HURT_SECONDS;
+    set_grace(GRACE_HURT);
+    app.menu_open = false;
     bump_revision();
 }
 
-// The enemy caught her: she is hurt and it freezes for a moment.
+// The enemy caught her: she is hurt, and it stands and waits a while (8 s,
+// longer than her 5 s Hurt, so she gets 3 s to get away).
 static void enemy_hit(void) {
     grace_hurt();
-    enemy_stun(ENEMY_STUN_SECONDS);
+    enemy_rest(ENEMY_REST_SECONDS);
 }
 
 static void init(void) {
@@ -638,6 +671,7 @@ static void init(void) {
     app.impact_at = -1.0;
     app.grace_flash_until = -1.0;
     app.grace_stress_until = -1.0;
+    app.grace_hurt_until = -1.0;
     app.pass_action = (sg_pass_action){
         .colors[0] = {
             .load_action = SG_LOADACTION_CLEAR,
@@ -676,7 +710,7 @@ static const obj_t* hover_interactable(void) {
         if (o->kind == OBJ_ITEM && openable_covers_closed(o->x, o->y)) {
             continue;
         }
-        if (o->kind == OBJ_ITEM && !light_cell_lit(o->x, o->y)) {
+        if (o->kind == OBJ_ITEM && !light_item_visible(i)) {
             continue;
         }
         if (o->kind == OBJ_OPENABLE && o->open) {
@@ -743,7 +777,16 @@ static void frame(void) {
         app.mouse_y = app.touch_start_y;
         handle_quick_equip();
     }
+    if (!app.paused && app.grace == GRACE_HURT && app.clock >= app.grace_hurt_until) {
+        set_grace(GRACE_WAITING);
+    }
     if (!app.paused && app.grace != GRACE_PAUSED) {
+        {
+            // sight needs her lit: her Lighter, or a level light on her cell
+            int px, py;
+            player_cell(&px, &py);
+            enemy_set_grace_lit((lighter_on() && inventory_has(ITEM_LIGHTER)) || light_cell_lit(px, py));
+        }
         player_update(dt);
         float noise = !player_is_moving() ? 0.0f
             : player_move_mode() == PLAYER_RUN ? GRACE_NOISE_RUN : GRACE_NOISE_WALK;
@@ -765,7 +808,7 @@ static void frame(void) {
         }
         if ((app.grace == GRACE_WALKING || app.grace == GRACE_RUNNING) && !player_is_moving()) {
             clear_pending();
-            set_grace(GRACE_PAUSED);  // she pauses on arrival
+            set_grace(GRACE_WAITING);  // arrived: she waits
         }
         app.elapsed += (double)dt;
 
@@ -1112,6 +1155,22 @@ TEST_EXPORT int web_aim_enemy(void) {
     return app.aim_enemy ? 1 : 0;
 }
 
+TEST_EXPORT int web_grace_hurt_ms(void) {
+    return app.grace == GRACE_HURT && app.clock < app.grace_hurt_until
+        ? (int)((app.grace_hurt_until - app.clock) * 1000.0) : 0;
+}
+
+// An item at this cell is on the map (lit now, or shown by the Lighter before).
+TEST_EXPORT int web_item_visible_at(int x, int y) {
+    for (int i = 0; i < app.level.obj_count; i++) {
+        const obj_t* o = &app.level.objs[i];
+        if (o->kind == OBJ_ITEM && o->x == x && o->y == y && !items_taken(i)) {
+            return light_item_visible(i) ? 1 : 0;
+        }
+    }
+    return 0;
+}
+
 TEST_EXPORT int web_grace_stress_ms(void) {
     return app.clock < app.grace_stress_until ? (int)((app.grace_stress_until - app.clock) * 1000.0) : 0;
 }
@@ -1403,6 +1462,7 @@ WEB_EXPORT void game_reset(void) {
     app.impact_at = -1.0;
     app.grace_flash_until = -1.0;
     app.grace_stress_until = -1.0;
+    app.grace_hurt_until = -1.0;
     app.setup = SETUP_NONE;
     app.setup_has_target = false;
     app.aim_enemy = false;
@@ -1440,7 +1500,9 @@ WEB_EXPORT int load_game(int slot) {
     if (savegame_load(slot, &e)) {
         app.elapsed = e / 1000.0;
         player_cell(&app.respawn_x, &app.respawn_y);
-        enemy_init(app.respawn_x, app.respawn_y);
+        if (!savegame_has_enemy(slot)) {
+            enemy_init(app.respawn_x, app.respawn_y);  // an old slot: respawn it away from her
+        }
         player_stop();
         app.grace = GRACE_PAUSED;
         app.last = GRACE_WAITING;

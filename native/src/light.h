@@ -4,7 +4,8 @@
 // Light and visibility. A light source is Grace with the Lighter lit, or a
 // level light that is switched on. Light reaches cells within its radius
 // that it has a clear line to (walls and closed doors cast shadows, like
-// sight). Items are only drawn, hovered and picked up on lit cells; Grace,
+// sight). Items are only drawn, hovered and picked up on lit cells (or once
+// the Lighter has shown them); Grace,
 // the enemy, doors and other objects stay visible.
 #define LIGHTER_RADIUS_CELLS 4.0f     // the Lighter's circle around Grace
 #define LIGHT_DEFAULT_RADIUS 5.0f     // a level light with no radius set
@@ -15,5 +16,7 @@
 // Recomputes the lit cells from every active source.
 void light_update(void);
 bool light_cell_lit(int x, int y);
+// An item is on the map if it is lit now or the Lighter has shown it before.
+bool light_item_visible(int object_index);
 // The radius a level light shines with (its own, or the default).
 float light_radius_of(float radius);

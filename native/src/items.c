@@ -8,6 +8,7 @@
 
 static struct {
     unsigned char taken[LEVEL_MAX_OBJECTS];
+    unsigned char seen[LEVEL_MAX_OBJECTS];  // seen by the Lighter: stays on the map
     int taken_count;
 } it;
 
@@ -67,5 +68,27 @@ void items_import(const unsigned char* in, int cap) {
         if (it.taken[i]) {
             it.taken_count++;
         }
+    }
+}
+
+void items_mark_seen(int object_index) {
+    if (object_index >= 0 && object_index < LEVEL_MAX_OBJECTS) {
+        it.seen[object_index] = 1;
+    }
+}
+
+bool items_seen(int object_index) {
+    return object_index >= 0 && object_index < LEVEL_MAX_OBJECTS && it.seen[object_index] != 0;
+}
+
+void items_export_seen(unsigned char* out, int cap) {
+    for (int i = 0; i < cap && i < LEVEL_MAX_OBJECTS; i++) {
+        out[i] = it.seen[i];
+    }
+}
+
+void items_import_seen(const unsigned char* in, int cap) {
+    for (int i = 0; i < LEVEL_MAX_OBJECTS; i++) {
+        it.seen[i] = (in && i < cap && in[i]) ? 1 : 0;
     }
 }
