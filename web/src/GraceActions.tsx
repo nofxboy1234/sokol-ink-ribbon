@@ -15,6 +15,22 @@ const same = (a: GraceView, b: GraceView) =>
     key === "x" || key === "y" ? Math.round(a[key]) === Math.round(b[key]) : a[key] === b[key],
   );
 
+// Hurt: a jagged crack, she can't move for a moment.
+function HurtIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M4 12h4l2-5 3 10 2-5h5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function WalkIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -73,6 +89,7 @@ const STATUS = [
   { label: "Walking", Icon: WalkIcon },
   { label: "Running", Icon: RunIcon },
   { label: "Waiting", Icon: WaitIcon },
+  { label: "Hurt", Icon: HurtIcon },
 ];
 
 const EDGE = 4;
@@ -300,6 +317,7 @@ export function GraceActions() {
           aria-live="polite"
           aria-label={statusLabel}
           data-paused={paused}
+          data-hurt={grace.mode === GraceMode.Hurt}
         >
           <status.Icon />
           {paused && (

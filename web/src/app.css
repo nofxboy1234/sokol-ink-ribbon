@@ -924,3 +924,8 @@ button.recipe[aria-disabled="true"] {
   opacity: 0.35;
   cursor: not-allowed;
 }
+
+.grace-status[data-hurt="true"] {
+  color: #ff002a;
+  border-color: #ff002a;
+}

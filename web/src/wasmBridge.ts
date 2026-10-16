@@ -50,6 +50,8 @@ export type EmscriptenModule = {
   _web_enemy_screen_y?: () => number;
   _web_aim_enemy?: () => number;
   _web_grace_stress_ms?: () => number;
+  _web_grace_hurt_ms?: () => number;
+  _web_item_visible_at?: (x: number, y: number) => number;
   _web_test_give?: (item: number) => number;
   _web_test_enemy_at?: (x: number, y: number) => void;
   _web_test_hurt?: () => void;
@@ -214,7 +216,7 @@ export function gameReset(): void {
 }
 
 // Mirrors grace_mode_t / grace_setup_t / grace_action_t in native/src/main.c.
-export const GraceMode = { Paused: 0, Walking: 1, Running: 2, Waiting: 3 } as const;
+export const GraceMode = { Paused: 0, Walking: 1, Running: 2, Waiting: 3, Hurt: 4 } as const;
 export const GraceSetup = { None: 0, Walk: 1, Run: 2, Wait: 3, Throw: 4 } as const;
 export const GraceAction = {
   Walk: 0,
