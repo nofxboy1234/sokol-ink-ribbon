@@ -311,10 +311,10 @@ test("right click on Grace opens Quick Equip and an active bottle can be thrown"
   expect(
     await page.evaluate(() => window.Module?._web_impact_age_ms?.() ?? -1),
   ).toBeGreaterThanOrEqual(0);
-  // the bottle is spent (and unequipped), and she carries on waiting
+  // the bottle is spent (and unequipped), and she stays Paused
   await expect(slot).toHaveCount(0);
   expect(await page.evaluate(() => window.Module?._web_bottle_equipped?.())).toBe(0);
-  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
+  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(0);
 });
 
 test("a tap on an item next to Grace picks it up instead of toggling her menu", async ({
@@ -348,4 +348,74 @@ test("a tap on an item next to Grace picks it up instead of toggling her menu", 
   await expect.poll(() => page.evaluate(() => window.Module?._web_grace_menu_open?.())).toBe(1);
   await page.mouse.click(box.x + at.x, box.y + at.y);
   await expect.poll(() => page.evaluate(() => window.Module?._web_grace_menu_open?.())).toBe(0);
+});
+
+test("a double click while Paused resumes the paused walk, and does nothing at start", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
+    timeout: 30_000,
+  });
+  const box = await page.locator("canvas#canvas").boundingBox();
+  if (!box) {
+    throw new Error("canvas has no box");
+  }
+  const x = box.x + box.width / 2 + 60;
+  const y = box.y + box.height / 2 + 60;
+  const mode = () => page.evaluate(() => window.Module?._web_grace_mode?.());
+  await orderGrace(page, "Walk", 6);
+  await page.waitForTimeout(300);
+  await page.mouse.dblclick(x, y);
+  await expect.poll(mode).toBe(0);
+  // stays Paused until asked
+  await page.waitForTimeout(600);
+  expect(await mode()).toBe(0);
+  await page.mouse.dblclick(x, y);
+  await expect.poll(mode).toBe(1);
+
+  // nothing to resume at the start
+  await page.reload();
+  await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
+    timeout: 30_000,
+  });
+  await page.mouse.dblclick(x, y);
+  await page.waitForTimeout(400);
+  expect(await mode()).toBe(0);
+  expect(await page.evaluate(() => window.Module?._web_grace_resumable?.())).toBe(0);
+});
+
+test("left click toggles only the action menu, right click only Quick Equip", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
+    timeout: 30_000,
+  });
+  const box = await page.locator("canvas#canvas").boundingBox();
+  if (!box) {
+    throw new Error("canvas has no box");
+  }
+  const at = await page.evaluate(() => ({
+    x: window.Module?._web_grace_screen_x?.() ?? 0,
+    y: window.Module?._web_grace_screen_y?.() ?? 0,
+  }));
+  const state = () =>
+    page.evaluate(() => [
+      window.Module?._web_grace_menu_open?.(),
+      window.Module?._web_quick_open?.(),
+    ]);
+  const left = () => page.mouse.click(box.x + at.x, box.y + at.y);
+  const right = () => page.mouse.click(box.x + at.x, box.y + at.y, { button: "right" });
+  expect(await state()).toEqual([1, 0]);
+  await right();
+  await expect.poll(state).toEqual([0, 1]);
+  await right();
+  await expect.poll(state).toEqual([0, 0]);
+  await left();
+  await expect.poll(state).toEqual([1, 0]);
+  await left();
+  await expect.poll(state).toEqual([0, 0]);
+  await right();
+  await expect.poll(state).toEqual([0, 1]);
+  await left();
+  await expect.poll(state).toEqual([1, 0]);
 });

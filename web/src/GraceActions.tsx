@@ -130,6 +130,20 @@ function placeSlots(
   return slots;
 }
 
+// Drawn sizes in cells, from native/src/render.c: Grace's dot radius and
+// the larger of an item's glyph and its pickup marker.
+const GRACE_DOT = 0.51;
+const ITEM_MARK = 0.36;
+
+// Distance from Grace's centre to each circle's centre. The neighbouring
+// item spans 1 - ITEM_MARK .. 1 + ITEM_MARK cells; the gap between her dot
+// and it is (1 - ITEM_MARK - GRACE_DOT) cells, and the circle's inner edge
+// sits the same gap beyond the item's far edge.
+export function menuRadius(cell: number, size: number): number {
+  const gap = 1 - ITEM_MARK - GRACE_DOT;
+  return (1 + ITEM_MARK + gap) * cell + size / 2;
+}
+
 type Slot = {
   label: string;
   icon: ReactNode;
@@ -206,7 +220,9 @@ export function GraceActions() {
           ? "Tap again or Ok"
           : "Pick a cell";
 
-  const radius = Math.max(grace.cell * 0.9, pane.size * 0.95) + pane.size / 2;
+  // An item right next to her sits with equal gaps on both sides: her dot
+  // edge, gap, item, gap, the circle's edge (see menuRadius).
+  const radius = menuRadius(grace.cell, pane.size);
   const spots = placeSlots(grace.x, grace.y, pane.w, pane.h, radius, pane.size);
 
   // Action menu: Walk north, Run east, Wait south, Throw west (only with the
