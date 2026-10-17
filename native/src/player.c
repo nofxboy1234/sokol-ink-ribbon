@@ -26,6 +26,8 @@ static struct {
     int clock_ms;
     bool on_top;
     float climb_timer;
+    bool climbing;
+    int climb_x, climb_y;
 } p;
 
 static bool on_top_at(int cx, int cy) {
@@ -99,10 +101,30 @@ void player_halt(void) {
 }
 
 void player_note_time(int ms) { p.clock_ms = ms; }
+bool player_climbing(void) { return p.climbing; }
+void player_climb_to(int x, int y) {
+    if (p.climbing) return;
+    p.climbing = true;
+    p.climb_x = x;
+    p.climb_y = y;
+    p.climb_timer = 0.35f;
+    p.moving = false;
+}
 bool player_on_top(void) { return p.on_top; }
 int player_replay_t(int index) { return index >= 0 && index < p.replay_len ? p.replay_t[index] : 0; }
 void player_update(float dt) {
-    if (p.climb_timer > 0.0f) { p.climb_timer -= dt; return; }
+    if (p.climbing) {
+        p.climb_timer -= dt;
+        if (p.climb_timer <= 0.0f) {
+            p.climbing = false;
+            p.x = (float)p.climb_x + 0.5f;
+            p.y = (float)p.climb_y + 0.5f;
+            p.on_top = on_top_at(p.climb_x, p.climb_y);
+            p.steps++;
+            replay_record();
+        }
+        return;
+    }
     if (!p.moving || p.index >= p.path.count) {
         p.moving = false;
         return;
@@ -119,8 +141,7 @@ void player_update(float dt) {
         p.y = ty;
         p.steps++;
         replay_record();
-        { bool now = on_top_at(p.path.x[p.index], p.path.y[p.index]);
-          if (now != p.on_top) { p.on_top = now; p.climb_timer = 0.35f; } }
+        p.on_top = on_top_at(p.path.x[p.index], p.path.y[p.index]);
         p.index++;
         if (p.index >= p.path.count) {
             p.moving = false;

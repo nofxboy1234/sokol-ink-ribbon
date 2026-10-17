@@ -316,7 +316,7 @@ static void add_object(int kind, int x, int y) {
     if (kind == OBJ_DOOR) {
         o->span = 3;
     }
-    if (kind == OBJ_OPENABLE || kind == OBJ_OBSTACLE) {
+    if (kind == OBJ_OBSTACLE) {
         o->w = 2;
         o->h = 2;
     }
@@ -373,7 +373,7 @@ static void pick_object(float wx, float wy) {
                 ed.selected = i;
                 return;
             }
-        } else if (o->kind == OBJ_OBSTACLE || o->kind == OBJ_OPENABLE) {
+        } else if (o->kind == OBJ_OBSTACLE) {
             int w = o->w > 0 ? o->w : 1;
             int h = o->h > 0 ? o->h : 1;
             if (cx >= o->x && cx < o->x + w && cy >= o->y && cy < o->y + h) {
@@ -715,7 +715,7 @@ static void draw_map(void) {
                 fill_circle(cx, cy, scale * 0.33f, 0.118f, 0.118f, 0.118f, 1.0f);
                 fill_circle(cx, cy, scale * 0.28f, 0.616f, 0.616f, 0.616f, 1.0f);
             }
-        } else if (o->kind == OBJ_OBSTACLE || o->kind == OBJ_OPENABLE) {
+        } else if (o->kind == OBJ_OBSTACLE) {
             float rx = view_x((float)o->x);
             float ry = view_y((float)o->y);
             float rw = (float)(o->w > 0 ? o->w : 1) * scale;
@@ -733,7 +733,7 @@ static void draw_map(void) {
                 fill_rect(rx, ry, t, rh, 0.0f, 1.0f, 0.2f, 1.0f);
                 fill_rect(rx + rw - t, ry, t, rh, 0.0f, 1.0f, 0.2f, 1.0f);
             }
-        if (i == ed.selected && o->kind != OBJ_OBSTACLE && o->kind != OBJ_OPENABLE) {
+        if (i == ed.selected && o->kind != OBJ_OBSTACLE) {
                 fill_rect(rx - 5, ry - 5, 10, 10, 1.0f, 0.55f, 0.0f, 1.0f);
                 fill_rect(rx + rw - 5, ry - 5, 10, 10, 1.0f, 0.55f, 0.0f, 1.0f);
                 fill_rect(rx - 5, ry + rh - 5, 10, 10, 1.0f, 0.55f, 0.0f, 1.0f);
@@ -750,8 +750,6 @@ static void draw_map(void) {
                 case OBJ_FILE: r = 0.85f; g = 0.85f; b = 0.85f; break;  // white in the game, a shade darker here to show on paper
                 case OBJ_SAFE: r = 0.616f; g = 0.616f; b = 0.616f; break;
                 case OBJ_OBSTACLE: r = 0.5f; g = 0.45f; b = 0.4f; break;
-                case OBJ_MOVABLE: r = 0.616f; g = 0.616f; b = 0.616f; break;
-                case OBJ_OPENABLE: r = 0.0f; g = 1.0f; b = 0.733f; break;
                 case OBJ_FUSEBOX: r = 0.118f; g = 0.118f; b = 0.118f; break;
                 case OBJ_START: r = 0.588f; g = 0.118f; b = 1.0f; break;
                 case OBJ_GOAL: r = 0.118f; g = 0.118f; b = 0.118f; break;
@@ -1016,10 +1014,9 @@ static void ui_properties(void) {
             changed |= ImGui::InputInt("w", &o->w);
             changed |= ImGui::InputInt("h", &o->h);
             changed |= ImGui::Checkbox("climbable", (bool*)&o->climbable);
-        } else if (o->kind == OBJ_OPENABLE) {
-            changed |= ImGui::InputInt("w", &o->w);
-            changed |= ImGui::InputInt("h", &o->h);
-            changed |= ImGui::Checkbox("open", (bool*)&o->open);
+            changed |= ImGui::Checkbox("movable", (bool*)&o->movable);
+            changed |= ImGui::Checkbox("openable", (bool*)&o->openable);
+            if (o->openable) changed |= ImGui::Checkbox("open", (bool*)&o->open);
         } else if (o->kind == OBJ_FILE || o->kind == OBJ_SAFE) {
             changed |= ImGui::InputInt("code", &o->code);
         }
@@ -1106,7 +1103,7 @@ static void handle_input(void) {
                     ed.sec_grab = 0;
                     ed.link_selected = -1;
                     ed.obj_grab = 0;
-                    if (o->kind == OBJ_OBSTACLE || o->kind == OBJ_OPENABLE) {
+                    if (o->kind == OBJ_OBSTACLE) {
                         float rx = (float)o->x, ry = (float)o->y;
                         float x1 = (float)(o->x + (o->w > 0 ? o->w : 1));
                         float y1 = (float)(o->y + (o->h > 0 ? o->h : 1));
@@ -1187,6 +1184,7 @@ static void handle_input(void) {
                 } else {
                     add_object(ed.place_kind, (int)floorf(wx), (int)floorf(wy));
                 }
+                ed.tool = TOOL_SELECT;  // placed: back to Select
             } else if (ed.tool == TOOL_LINK) {
                 pick_object(wx, wy);
                 if (ed.selected >= 0) {

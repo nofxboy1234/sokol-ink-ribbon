@@ -551,7 +551,7 @@ int main(int argc, char** argv) {
         int fuse_i = -1, cherub_i = -1, screw_i = -1;
         for (int i = 0; i < level.obj_count; i++) {
             obj_t* o = (obj_t*)&grid_level()->objs[i];
-            if (o->kind == OBJ_OPENABLE && o->id == 29) box = o;
+            if (o->kind == OBJ_OBSTACLE && o->openable && o->id == 29) box = o;
             if (o->kind == OBJ_FUSEBOX) fusebox = o;
             if (o->kind == OBJ_DOOR && strcmp(o->name, "gate") == 0) gate = o;
             if (o->kind == OBJ_ITEM && o->item_type == ITEM_FUSE) fuse_i = i;
@@ -589,18 +589,72 @@ int main(int argc, char** argv) {
         doors_interact(17, 38);
         CHECK(cdoor->state == DOOR_UNLOCKED, "cherub door: the cherub key opens it");
 
-        // climbing: a climbable obstacle can be stood on; a plain one blocks
+        // climbing: prompt, stop, 0.35 s delay, on; then off the same way
         obj_t* table = (obj_t*)&grid_level()->objs[43];
-        int tw = table->w > 0 ? table->w : 1;
         table->climbable = 0;
         CHECK(obstacles_block_cell(table->x, table->y), "plain obstacle blocks its cells");
         table->climbable = 1;
         CHECK(!obstacles_block_cell(table->x, table->y), "climbable obstacle does not block");
-        player_set_cell(table->x, table->y);
-        CHECK(player_on_top(), "standing on it: on top");
-        player_set_cell(table->x + tw + 1, table->y);
-        CHECK(!player_on_top(), "stepping off: not on top");
+        {
+            path_t rt;
+            int fx = table->x - 1, fy = table->y;
+            CHECK(!pathfind(fx, fy, table->x, table->y, &rt), "walking never routes onto a climbable");
+            player_set_cell(fx, fy);
+            CHECK(interact_climb_at(table->x, table->y) && player_climbing(), "adjacent: clicking the climbable starts the climb");
+            player_update(0.2f);
+            CHECK(player_climbing() && !player_on_top(), "0.2 s in: still climbing, not on top yet");
+            player_update(0.2f);
+            CHECK(!player_climbing() && player_on_top(), "after 0.35 s she is on top");
+            int cx2, cy2; player_cell(&cx2, &cy2);
+            CHECK(cx2 == table->x && cy2 == fy, "she lands on the nearest table cell");
+            CHECK(pathfind(cx2, cy2, table->x + 1, fy, &rt), "she can walk across the top");
+            CHECK(!pathfind(cx2, cy2, fx, fy, &rt), "and never routes off the top");
+            player_set_cell(cx2, cy2);
+            CHECK(interact_climb_at(fx, fy) && player_climbing(), "clicking the floor by the edge starts climbing off");
+            player_update(0.4f);
+            CHECK(!player_on_top(), "after the delay she is off again");
+            int ox, oy; player_cell(&ox, &oy);
+            CHECK(ox == fx && oy == fy, "and lands on the clicked floor cell");
+        }
         table->climbable = 0;
+
+        // door smashing still works: conditions and the enemy doing it
+        {
+            obj_t* bd = NULL; obj_t* nd = NULL;
+            for (int i = 0; i < level.obj_count; i++) {
+                obj_t* o = (obj_t*)&grid_level()->objs[i];
+                if (o->kind == OBJ_DOOR && o->id == 39) bd = o;
+                if (o->kind == OBJ_DOOR && o->id == 1) nd = o;
+            }
+            bd->breakable = 1; bd->state = DOOR_LOCKED; bd->open = 0;
+            // doors_break takes an object index: find it
+            int bi = -1, ni = -1;
+            for (int i = 0; i < level.obj_count; i++) {
+                obj_t* o = (obj_t*)&grid_level()->objs[i];
+                if (o == bd) bi = i;
+                if (o == nd) ni = i;
+            }
+            bd->state = DOOR_LOCKED; bd->open = 0;
+            doors_break(bi);
+            CHECK(bd->state == DOOR_BROKEN, "a closed breakable locked door can be smashed");
+            bd->state = DOOR_UNLOCKED; bd->open = 1;
+            doors_break(bi);
+            CHECK(bd->state != DOOR_BROKEN, "an open door is not smashed");
+            nd->state = DOOR_LOCKED; nd->open = 0;
+            doors_break(ni);
+            CHECK(nd->state == DOOR_LOCKED, "a non-breakable door cannot be smashed");
+            // the enemy itself: Grace lit on the far side, it crosses and smashes
+            bd->state = DOOR_LOCKED; bd->open = 0; bd->breakable = 1;
+            fresh_enemy_at(70, 48);
+            enemy_set_grace_lit(true);
+            bool smashed = false;
+            for (int i = 0; i < 60 * 12 && !smashed; i++) {
+                enemy_update(1.0f / 60.0f, 70.5f, 50.5f, 0.0f);
+                smashed = bd->state == DOOR_BROKEN;
+            }
+            CHECK(smashed, "the enemy smashes through the breakable door to reach her");
+            bd->breakable = 0;
+        }
 
         // recipes: #0 known, #1 must be taught and persists
         crafting_set_known_mask(1u);

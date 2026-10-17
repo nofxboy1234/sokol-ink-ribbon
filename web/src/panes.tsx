@@ -627,17 +627,18 @@ export function PauseMenu({
   return (
     <div className="pause-overlay" onClick={onClose}>
       <div className="pause-menu" onClick={(event) => event.stopPropagation()}>
-        <button
-          type="button"
-          className="pause-item pause-selected"
-          disabled={lastSaveSlot < 0}
-          onClick={() => {
-            loadGame(lastSaveSlot);
-            onClose();
-          }}
-        >
-          Restart from last save
-        </button>
+        {lastSaveSlot >= 0 && (
+          <button
+            type="button"
+            className="pause-item"
+            onClick={() => {
+              loadGame(lastSaveSlot);
+              onClose();
+            }}
+          >
+            Restart from last save
+          </button>
+        )}
         <button
           type="button"
           className="pause-item"
@@ -729,6 +730,7 @@ function SaveLoadSlots({ onClose }: { onClose: () => void }) {
 
 // Touch-friendly code entry for safes and combination-lock doors (next level).
 export function CodeKeypad() {
+  const { dead } = useGameState();
   const [target, setTarget] = useState<"safe" | "door" | null>(null);
   const [digits, setDigits] = useState("");
   const [msg, setMsg] = useState("");
@@ -739,7 +741,7 @@ export function CodeKeypad() {
     }, 150);
     return () => clearInterval(id);
   }, []);
-  if (!target) return null;
+  if (!target || dead) return null;
   const submit = () => {
     const ok = target === "safe" ? trySafeCode(Number(digits)) : tryDoorCode(Number(digits));
     if (ok) { setTarget(null); setDigits(""); setMsg(""); }
@@ -766,22 +768,41 @@ export function CodeKeypad() {
 
 export function GameOver({ onLoad }: { onLoad: () => void }) {
   const { dead, lastSaveSlot } = useGameState();
-  if (!dead) return null;
+  const [away, setAway] = useState(false);
+  useEffect(() => { if (!dead) setAway(false); }, [dead]);
+  if (!dead || away) return null;
   return (
     <div className="pause-overlay game-over">
       <div className="pause-menu">
         <div className="save-title">Grace died</div>
-        <button type="button" className="pause-item pause-selected" disabled={lastSaveSlot < 0}
-          onClick={() => loadGame(lastSaveSlot)}>Restart from last save</button>
-        <button type="button" className="pause-item" onClick={onLoad}>Load</button>
+        {lastSaveSlot >= 0 && (
+          <button type="button" className="pause-item" onClick={() => loadGame(lastSaveSlot)}>Restart from last save</button>
+        )}
+        <button type="button" className="pause-item" onClick={() => { setAway(true); onLoad(); }}>Load</button>
         <button type="button" className="pause-item" onClick={() => gameReset()}>Restart level</button>
       </div>
     </div>
   );
 }
 
-export function LevelComplete() {
-  const { levelComplete } = useGameState();
-  if (!levelComplete) return null;
-  return <div className="level-complete" role="status">Level complete</div>;
+export function LevelComplete({ onLoad }: { onLoad: () => void }) {
+  const { levelComplete, lastSaveSlot } = useGameState();
+  const elapsed = useElapsed();
+  const [away, setAway] = useState(false);
+  useEffect(() => { if (!levelComplete) setAway(false); }, [levelComplete]);
+  if (!levelComplete || away) return null;
+  return (
+    <div className="level-complete" role="status">
+      <div className="pause-menu">
+        <div className="save-title">Level complete</div>
+        <div className="level-time">Time: {formatMs(elapsed)}</div>
+        {lastSaveSlot >= 0 && (
+          <button type="button" className="pause-item" onClick={() => loadGame(lastSaveSlot)}>Restart from last save</button>
+        )}
+        <button type="button" className="pause-item" onClick={() => { setAway(true); onLoad(); }}>Load a save</button>
+        <button type="button" className="pause-item" onClick={() => gameReset()}>Restart level</button>
+        <button type="button" className="pause-item" onClick={() => setAway(true)}>Close</button>
+      </div>
+    </div>
+  );
 }

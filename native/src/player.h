@@ -33,3 +33,6 @@ int player_replay_y(int index);
 void player_note_time(int ms);
 bool player_on_top(void);
 int player_replay_t(int index);
+
+bool player_climbing(void);
+void player_climb_to(int x, int y);

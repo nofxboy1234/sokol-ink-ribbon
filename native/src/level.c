@@ -126,7 +126,7 @@ void level_init(level_t* lv) {
 const char* obj_kind_name(obj_kind_t kind) {
     static const char* names[OBJ_KIND_COUNT] = {
         "door", "item", "fusebox", "light", "switch", "typewriter", "file",
-        "safe", "obstacle", "movable", "openable", "start", "goal", "recipe", "cabinet",
+        "safe", "obstacle", "start", "goal", "recipe", "cabinet",
     };
     return (kind >= 0 && kind < OBJ_KIND_COUNT) ? names[kind] : "door";
 }
@@ -309,6 +309,9 @@ static void parse_objects(const char* js, const jsmntok_t* t, level_t* lv, int a
             char kind[LEVEL_MAX_NAME] = "item";
             if ((v = obj_find(js, t, i, "kind")) >= 0) tok_str(js, &t[v], kind, LEVEL_MAX_NAME);
             o->kind = obj_kind_from_name(kind);
+            // legacy kinds: movable/openable are obstacle properties now
+            if (strcmp(kind, "movable") == 0) { o->kind = OBJ_OBSTACLE; o->movable = 1; }
+            if (strcmp(kind, "openable") == 0) { o->kind = OBJ_OBSTACLE; o->openable = 1; }
             if ((v = obj_find(js, t, i, "id")) >= 0) o->id = tok_int(js, &t[v], o->id);
             if ((v = obj_find(js, t, i, "x")) >= 0) o->x = tok_int(js, &t[v], 0);
             if ((v = obj_find(js, t, i, "y")) >= 0) o->y = tok_int(js, &t[v], 0);
@@ -327,6 +330,8 @@ static void parse_objects(const char* js, const jsmntok_t* t, level_t* lv, int a
             if ((v = obj_find(js, t, i, "group_id")) >= 0) o->group_id = tok_int(js, &t[v], 0);
             if ((v = obj_find(js, t, i, "radius")) >= 0) o->radius = tok_float(js, &t[v], 0.0f);
             if ((v = obj_find(js, t, i, "climbable")) >= 0) o->climbable = tok_bool(js, &t[v], false) ? 1 : 0;
+            if ((v = obj_find(js, t, i, "movable")) >= 0) o->movable = tok_bool(js, &t[v], false) ? 1 : 0;
+            if ((v = obj_find(js, t, i, "openable")) >= 0) o->openable = tok_bool(js, &t[v], false) ? 1 : 0;
             if ((v = obj_find(js, t, i, "code")) >= 0) o->code = tok_int(js, &t[v], 0);
             if ((v = obj_find(js, t, i, "name")) >= 0) tok_str(js, &t[v], o->name, LEVEL_MAX_NAME);
             char state[LEVEL_MAX_NAME] = "unknown";
@@ -493,9 +498,8 @@ int level_to_json(const level_t* lv, char* out, int cap) {
         } else if (o->kind == OBJ_OBSTACLE) {
             n = ap(out, cap, n, ", \"w\": %d, \"h\": %d, \"climbable\": %s",
                    o->w, o->h, o->climbable ? "true" : "false");
-        } else if (o->kind == OBJ_OPENABLE) {
-            n = ap(out, cap, n, ", \"w\": %d, \"h\": %d, \"open\": %s",
-                   o->w, o->h, o->open ? "true" : "false");
+            if (o->movable) n = ap(out, cap, n, ", \"movable\": true");
+            if (o->openable) n = ap(out, cap, n, ", \"openable\": true, \"open\": %s", o->open ? "true" : "false");
         } else if (o->kind == OBJ_FILE || o->kind == OBJ_SAFE) {
             n = ap(out, cap, n, ", \"code\": %d", o->code);
         }

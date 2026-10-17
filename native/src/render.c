@@ -274,22 +274,19 @@ static void draw_objects_pass(int item_pass) {
                 fill_rect(sx, sy + h - t, w, t, C_INK_R);
                 fill_rect(sx, sy, t, h, C_INK_R);
                 fill_rect(sx + w - t, sy, t, h, C_INK_R);
+                if (o->openable) {
+                    float cr = 0.0f, cg = 1.0f, cb = 0.2f;
+                    fill_rect(sx, sy, w, t, cr, cg, cb, 1.0f);
+                    fill_rect(sx, sy + h - t, w, t, cr, cg, cb, 1.0f);
+                    fill_rect(sx, sy, t, h, cr, cg, cb, 1.0f);
+                    fill_rect(sx + w - t, sy, t, h, cr, cg, cb, 1.0f);
+                } else if (o->movable) {
+                    fill_rect(sx + scale * 0.28f, sy + scale * 0.28f, scale * 0.44f, scale * 0.44f, C_GRAY_R);
+                }
                 break;
             }
-            case OBJ_MOVABLE:
-                fill_rect(sx + scale * 0.28f, sy + scale * 0.28f, scale * 0.44f, scale * 0.44f, C_GRAY_R);
-                break;
-            case OBJ_OPENABLE: {
-                float w = (float)(o->w > 0 ? o->w : 1) * scale;
-                float h = (float)(o->h > 0 ? o->h : 1) * scale;
-                float t = scale * 0.12f;
-                float cr = 0.0f, cg = 1.0f, cb = 0.2f;
-                fill_rect(sx, sy, w, t, cr, cg, cb, 1.0f);
-                fill_rect(sx, sy + h - t, w, t, cr, cg, cb, 1.0f);
-                fill_rect(sx, sy, t, h, cr, cg, cb, 1.0f);
-                fill_rect(sx + w - t, sy, t, h, cr, cg, cb, 1.0f);
-                break;
-            }
+            // (movable/openable obstacles are drawn by the OBJ_OBSTACLE case:
+            //  green rim for a container, grey block for a movable)
             case OBJ_FUSEBOX:
                 fill_rect(sx + scale * 0.25f, sy + scale * 0.25f, scale * 0.5f, scale * 0.5f, C_INK_R);
                 fill_rect(sx + scale * 0.35f, sy + scale * 0.35f, scale * 0.3f, scale * 0.3f, C_YELLOW_R);
@@ -315,7 +312,8 @@ static void draw_discovery_markers(void) {
         const obj_t* o = &lv->objs[i];
         if (o->kind != OBJ_ITEM && o->kind != OBJ_DOOR && o->kind != OBJ_SWITCH &&
             o->kind != OBJ_TYPEWRITER && o->kind != OBJ_FUSEBOX &&
-            o->kind != OBJ_FILE && o->kind != OBJ_SAFE && o->kind != OBJ_OPENABLE) {
+            o->kind != OBJ_FILE && o->kind != OBJ_SAFE && !(o->kind == OBJ_OBSTACLE && o->openable) &&
+            !(o->kind == OBJ_OBSTACLE && o->climbable)) {
             continue;
         }
         if (o->kind == OBJ_DOOR && o->state == DOOR_BROKEN) {
@@ -330,10 +328,10 @@ static void draw_discovery_markers(void) {
         if (o->kind == OBJ_ITEM && !light_item_visible(i)) {
             continue;
         }
-        if (o->kind == OBJ_OPENABLE && o->open) {
+        if ((o->kind == OBJ_OBSTACLE && o->openable) && o->open) {
             continue;
         }
-        bool rect = (o->kind == OBJ_OPENABLE || o->kind == OBJ_OBSTACLE);
+        bool rect = (o->kind == OBJ_OBSTACLE);
         int span = o->span > 0 ? o->span : 1;
         int ex = rect ? o->x + (o->w > 0 ? o->w : 1) - 1 : (o->kind == OBJ_DOOR && o->horizontal ? o->x + span - 1 : o->x);
         int ey = rect ? o->y + (o->h > 0 ? o->h : 1) - 1 : (o->kind == OBJ_DOOR && !o->horizontal ? o->y + span - 1 : o->y);
@@ -344,8 +342,8 @@ static void draw_discovery_markers(void) {
         }
         int d = interact_distance(i);
         bool door = o->kind == OBJ_DOOR;
-        if (d > 4) {
-            continue;
+        if (d > 4 || (o->kind == OBJ_OBSTACLE && d > 2)) {
+            continue;  // climb prompt: outline at 2 cells, X at 1
         }
         // marker position: rect centre, or the midpoint of the door slab
         float mwx = (float)o->x + (rect ? 0.5f * (float)(o->w > 0 ? o->w : 1) : 0.5f);

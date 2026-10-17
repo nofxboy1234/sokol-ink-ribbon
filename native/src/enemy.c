@@ -64,7 +64,7 @@
 #define ENEMY_INVESTIGATE_SWEEP_STEPS 6
 
 #define ENEMY_LIGHT_BREAK_DIST 1.5f
-#define ENEMY_LIGHT_BREAK_PCT 20
+#define ENEMY_LIGHT_BREAK_PCT 50  // per step within reach: ~2 steps expected, wind-up kept
 #define ENEMY_LIGHT_BREAK_MIN 1.0f
 #define ENEMY_LIGHT_BREAK_MAX 1.6f
 
