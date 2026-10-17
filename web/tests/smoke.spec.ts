@@ -108,7 +108,7 @@ test("the world is live while she waits, and the Pause menu freezes it", async (
   expect(await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0)).toBe(t1);
 });
 
-test("clicking Grace stops her mid-move; WASD and the E run latch drive her", async ({ page }) => {
+test("clicking Grace does nothing mid-move; WASD and the E run latch drive her", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
     timeout: 30_000,
@@ -125,16 +125,18 @@ test("clicking Grace stops her mid-move; WASD and the E run latch drive her", as
   await page.waitForTimeout(200);
   expect(await mode()).toBe(2); // E while running does not toggle off
 
-  // click on her dot: she stops where she stands, back to Waiting
+  // click on her dot mid-run: her dot takes no input, she keeps running
   const at = await page.evaluate(() => ({
     x: window.Module?._web_grace_screen_x?.() ?? 0,
     y: window.Module?._web_grace_screen_y?.() ?? 0,
   }));
   await page.mouse.click(box.x + at.x, box.y + at.y);
+  await page.waitForTimeout(250);
+  expect(await mode()).toBe(2); // still Running: the click did nothing
   await page.keyboard.up("d");
   await expect.poll(mode).toBe(3);
 
-  // the latch cleared when she stopped: moving again walks
+  // moving again walks (the run latch cleared when she stopped)
   await page.keyboard.down("d");
   await expect.poll(mode).toBe(1);
   await page.keyboard.up("d");
@@ -222,7 +224,7 @@ test("no save button and records navigates client-side", async ({ page }) => {
   expect(marker).toBe(1);
 });
 
-test("right click on Grace opens Quick Equip and an active bottle can be thrown", async ({
+test("Z opens Quick Equip (right-clicking Grace does not) and an active bottle can be thrown", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -244,7 +246,12 @@ test("right click on Grace opens Quick Equip and an active bottle can be thrown"
   }));
   const quick = page.getByRole("group", { name: "Quick Equip" });
 
+  // right-clicking her dot does nothing: no Quick Equip
   await page.mouse.click(box.x + at.x, box.y + at.y, { button: "right" });
+  await page.waitForTimeout(250);
+  await expect(quick).toHaveCount(0);
+  // Z is the desktop equip key
+  await page.keyboard.press("z");
   await expect(quick).toBeVisible();
   await expect(page.getByRole("button", { name: "Walk", exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => (window as unknown as { __ctx: boolean[] }).__ctx)).toEqual([
@@ -292,7 +299,7 @@ test("right click on Grace opens Quick Equip and an active bottle can be thrown"
   expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
 });
 
-test("a tap on an item next to Grace picks it up; tapping her stops her", async ({
+test("a tap on an item next to Grace picks it up; tapping her does nothing", async ({
   page,
 }) => {
   await page.goto("/");
@@ -317,6 +324,11 @@ test("a tap on an item next to Grace picks it up; tapping her stops her", async 
   await expect
     .poll(() => page.evaluate(() => window.Module?._items_collected?.() ?? 0))
     .toBe(before + 1);
+  // tapping Grace herself does nothing at all
+  await page.mouse.click(box.x + at.x, box.y + at.y);
+  await page.waitForTimeout(250);
+  expect(await page.evaluate(() => window.Module?._items_collected?.() ?? 0)).toBe(before + 1);
+  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
   // the X key is the same interact trigger: face east back at her cell is a
   // no-op, but the mode stays Waiting and nothing breaks
   await page.keyboard.press("x");
@@ -338,7 +350,9 @@ test("she starts Waiting in a live world, and steering west/east works from spaw
   await expect.poll(mode).toBe(3);
 });
 
-test("right click toggles only Quick Equip; there is no action menu", async ({ page }) => {
+test("Grace's dot takes no input; Z toggles Quick Equip and there is no action menu", async ({
+  page,
+}) => {
   await page.goto("/");
   await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
     timeout: 30_000,
@@ -356,16 +370,23 @@ test("right click toggles only Quick Equip; there is no action menu", async ({ p
       window.Module?._web_grace_menu_open?.(),
       window.Module?._web_quick_open?.(),
     ]);
-  const left = () => page.mouse.click(box.x + at.x, box.y + at.y);
-  const right = () => page.mouse.click(box.x + at.x, box.y + at.y, { button: "right" });
   expect(await state()).toEqual([0, 0]);
-  await right();
-  await expect.poll(state).toEqual([0, 1]);
-  await right();
+  // right click, left click and a long press on her dot: all nothing
+  await page.mouse.click(box.x + at.x, box.y + at.y, { button: "right" });
   await expect.poll(state).toEqual([0, 0]);
-  await left();
-  await expect.poll(state).toEqual([0, 0]); // left click on Grace only stops her
+  await page.mouse.click(box.x + at.x, box.y + at.y);
+  await expect.poll(state).toEqual([0, 0]);
+  await page.mouse.move(box.x + at.x, box.y + at.y);
+  await page.mouse.down();
+  await page.waitForTimeout(800); // a long press used to open Quick Equip
+  await page.mouse.up();
+  await expect.poll(state).toEqual([0, 0]);
   expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
+  // Z toggles Quick Equip instead
+  await page.keyboard.press("z");
+  await expect.poll(state).toEqual([0, 1]);
+  await page.keyboard.press("z");
+  await expect.poll(state).toEqual([0, 0]);
 });
 
 // Calls a wasm export by name (without the leading underscore).
@@ -435,13 +456,9 @@ test("a Med Injector heals fully and a Green Herb one level", async ({ page }) =
 });
 
 test("the Lighter sits North in Quick Equip, starts off and toggles", async ({ page }) => {
-  const box = await boot(page);
+  await boot(page);
   await wasm(page, "web_test_give", 7);
-  const at = {
-    x: await wasm(page, "web_grace_screen_x"),
-    y: await wasm(page, "web_grace_screen_y"),
-  };
-  await page.mouse.click(box.x + at.x, box.y + at.y, { button: "right" });
+  await page.keyboard.press("z");
   const lighter = page
     .getByRole("group", { name: "Quick Equip" })
     .getByRole("button", { name: "Lighter" });
@@ -737,9 +754,9 @@ test("phone stick centre tap: left tap does not interact, right tap with jitter 
   // RIGHT stick centre tap with jitter: interact fires, no movement emitted
   const right = await centreOf(".aim-stick");
   await touch("touchStart", [{ ...right, id: 1 }]);
-  await touch("touchMove", [{ x: right.x + 3, y: right.y - 2, id: 1 }]);
-  await touch("touchMove", [{ x: right.x + 5, y: right.y + 2, id: 1 }]);
-  await touch("touchEnd", [{ x: right.x + 5, y: right.y + 2, id: 1 }]);
+  await touch("touchMove", [{ x: right.x + 8, y: right.y - 4, id: 1 }]);
+  await touch("touchMove", [{ x: right.x + 14, y: right.y + 5, id: 1 }]);
+  await touch("touchEnd", [{ x: right.x + 14, y: right.y + 5, id: 1 }]);
   await expect
     .poll(() => page.evaluate(() => (window as any).Module?._items_collected?.() ?? 0))
     .toBe(before + 1); // the tap fired interact and picked the herb up
@@ -749,7 +766,7 @@ test("phone stick centre tap: left tap does not interact, right tap with jitter 
   await context.close();
 });
 
-test("phone stick: drift in the dead zone does not move her, a small push beyond it walks", async ({
+test("phone stick: drift up to the dead zone does not move her, a push beyond it walks", async ({
   browser,
 }) => {
   const { context, page } = await phonePage(browser, { width: 390, height: 844 });
@@ -762,16 +779,16 @@ test("phone stick: drift in the dead zone does not move her, a small push beyond
   const px0 = await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0);
   const touch = await touchSession(page, context);
   await touch("touchStart", [{ ...c, id: 1 }]);
-  await touch("touchMove", [{ x: c.x + 6, y: c.y, id: 1 }]); // inside the ~10px dead zone
+  await touch("touchMove", [{ x: c.x + 16, y: c.y, id: 1 }]); // inside the ~18px dead zone
   await page.waitForTimeout(400);
   expect(await page.evaluate(() => (window as any).Module?._web_grace_mode?.())).toBe(3);
   expect(await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0)).toBeCloseTo(px0, 1);
-  // a deliberate small push just past the dead zone (still in the walk band)
-  await touch("touchMove", [{ x: c.x + 18, y: c.y, id: 1 }]);
+  // a deliberate push just past the dead zone (still in the walk band)
+  await touch("touchMove", [{ x: c.x + 24, y: c.y, id: 1 }]);
   await expect
     .poll(() => page.evaluate(() => (window as any).Module?._web_grace_mode?.()))
     .toBe(1); // Walking
-  await touch("touchEnd", [{ x: c.x + 18, y: c.y, id: 1 }]);
+  await touch("touchEnd", [{ x: c.x + 24, y: c.y, id: 1 }]);
   await context.close();
 });
 
@@ -802,6 +819,36 @@ test("phone aim stick: centre jitter and a dead-zone release cancel instead of t
   await page.waitForTimeout(200);
   expect(await page.evaluate(() => (window as any).Module?._web_test_aiming?.())).toBe(0);
   expect(await page.evaluate(() => (window as any).Module?._web_impact_age_ms?.() ?? -1)).toBe(-1);
+  await context.close();
+});
+
+test("phone aim stick: drift up to the new dead zone neither aims nor throws", async ({
+  browser,
+}) => {
+  const { context, page } = await phonePage(browser, { width: 844, height: 390 });
+  await page.evaluate(() => (window as any).Module?._web_test_bottle_ready?.());
+  const aim = await page.locator(".aim-stick").boundingBox();
+  expect(aim).not.toBeNull();
+  const c = { x: (aim?.x ?? 0) + (aim?.width ?? 0) / 2, y: (aim?.y ?? 0) + (aim?.height ?? 0) / 2 };
+  const touch = await touchSession(page, context);
+  // on the shrunk landscape stick the dead zone is ~13px: drift 11px
+  await touch("touchStart", [{ ...c, id: 1 }]);
+  await touch("touchMove", [{ x: c.x + 11, y: c.y - 3, id: 1 }]);
+  await page.waitForTimeout(250); // under the 450ms hold-to-equip threshold
+  expect(await page.evaluate(() => (window as any).Module?._web_test_aiming?.())).toBe(0);
+  await touch("touchEnd", [{ x: c.x + 11, y: c.y - 3, id: 1 }]);
+  await page.waitForTimeout(200);
+  expect(await page.evaluate(() => (window as any).Module?._web_impact_age_ms?.() ?? -1)).toBe(-1);
+  // beyond the dead zone it aims, and releasing throws (existing behaviour)
+  await touch("touchStart", [{ ...c, id: 1 }]);
+  await touch("touchMove", [{ x: c.x + 28, y: c.y, id: 1 }]);
+  await expect
+    .poll(() => page.evaluate(() => (window as any).Module?._web_test_aiming?.()))
+    .toBe(1);
+  await touch("touchEnd", [{ x: c.x + 28, y: c.y, id: 1 }]);
+  await expect
+    .poll(() => page.evaluate(() => (window as any).Module?._web_impact_age_ms?.() ?? -1))
+    .toBeGreaterThanOrEqual(0);
   await context.close();
 });
 

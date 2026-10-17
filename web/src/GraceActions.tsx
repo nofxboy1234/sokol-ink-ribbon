@@ -169,10 +169,11 @@ type Slot = {
   title?: string;
 };
 
-// Grace's remaining circle UI: the status circle (bottom-right) and the
-// Quick Equip circles around her dot (right-click / long-press on Grace
-// while she stands still). The old radial action menu is gone -- movement
-// is WASD / the analogue stick now, and throwing has its own aim mode.
+// Grace's remaining circle UI: the status circle (top-left) and the
+// Quick Equip circles around her dot (opened by Z on desktop or holding
+// the right stick's centre -- her dot itself takes no input). The old
+// radial action menu is gone -- movement is WASD / the analogue stick
+// now, and throwing has its own aim mode.
 export function GraceActions() {
   const { dead } = useGameState();
   const [grace, setGrace] = useState<GraceView>(readGrace);

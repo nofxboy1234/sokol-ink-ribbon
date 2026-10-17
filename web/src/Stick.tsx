@@ -27,17 +27,19 @@ import {
 const RADIUS_RATIO = 52 / 128;
 
 // Dead zone, as fractions of the travel radius above. A touch only starts
-// emitting a direction once it pushes past DEAD_ZONE_EXIT: 0.20 of travel
-// is ~10px at the full 128px stick size (~8px shrunk in landscape), in
-// line with typical 8-12px touch slop, and well inside the walk band
-// (C walks up to half travel), so a deliberate small push still walks.
-// A centre tap whose drift never leaves the dead zone therefore emits
-// only the zero vector and still counts as a tap on release. Once live, a
-// stick stays live until it falls back below DEAD_ZONE_ENTER (0.12, the
-// same gate the C side uses): the gap between the two is hysteresis, so
-// hovering near the edge does not flicker between dead and moving.
-const DEAD_ZONE_EXIT = 0.2;
-const DEAD_ZONE_ENTER = 0.12;
+// emitting a direction once it pushes past DEAD_ZONE_EXIT: 0.34 of travel
+// is ~18px at the full 128px stick size and ~12-14px shrunk in landscape
+// (90-98px sticks) -- a fat finger's centre is hard to place precisely,
+// so the earlier 0.20 zone still read resting drift as a direction. The
+// walk band is everything from here to half travel (C walks to 0.5), so
+// 0.34-0.5 remains for a deliberate small push to walk, and an aim push
+// past 0.34 already reaches ~2.7 cells of throw. A centre tap whose drift
+// never leaves the dead zone therefore emits only the zero vector and
+// still counts as a tap on release. Once live, a stick stays live until
+// it falls back below DEAD_ZONE_ENTER (0.24): the gap between the two is
+// hysteresis, so hovering near the edge does not flicker.
+const DEAD_ZONE_EXIT = 0.34;
+const DEAD_ZONE_ENTER = 0.24;
 // Tap vs hold on the right stick's centre: a release under TAP_MAX_MS is
 // a tap (interact); still touching at HOLD_MS is a hold (Quick Equip) and
 // the tap is suppressed. Releases in between do neither -- a deliberate
