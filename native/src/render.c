@@ -489,12 +489,13 @@ void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* ro
 
     if (grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y())) &&
         !light_cell_lit((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
-        // not seen: only a faint marker when she can hear it
-        if (enemy_sense() == SENSE_HEARING) {
-            float ex, ey; camera_cell_to_screen(enemy_x(), enemy_y(), &ex, &ey);
-            ring_circle(ex, ey, scale * 0.30f, scale * 0.06f, 0.4f, 0.4f, 0.4f, 0.4f);
-            fill_circle(ex, ey, scale * 0.07f, 0.4f, 0.4f, 0.4f, 0.4f);
-        }
+        // In the dark the enemy is always just a black outline of its dot:
+        // a hollow circle, no fill, whatever Grace can hear or smell. (This
+        // replaces the old faint heard-only marker, which would only have
+        // duplicated the outline now that it is always drawn.)
+        float ex, ey;
+        camera_cell_to_screen(enemy_x(), enemy_y(), &ex, &ey);
+        ring_circle(ex, ey, scale * 0.64f, scale * 0.09f, C_INK_R);
     } else if (grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
         float ex, ey;
         camera_cell_to_screen(enemy_x(), enemy_y(), &ex, &ey);
