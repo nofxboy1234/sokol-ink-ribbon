@@ -539,45 +539,100 @@ test("a typewriter save keeps the enemy where it was", async ({ page }) => {
   expect(await wasm(page, "web_enemy_py")).toBeCloseTo(12.3, 3);
 });
 
-test("she can only throw standing still: moving blocks the aim, stopping allows it", async ({
+test("throwing on the move: Q aims while walking and the click throws (hitscan)", async ({
   page,
 }) => {
-  await boot(page);
+  const box = await boot(page);
   expect(await wasm(page, "web_test_bottle_ready")).toBe(1);
-  // moving: Q does nothing, the direct throw refuses
+  // walking east, Q enters aim without stopping her
   await page.keyboard.down("d");
-  await page.waitForTimeout(300);
+  await expect.poll(() => wasm(page, "web_grace_mode")).toBe(1);
   await page.keyboard.press("q");
-  expect(await wasm(page, "web_test_aiming")).toBe(0);
-  expect(await wasm(page, "web_throw_allowed")).toBe(0);
+  expect(await wasm(page, "web_test_aiming")).toBe(1);
+  await page.waitForTimeout(300);
+  expect(await wasm(page, "web_grace_mode")).toBe(1); // still walking, capped
+  // aim east with the mouse and click: the bottle goes, aim exits
+  const gx = await wasm(page, "web_grace_screen_x");
+  const gy = await wasm(page, "web_grace_screen_y");
+  const cell = await wasm(page, "web_cell_css_px");
+  await page.mouse.move(box.x + gx + cell * 3, box.y + gy);
+  await page.waitForTimeout(120);
+  await page.mouse.click(box.x + gx + cell * 3, box.y + gy);
   await page.keyboard.up("d");
-  await expect.poll(() => wasm(page, "web_grace_mode")).toBe(3);
-  // stopped: the throw works and she stays Waiting
-  let thrown = 0;
-  for (const [dx, dy] of [[0, 2], [0, -2], [-2, 0], [2, 0], [0, 3], [0, -3]]) {
-    const cx = await wasm(page, "player_cell_x");
-    const cy = await wasm(page, "player_cell_y");
-    if (await wasm(page, "web_throw_in_reach", cx + dx, cy + dy)) {
-      thrown = await wasm(page, "web_test_throw_at", cx + dx, cy + dy);
-      if (thrown) break;
-    }
-  }
-  expect(thrown).toBe(1);
-  expect(await wasm(page, "web_grace_mode")).toBe(3);
+  expect(await wasm(page, "web_impact_age_ms")).toBeGreaterThanOrEqual(0);
+  expect(await wasm(page, "web_test_aiming")).toBe(0);
 });
 
-test("running blocks throwing until she stops and the latch clears", async ({ page }) => {
+test("hitscan: a clear ray hits the enemy, a door in between blocks it", async ({ page }) => {
+  await boot(page);
+  // Grace north of the closed door at (69,49); enemy first on her side...
+  await wasm(page, "web_test_grace_at", 70, 48);
+  await page.waitForTimeout(150);
+  await wasm(page, "web_test_enemy_place", 7050, 4750);
+  expect(await wasm(page, "web_test_hitscan", 0, -100, 300)).toBe(1);
+  // ...then south of the door: the ray stops at the door
+  await wasm(page, "web_test_enemy_place", 7050, 5050);
+  expect(await wasm(page, "web_test_hitscan", 0, 100, 300)).toBe(2);
+});
+
+test("aiming caps a run to a walk; un-aiming restores the run latch", async ({ page }) => {
   await boot(page);
   expect(await wasm(page, "web_test_bottle_ready")).toBe(1);
   await page.keyboard.down("d");
   await page.keyboard.press("e");
-  await expect.poll(() => wasm(page, "web_grace_mode")).toBe(2);
-  expect(await wasm(page, "web_throw_allowed")).toBe(0);
+  await expect.poll(() => wasm(page, "web_grace_mode")).toBe(2); // running
   await page.keyboard.press("q");
-  expect(await wasm(page, "web_test_aiming")).toBe(0);
+  await expect.poll(() => wasm(page, "web_grace_mode")).toBe(1); // capped to walk while aiming
+  expect(await wasm(page, "web_throw_allowed")).toBe(1);
+  await page.keyboard.press("q"); // aim off
+  await expect.poll(() => wasm(page, "web_grace_mode")).toBe(2); // latch still there
   await page.keyboard.up("d");
   await expect.poll(() => wasm(page, "web_grace_mode")).toBe(3);
-  expect(await wasm(page, "web_throw_allowed")).toBe(1);
+});
+
+test("phone twin sticks: left moves, right aims, releasing the aim throws while moving", async ({
+  browser,
+}) => {
+  const phone = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 3,
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await phone.newPage();
+  await page.goto("/");
+  await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
+    timeout: 30_000,
+  });
+  await page.evaluate(() => (window as any).Module?._web_test_bottle_ready?.());
+  const move = await page.locator(".stick:not(.aim-stick)").boundingBox();
+  const aim = await page.locator(".aim-stick").boundingBox();
+  expect(move).not.toBeNull();
+  expect(aim).not.toBeNull();
+  expect((move?.x ?? 0)).toBeLessThan(aim?.x ?? 0); // move left, aim right
+  const mc = { x: (move?.x ?? 0) + (move?.width ?? 0) / 2, y: (move?.y ?? 0) + (move?.height ?? 0) / 2 };
+  const ac = { x: (aim?.x ?? 0) + (aim?.width ?? 0) / 2, y: (aim?.y ?? 0) + (aim?.height ?? 0) / 2 };
+  const cdp = await phone.newCDPSession(page);
+  const touch = (type: string, points: { x: number; y: number; id: number }[]) =>
+    cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+  await touch("touchStart", [
+    { ...mc, id: 1 },
+    { ...ac, id: 2 },
+  ]);
+  await touch("touchMove", [
+    { x: mc.x + 40, y: mc.y, id: 1 },
+    { x: ac.x + 38, y: ac.y, id: 2 },
+  ]);
+  await page.waitForTimeout(600);
+  expect(await page.evaluate(() => (window as any).Module?._web_grace_mode?.())).toBe(1);
+  expect(await page.evaluate(() => (window as any).Module?._web_test_aiming?.())).toBe(1);
+  // release only the aim stick: she throws, still moving on the left stick
+  await touch("touchEnd", [{ x: ac.x + 38, y: ac.y, id: 2 }]);
+  await expect
+    .poll(() => page.evaluate(() => (window as any).Module?._web_impact_age_ms?.() ?? -1))
+    .toBeGreaterThanOrEqual(0);
+  await touch("touchEnd", [{ x: mc.x + 40, y: mc.y, id: 1 }]);
+  await phone.close();
 });
 
 test("items lit by a switch light stay visible after it is switched off", async ({ page }) => {

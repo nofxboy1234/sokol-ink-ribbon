@@ -137,9 +137,14 @@ static struct {
     bool key_w, key_a, key_s, key_d;
     bool run_latch;          // E while walking: run until she stops
     float stick_x, stick_y;  // analogue stick vector from React, -1..1
-    bool stick_was_live;     // stick pushed past the dead zone (aim release)
-    bool aiming;             // throw aim mode: mouse/stick direction + reticle
+    bool stick_was_live;     // (legacy field, unused by the twin-stick aim)
+    bool aiming;             // throw aim mode: mouse/aim-stick direction + reticle
     float aim_wx, aim_wy;    // the reticle's world position (cells, float)
+    float aim_stick_x, aim_stick_y;  // the right (aim) stick vector, -1..1
+    bool aim_stick_live;     // aim stick pushed past the dead zone
+    bool aim_from_stick;     // aim mode was entered from the aim stick
+    float aim_dir_x, aim_dir_y;      // current aim direction (unit)
+    float aim_len;           // current aim length in cells (<= THROW_RANGE_CELLS)
     bool touch_active;
     bool touch_moved;
     float touch_start_x, touch_start_y;
@@ -569,20 +574,25 @@ static bool interact_trigger(void) {
     return false;
 }
 
-// Aim mode (Q on desktop, double-tap on the stick centre): only from a
-// standstill, only with the bottle active. The world stays live (D2).
+// Aim mode (Q on desktop, the right aim stick on touch): any time the
+// bottle is active, moving or not -- while aiming her speed is capped to
+// a walk (see input_update), so a throw is standing (80% stance rules no
+// longer roll: hitscan decides) or walking, never running.
 static bool aim_enter(void) {
     if (app.aiming) {
         app.aiming = false;
+        app.aim_from_stick = false;
         bump_revision();
         return true;  // Q again cancels
     }
-    if (!throw_active() || input_held() || player_climbing() || app.grace == GRACE_HURT || app.grace == GRACE_PAUSED) {
+    if (!throw_active() || player_climbing() || app.grace == GRACE_HURT || app.grace == GRACE_PAUSED) {
         return false;
     }
-    player_stop();
     app.aiming = true;
-    app.aim_wx = player_x() + 1.0f;
+    app.aim_dir_x = 1.0f;
+    app.aim_dir_y = 0.0f;
+    app.aim_len = 3.0f;
+    app.aim_wx = player_x() + app.aim_dir_x * app.aim_len;
     app.aim_wy = player_y();
     app.aim_enemy = false;
     bump_revision();
@@ -593,33 +603,38 @@ static void aim_update(void) {
     if (!app.aiming) {
         return;
     }
-    float dx, dy;
-    if (app.stick_x != 0.0f || app.stick_y != 0.0f) {
-        dx = app.stick_x;
-        dy = app.stick_y;
-    } else {
+    float stick_mag = sqrtf(app.aim_stick_x * app.aim_stick_x + app.aim_stick_y * app.aim_stick_y);
+    if (stick_mag >= 0.12f) {
+        // the aim stick: direction sets the line, push distance the length
+        app.aim_dir_x = app.aim_stick_x / stick_mag;
+        app.aim_dir_y = app.aim_stick_y / stick_mag;
+        app.aim_len = (stick_mag > 1.0f ? 1.0f : stick_mag) * THROW_RANGE_CELLS;
+    } else if (app.aim_stick_x == 0.0f && app.aim_stick_y == 0.0f && !app.touch_pointer) {
         float wx, wy;
         camera_screen_to_world(app.mouse_x, app.mouse_y, &wx, &wy);
-        dx = wx - player_x();
-        dy = wy - player_y();
+        float dx = wx - player_x(), dy = wy - player_y();
+        float len = sqrtf(dx * dx + dy * dy);
+        if (len >= 0.05f) {
+            app.aim_dir_x = dx / len;
+            app.aim_dir_y = dy / len;
+            app.aim_len = len > THROW_RANGE_CELLS ? THROW_RANGE_CELLS : len;
+        }
     }
-    float len = sqrtf(dx * dx + dy * dy);
-    if (len < 0.05f) {
-        return;  // keep the last direction
-    }
-    dx /= len;
-    dy /= len;
-    float dist = len > THROW_RANGE_CELLS ? THROW_RANGE_CELLS : len;
-    if (app.stick_x != 0.0f || app.stick_y != 0.0f) {
-        dist = THROW_RANGE_CELLS;  // stick aims at full reach in its direction
-    }
-    app.aim_wx = player_x() + dx * dist;
-    app.aim_wy = player_y() + dy * dist;
+    app.aim_wx = player_x() + app.aim_dir_x * app.aim_len;
+    app.aim_wy = player_y() + app.aim_dir_y * app.aim_len;
     app.aim_enemy = false;
-    // snap onto the enemy when the reticle passes close to it
+    // snap onto the enemy when the reticle passes close to it: the aim
+    // direction bends to its centre, and the hitscan confirms the line
     if (grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
         float ex = enemy_x() - app.aim_wx, ey = enemy_y() - app.aim_wy;
         if (ex * ex + ey * ey <= 0.75f * 0.75f) {
+            float edx = enemy_x() - player_x(), edy = enemy_y() - player_y();
+            float elen = sqrtf(edx * edx + edy * edy);
+            if (elen > 0.05f) {
+                app.aim_dir_x = edx / elen;
+                app.aim_dir_y = edy / elen;
+                app.aim_len = elen;
+            }
             app.aim_wx = enemy_x();
             app.aim_wy = enemy_y();
             app.aim_enemy = true;
@@ -628,41 +643,33 @@ static void aim_update(void) {
 }
 
 static bool aim_ok_now(void) {
-    if (!app.aiming) {
-        return false;
-    }
-    int px, py;
-    player_cell(&px, &py);
-    int tx = (int)floorf(app.aim_wx), ty = (int)floorf(app.aim_wy);
-    if (app.aim_enemy) {
-        enemy_cell(&tx, &ty);
-    }
-    return throw_in_reach(px, py, tx, ty);
+    // a throw always lands somewhere (floor or blocker smash); only a
+    // stub of an aim -- released inside the dead zone -- is refused
+    return app.aiming && throw_active() && app.aim_len >= 0.5f;
 }
 
-// Throw along the aim: standing throw (80%). False (nothing spent) when the
-// reticle is grey -- out of range, no clear line, or her own cell.
+// Throw along the aim ray: proper hitscan (see throw.c). The stance is
+// whatever she is actually doing -- aiming caps her to a walk, so Run
+// can never reach the resolve.
 static bool aim_confirm(void) {
-    if (!app.aiming || !aim_ok_now()) {
+    if (!aim_ok_now()) {
         return false;
     }
-    int px, py;
-    player_cell(&px, &py);
-    int tx = (int)floorf(app.aim_wx), ty = (int)floorf(app.aim_wy);
-    if (app.aim_enemy) {
-        enemy_cell(&tx, &ty);
-    }
+    throw_stance_t stance = !player_is_moving() ? THROW_STANCE_WAIT
+                          : player_move_mode() == PLAYER_RUN ? THROW_STANCE_RUN
+                                                             : THROW_STANCE_WALK;
     throw_result_t result;
-    bool ok = app.aim_enemy
-        ? throw_resolve_at_enemy(px, py, tx, ty, THROW_STANCE_WAIT, &result)
-        : throw_resolve(px, py, tx, ty, THROW_STANCE_WAIT, &result);
-    if (!ok) {
+    float ix = 0.0f, iy = 0.0f;
+    if (!throw_resolve_ray(player_x(), player_y(), app.aim_dir_x, app.aim_dir_y, app.aim_len,
+                           stance, &result, &ix, &iy)) {
         return false;
     }
     app.impact_at = app.clock;
-    app.impact_x = tx;
-    app.impact_y = ty;
+    app.impact_x = (int)floorf(ix);
+    app.impact_y = (int)floorf(iy);
     app.aiming = false;
+    app.aim_from_stick = false;
+    app.aim_stick_live = false;
     app.aim_enemy = false;
     bump_revision();
     return true;
@@ -936,18 +943,19 @@ static void input_update(void) {
         iy /= mag;
         mag = 1.0f;
     }
-    if (app.aiming || mag < 0.12f) {
+    if (mag < 0.12f) {
         player_set_velocity(0.0f, 0.0f);
-        if (!app.aiming) {
-            app.run_latch = false;  // stopped: the next move walks again
-            if (app.grace == GRACE_WALKING || app.grace == GRACE_RUNNING) {
-                set_grace(GRACE_WAITING);
-            }
+        app.run_latch = false;  // stopped: the next move walks again
+        if (app.grace == GRACE_WALKING || app.grace == GRACE_RUNNING) {
+            set_grace(GRACE_WAITING);
         }
         return;
     }
     bool keys = app.key_w || app.key_a || app.key_s || app.key_d;
     bool run = keys ? app.run_latch : mag > 0.5f;
+    if (app.aiming) {
+        run = false;  // aiming caps her to a walk, whatever the latch/push
+    }
     float speed;
     if (keys) {
         speed = run ? PLAYER_RUN_SPEED_CELLS : PLAYER_WALK_SPEED_CELLS;
@@ -956,6 +964,9 @@ static void input_update(void) {
     } else {
         speed = PLAYER_WALK_SPEED_CELLS +
                 (PLAYER_RUN_SPEED_CELLS - PLAYER_WALK_SPEED_CELLS) * ((mag - 0.5f) / 0.5f);
+    }
+    if (app.aiming && speed > PLAYER_WALK_SPEED_CELLS) {
+        speed = PLAYER_WALK_SPEED_CELLS;  // noise follows: player mode derives from speed
     }
     player_set_velocity(ix / mag * speed, iy / mag * speed);
     grace_mode_t want = run ? GRACE_RUNNING : GRACE_WALKING;
@@ -1474,7 +1485,8 @@ WEB_EXPORT int web_bottle_equip(int on) {
 }
 
 WEB_EXPORT int web_throw_hit_chance(void) {
-    return throw_hit_chance(THROW_STANCE_WAIT);
+    // hitscan: a ray that reaches the enemy hits -- no percentage any more
+    return 100;
 }
 
 TEST_EXPORT int web_throw_in_reach(int x, int y) {
@@ -1488,8 +1500,8 @@ TEST_EXPORT int web_cell_floor(int x, int y) {
 }
 
 WEB_EXPORT int web_throw_allowed(void) {
-    // realtime: she can only throw standing still, bottle active
-    return throw_active() && !player_is_moving() && app.grace != GRACE_HURT ? 1 : 0;
+    // twin-stick: she can throw on the move too (aiming caps her to a walk)
+    return throw_active() && app.grace != GRACE_HURT ? 1 : 0;
 }
 
 TEST_EXPORT float web_enemy_flash(void) {
@@ -1569,26 +1581,46 @@ WEB_EXPORT int web_grace_ready(void) {
     return setup_ready() ? 1 : 0;
 }
 
-// Analogue stick vector from React (-1..1). Releasing the stick (exact
-// zero) while aiming throws along the last aim; a release that never left
-// the dead zone cancels instead.
+// Move stick vector from React (-1..1); (0,0) is release. Movement only:
+// aiming lives on the second stick (web_aim_input).
 WEB_EXPORT void web_stick_input(float x, float y) {
-    float mag = sqrtf(x * x + y * y);
-    if (app.aiming) {
-        if (x == 0.0f && y == 0.0f) {
-            if (app.stick_was_live) {
-                aim_confirm();  // mobile: release throws
-            } else {
-                app.aiming = false;  // dead-zone release cancels
-                bump_revision();
-            }
-            app.stick_was_live = false;
-        } else if (mag >= 0.12f) {
-            app.stick_was_live = true;
-        }
-    }
     app.stick_x = x;
     app.stick_y = y;
+}
+
+// Aim stick vector from React (-1..1). Pushing it enters aim mode; its
+// direction and push distance set the throw; releasing it throws -- or
+// cancels if the release never left the dead zone.
+WEB_EXPORT void web_aim_input(float x, float y) {
+    float mag = sqrtf(x * x + y * y);
+    if (mag >= 0.12f) {
+        if (!app.aiming) {
+            aim_enter();
+            if (app.aiming) {
+                app.aim_from_stick = true;
+            }
+        }
+        if (app.aiming) {
+            app.aim_stick_live = true;
+            app.aim_stick_x = x;
+            app.aim_stick_y = y;
+        }
+        return;
+    }
+    app.aim_stick_x = x;
+    app.aim_stick_y = y;
+    if (x == 0.0f && y == 0.0f) {
+        if (app.aim_stick_live && app.aiming) {
+            aim_confirm();  // release throws (a grey stub aim refuses inside)
+        } else if (app.aim_from_stick && app.aiming) {
+            app.aiming = false;  // dead-zone release cancels
+            bump_revision();
+        }
+        app.aim_stick_live = false;
+        app.aim_from_stick = false;
+    } else {
+        app.aim_stick_live = false;  // back inside the dead zone
+    }
 }
 
 WEB_EXPORT int web_aim_toggle(void) {
@@ -1605,6 +1637,17 @@ WEB_EXPORT int web_interact_trigger(void) {
 
 TEST_EXPORT int web_test_run_latch(void) {
     return app.run_latch ? 1 : 0;
+}
+
+// Hitscan probe for tests: ray from Grace along (dx,dy)/100 for len/100
+// cells. 1 = enemy, 2 = blocker, 0 = open floor.
+TEST_EXPORT int web_test_hitscan(int dx100, int dy100, int len100) {
+    throw_scan_t scan;
+    if (!throw_hitscan(player_x(), player_y(), (float)dx100 / 100.0f, (float)dy100 / 100.0f,
+                       (float)len100 / 100.0f, &scan)) {
+        return -1;
+    }
+    return scan.hit_enemy ? 1 : scan.blocked ? 2 : 0;
 }
 
 TEST_EXPORT int web_test_aiming(void) {

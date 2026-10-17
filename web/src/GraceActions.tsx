@@ -90,8 +90,9 @@ const SLOT_NAMES = ["North", "East", "South", "West"];
 const TURNS = [
   0, 22.5, -22.5, 45, -45, 67.5, -67.5, 90, -90, 112.5, -112.5, 135, -135, 157.5, -157.5, 180,
 ];
-// Centre of the status circle from the pane's bottom-right (app.css .grace-status).
-const STATUS_INSET = 10 + 20;
+// The status circle sits top-left under the timer chip (app.css
+// .grace-status); its centre is reserved so equip circles avoid it.
+const STATUS_CENTRE = { x: 10 + 20, y: 46 + 20 };
 
 // Where each slot goes: its compass point, or, if that would leave the map
 // or sit on a slot already placed, the nearest free point turning away from
@@ -108,7 +109,7 @@ function placeSlots(
   const fits = (x: number, y: number) =>
     x - half >= EDGE && x + half <= w - EDGE && y - half >= EDGE && y + half <= h - EDGE;
   // the status circle in the bottom-right corner is taken too
-  const placed: { x: number; y: number }[] = [{ x: w - STATUS_INSET, y: h - STATUS_INSET }];
+  const placed: { x: number; y: number }[] = [STATUS_CENTRE];
   const clear = (x: number, y: number) =>
     placed.every((p) => Math.hypot(p.x - x, p.y - y) >= size * 1.05);
   const slots: { x: number; y: number }[] = [];

@@ -50,6 +50,7 @@ export type EmscriptenModule = {
   _web_enemy_screen_y?: () => number;
   _web_aim_enemy?: () => number;
   _web_stick_input?: (x: number, y: number) => void;
+  _web_aim_input?: (x: number, y: number) => void;
   _web_aim_toggle?: () => number;
   _web_aiming?: () => number;
   _web_interact_trigger?: () => number;
@@ -330,6 +331,11 @@ export function equipBottle(on: boolean): boolean {
 // Analogue stick vector (-1..1); (0,0) is release.
 export function stickInput(x: number, y: number): void {
   module()?._web_stick_input?.(x, y);
+}
+
+// Aim stick vector (-1..1); (0,0) is release (throws/cancels in C).
+export function aimInput(x: number, y: number): void {
+  module()?._web_aim_input?.(x, y);
 }
 
 export function aimToggle(): boolean {
