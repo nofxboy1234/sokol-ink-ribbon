@@ -392,6 +392,49 @@ static void pick_target(int x, int y) {
     bump_revision();
 }
 
+// A move order that crosses a table edge stops at the edge instead: onto
+// the nearest floor cell next to the climbable, or (from the top) onto the
+// nearest top cell beside a floor cell. The Climb prompt there does the rest.
+static void adjust_move_target(int* tx, int* ty) {
+    int px, py;
+    player_cell(&px, &py);
+    bool target_top = cell_on_climbable(*tx, *ty);
+    bool she_top = player_on_top();
+    if (target_top == she_top) {
+        return;
+    }
+    const level_t* lv = grid_level();
+    int best = 1 << 30, bx = px, by = py;
+    path_t route;
+    if (!she_top && target_top) {
+        for (int i = 0; i < lv->obj_count; i++) {
+            const obj_t* o = &lv->objs[i];
+            if (o->kind != OBJ_OBSTACLE || !o->climbable || !(*tx >= o->x && *tx < o->x + (o->w > 0 ? o->w : 1) && *ty >= o->y && *ty < o->y + (o->h > 0 ? o->h : 1))) continue;
+            for (int y = o->y - 1; y <= o->y + (o->h > 0 ? o->h : 1); y++) {
+                for (int x = o->x - 1; x <= o->x + (o->w > 0 ? o->w : 1); x++) {
+                    if (cell_on_climbable(x, y) || !grid_is_floor(x, y)) continue;
+                    if (pathfind(px, py, x, y, &route) && route.count < best) { best = route.count; bx = x; by = y; }
+                }
+            }
+        }
+    } else {
+        for (int i = 0; i < lv->obj_count; i++) {
+            const obj_t* o = &lv->objs[i];
+            if (o->kind != OBJ_OBSTACLE || !o->climbable) continue;
+            for (int y = o->y; y < o->y + (o->h > 0 ? o->h : 1); y++) {
+                for (int x = o->x; x < o->x + (o->w > 0 ? o->w : 1); x++) {
+                    bool edge = false;
+                    for (int dy = -1; dy <= 1 && !edge; dy++) for (int dx = -1; dx <= 1; dx++) edge |= !cell_on_climbable(x + dx, y + dy) && grid_is_floor(x + dx, y + dy);
+                    if (!edge) continue;
+                    int d = abs(x - *tx) + abs(y - *ty);
+                    if (pathfind(px, py, x, y, &route) && route.count + d < best) { best = route.count + d; bx = x; by = y; }
+                }
+            }
+        }
+    }
+    if (best < (1 << 30)) { *tx = bx; *ty = by; }
+}
+
 static bool grace_do(grace_action_t action) {
     if (app.grace == GRACE_HURT) {
         return false;  // she can't do anything while hurt
@@ -433,6 +476,7 @@ static bool grace_do(grace_action_t action) {
                 set_grace(GRACE_WAITING);
             } else {
                 bool run = app.setup == SETUP_RUN;
+                adjust_move_target(&app.setup_x, &app.setup_y);
                 player_move_to(app.setup_x, app.setup_y, run ? PLAYER_RUN : PLAYER_WALK);
                 if (player_is_moving()) {
                     app.route = *player_path();
@@ -733,7 +777,7 @@ static const obj_t* hover_interactable(void) {
         const obj_t* o = &lv->objs[i];
         if (o->kind != OBJ_ITEM && o->kind != OBJ_DOOR && o->kind != OBJ_SWITCH &&
             o->kind != OBJ_TYPEWRITER && o->kind != OBJ_FUSEBOX &&
-            o->kind != OBJ_FILE && o->kind != OBJ_SAFE && o->kind != OBJ_OPENABLE) {
+            o->kind != OBJ_FILE && o->kind != OBJ_SAFE && !(o->kind == OBJ_OBSTACLE && o->openable)) {
             continue;
         }
         if (!grid_is_revealed(o->x, o->y)) {
@@ -751,11 +795,11 @@ static const obj_t* hover_interactable(void) {
         if (o->kind == OBJ_ITEM && !light_item_visible(i)) {
             continue;
         }
-        if (o->kind == OBJ_OPENABLE && o->open) {
+        if ((o->kind == OBJ_OBSTACLE && o->openable) && o->open) {
             continue;
         }
         bool covered = false;
-        if (o->kind == OBJ_OPENABLE) {
+        if ((o->kind == OBJ_OBSTACLE && o->openable)) {
             int w = o->w > 0 ? o->w : 1;
             int h = o->h > 0 ? o->h : 1;
             covered = hx >= o->x && hx < o->x + w && hy >= o->y && hy < o->y + h;
@@ -814,6 +858,13 @@ static void frame(void) {
         app.mouse_x = app.touch_start_x;
         app.mouse_y = app.touch_start_y;
         handle_quick_equip();
+    }
+    if (player_climbing()) {
+        player_update(dt);  // the 0.35 s climb runs even while she is Paused
+        camera_follow(player_x(), player_y());
+        if (!player_climbing()) {
+            bump_revision();
+        }
     }
     if (!app.paused && app.grace == GRACE_HURT && app.clock >= app.grace_hurt_until) {
         grace_finish(GS_HURT, state_of(app.prev));  // Hurt over: Paused Wait
@@ -1213,6 +1264,19 @@ TEST_EXPORT int web_item_visible_at(int x, int y) {
 
 TEST_EXPORT int web_grace_stress_ms(void) {
     return app.clock < app.grace_stress_until ? (int)((app.grace_stress_until - app.clock) * 1000.0) : 0;
+}
+
+// Tests: make the obstacle covering this cell climbable.
+TEST_EXPORT int web_test_set_climbable(int x, int y) {
+    for (int i = 0; i < app.level.obj_count; i++) {
+        obj_t* o = &app.level.objs[i];
+        if (o->kind == OBJ_OBSTACLE && x >= o->x && x < o->x + (o->w > 0 ? o->w : 1) && y >= o->y && y < o->y + (o->h > 0 ? o->h : 1)) {
+            o->climbable = 1;
+            bump_revision();
+            return 1;
+        }
+    }
+    return 0;
 }
 
 // Tests: give, equip and ready a bottle.

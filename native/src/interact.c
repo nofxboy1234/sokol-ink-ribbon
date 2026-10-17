@@ -23,6 +23,46 @@ static struct {
 } in;
 
 static bool rect_covers(const obj_t* o, int x, int y);
+
+bool cell_on_climbable(int x, int y) {
+    const level_t* lv = in.level;
+    if (!lv) return false;
+    for (int i = 0; i < lv->obj_count; i++) {
+        const obj_t* o = &lv->objs[i];
+        if (o->kind == OBJ_OBSTACLE && o->climbable && rect_covers(o, x, y)) return true;
+    }
+    return false;
+}
+
+// Climb onto a climbable she is next to, or off the one she is on onto an
+// adjacent floor cell. The 0.35 s climb pause runs in player_update.
+bool interact_climb_at(int x, int y) {
+    int px, py;
+    player_cell(&px, &py);
+    if (player_on_top()) {
+        // climbing off: the clicked cell is floor next to the table edge
+        if (cell_on_climbable(x, y)) return false;
+        int dx = x - px, dy = y - py;
+        if ((dx < -1 || dx > 1 || dy < -1 || dy > 1) || (dx == 0 && dy == 0)) return false;
+        // the cell beyond must be off the table and walkable floor
+        if (!grid_is_floor(x, y)) return false;
+        player_climb_to(x, y);
+        return true;
+    }
+    // climbing up: clicked a climbable cell she stands next to (distance <= 1)
+    for (int i = 0; i < in.level->obj_count; i++) {
+        const obj_t* o = &in.level->objs[i];
+        if (o->kind != OBJ_OBSTACLE || !o->climbable || !rect_covers(o, x, y)) continue;
+        if (interact_distance(i) > 1) return false;
+        // land on the climbable cell nearest Grace
+        int ex = o->x + (o->w > 0 ? o->w : 1) - 1, ey = o->y + (o->h > 0 ? o->h : 1) - 1;
+        int nx = px < o->x ? o->x : (px > ex ? ex : px);
+        int ny = py < o->y ? o->y : (py > ey ? ey : py);
+        player_climb_to(nx, ny);
+        return true;
+    }
+    return false;
+}
 int interact_distance(int object_index);
 
 void interact_init(void) {
@@ -65,9 +105,12 @@ static bool file_found(int obj_index) {
 }
 
 bool interact_at(int x, int y) {
+    if (interact_climb_at(x, y)) {
+        return true;
+    }
     for (int i = 0; i < in.level->obj_count; i++) {
         obj_t* o = &in.level->objs[i];
-        bool covered = (o->kind == OBJ_OPENABLE || o->kind == OBJ_OBSTACLE)
+        bool covered = (o->kind == OBJ_OBSTACLE)
             ? rect_covers(o, x, y)
             : (o->x == x && o->y == y);
         if (!covered) {
@@ -87,7 +130,7 @@ bool interact_at(int x, int y) {
             items_take(i);
             return true;
         }
-        if (o->kind == OBJ_OPENABLE && !o->open) {
+        if ((o->kind == OBJ_OBSTACLE && o->openable) && !o->open) {
             int keytype = doors_key_type(o);
             if (keytype >= 0 && !inventory_has(keytype)) {
                 return true; // needs the linked key
@@ -169,7 +212,7 @@ int interact_distance(int object_index) {
     player_cell(&px, &py);
     int ex = o->x;
     int ey = o->y;
-    if (o->kind == OBJ_OPENABLE || o->kind == OBJ_OBSTACLE) {
+    if (o->kind == OBJ_OBSTACLE) {
         ex = o->x + (o->w > 0 ? o->w : 1) - 1;
         ey = o->y + (o->h > 0 ? o->h : 1) - 1;
     } else if (o->kind == OBJ_DOOR) {
@@ -192,7 +235,7 @@ int interact_distance(int object_index) {
     if (o->kind == OBJ_ITEM) {
         for (int k = 0; k < lv->obj_count; k++) {
             const obj_t* s = &lv->objs[k];
-            if (s->kind != OBJ_OPENABLE && s->kind != OBJ_OBSTACLE) {
+            if (s->kind != OBJ_OBSTACLE) {
                 continue;
             }
             if (!rect_covers(s, o->x, o->y)) {
@@ -222,7 +265,7 @@ bool obstacles_block_cell(int x, int y) {
             return true;
         }
         // open or closed, the openable's cells stay solid so Grace walks around it
-        if (o->kind == OBJ_OPENABLE && rect_covers(o, x, y)) {
+        if ((o->kind == OBJ_OBSTACLE && o->openable) && rect_covers(o, x, y)) {
             return true;
         }
     }
@@ -233,7 +276,7 @@ bool obstacles_block_cell(int x, int y) {
 bool openable_covers_closed(int x, int y) {
     for (int i = 0; i < in.level->obj_count; i++) {
         const obj_t* o = &in.level->objs[i];
-        if ((o->kind == OBJ_OPENABLE || o->kind == OBJ_SAFE) && !o->open && rect_covers(o, x, y)) {
+        if ((o->kind == OBJ_SAFE || (o->kind == OBJ_OBSTACLE && o->openable)) && !o->open && rect_covers(o, x, y)) {
             return true;
         }
     }

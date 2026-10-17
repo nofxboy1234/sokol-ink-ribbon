@@ -21,8 +21,6 @@ typedef enum {
     OBJ_FILE,
     OBJ_SAFE,
     OBJ_OBSTACLE,
-    OBJ_MOVABLE,
-    OBJ_OPENABLE,
     OBJ_START,
     // a marker for where the level ends (the game itself ignores it)
     OBJ_GOAL,
@@ -100,6 +98,8 @@ typedef struct {
     int group_id;
     float radius;
     int climbable;
+    int movable;   // obstacle property: a pushable-looking block (sight blocker)
+    int openable;  // obstacle property: a container that opens (uses open/link)
     int code;
     char name[LEVEL_MAX_NAME];
 } obj_t;
