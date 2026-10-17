@@ -7,8 +7,8 @@ void render_shutdown(void);
 
 // Throw effects drawn on top of the scene for the coming frame.
 typedef struct {
-    bool aim;            // the straight aim line to a cell
-    int aim_x, aim_y;
+    bool aim;            // the straight aim line to the reticle
+    float aim_wx, aim_wy;  // reticle world position (cells, float)
     bool aim_ok;         // in range with a clear line (cyan), else grey
     bool impact;         // the bottle's impact at a cell
     int impact_x, impact_y;

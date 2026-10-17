@@ -16,4 +16,5 @@ float camera_cell_px(void);
 float camera_center_x(void);
 float camera_center_y(void);
 void camera_screen_to_cell(float sx, float sy, int* cx, int* cy);
+void camera_screen_to_world(float sx, float sy, float* wx, float* wy);
 void camera_cell_to_screen(float cx, float cy, float* sx, float* sy);

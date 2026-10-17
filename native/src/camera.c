@@ -121,6 +121,15 @@ void camera_screen_to_cell(float sx, float sy, int* cx, int* cy) {
     }
 }
 
+void camera_screen_to_world(float sx, float sy, float* wx, float* wy) {
+    if (wx) {
+        *wx = (sx - cam.width * 0.5f) / cam.scale + cam.center_x;
+    }
+    if (wy) {
+        *wy = (sy - cam.height * 0.5f) / cam.scale + cam.center_y;
+    }
+}
+
 void camera_cell_to_screen(float cx, float cy, float* sx, float* sy) {
     if (sx) {
         *sx = (cx - cam.center_x) * cam.scale + cam.width * 0.5f;

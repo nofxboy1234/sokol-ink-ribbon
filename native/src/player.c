@@ -2,11 +2,13 @@
 #include "pathfind.h"
 #include "grid.h"
 #include "level.h"
+#include "doors.h"
+#include "interact.h"
 
 #include <math.h>
 
-#define PLAYER_WALK_SPEED 3.0f
-#define PLAYER_RUN_SPEED 6.5f
+#define PLAYER_WALK_SPEED PLAYER_WALK_SPEED_CELLS
+#define PLAYER_RUN_SPEED PLAYER_RUN_SPEED_CELLS
 #define PLAYER_EPSILON 0.02f
 #define REPLAY_MAX 8192
 
@@ -25,6 +27,10 @@ static struct {
     int replay_t[REPLAY_MAX];
     int clock_ms;
     bool on_top;
+    float vx, vy;
+    bool input_active;
+    int last_replay_ms;
+    int last_cell_x, last_cell_y;
     float climb_timer;
     bool climbing;
     int climb_x, climb_y;
@@ -50,6 +56,54 @@ static void replay_record(void) {
     p.replay_len++;
 }
 
+static bool steer_cell_passable(int cx, int cy) {
+    if (!grid_is_floor(cx, cy) || obstacles_block_cell(cx, cy)) {
+        return false;
+    }
+    // never steer onto or off a climbable: climbing stays a prompted action
+    return p.on_top ? on_top_at(cx, cy) : !on_top_at(cx, cy);
+}
+
+static bool steer_pos_passable(float nx, float ny) {
+    const float r = 0.30f;
+    int cx0 = (int)floorf(nx - r), cx1 = (int)floorf(nx + r);
+    int cy0 = (int)floorf(ny - r), cy1 = (int)floorf(ny + r);
+    int curx = (int)floorf(p.x), cury = (int)floorf(p.y);
+    for (int cy = cy0; cy <= cy1; cy++) {
+        for (int cx = cx0; cx <= cx1; cx++) {
+            if (!steer_cell_passable(cx, cy)) {
+                return false;
+            }
+            // a wall or door on the edge she is actually crossing still blocks
+            if ((cx != curx || cy != cury) && (cx == curx || cy == cury)) {
+                if (doors_on_edge(curx, cury, cx, cy)
+                        ? doors_block_edge(curx, cury, cx, cy)
+                        : grid_blocked(curx, cury, cx, cy)) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+void player_set_velocity(float vx, float vy) {
+    p.vx = vx;
+    p.vy = vy;
+    p.input_active = vx != 0.0f || vy != 0.0f;
+    if (p.input_active) {
+        p.moving = false;  // steering replaces any path route
+        p.path.count = 0;
+        p.waiting = false;
+        float speed = sqrtf(vx * vx + vy * vy);
+        p.mode = speed > (PLAYER_WALK_SPEED + PLAYER_RUN_SPEED) * 0.5f ? PLAYER_RUN : PLAYER_WALK;
+    }
+}
+
+bool player_steering(void) {
+    return p.input_active;
+}
+
 void player_init(int x, int y) {
     p.x = (float)x + 0.5f;
     p.y = (float)y + 0.5f;
@@ -63,6 +117,12 @@ void player_init(int x, int y) {
     p.replay_len = 0;
     p.clock_ms = 0;
     p.climb_timer = 0.0f;
+    p.vx = 0.0f;
+    p.vy = 0.0f;
+    p.input_active = false;
+    p.last_replay_ms = 0;
+    p.last_cell_x = x;
+    p.last_cell_y = y;
     p.on_top = on_top_at(x, y);
     replay_record();
 }
@@ -92,6 +152,9 @@ void player_stop(void) {
     p.moving = false;
     p.path.count = 0;
     p.index = 0;
+    p.vx = 0.0f;
+    p.vy = 0.0f;
+    p.input_active = false;
 }
 
 void player_halt(void) {
@@ -122,6 +185,42 @@ void player_update(float dt) {
             p.on_top = on_top_at(p.climb_x, p.climb_y);
             p.steps++;
             replay_record();
+        }
+        return;
+    }
+    if (p.input_active) {
+        // axis-separated steering: slide along walls instead of sticking
+        if (p.vx != 0.0f) {
+            float nx = p.x + p.vx * dt;
+            if (steer_pos_passable(nx, p.y)) {
+                p.x = nx;
+            }
+        }
+        if (p.vy != 0.0f) {
+            float ny = p.y + p.vy * dt;
+            if (steer_pos_passable(p.x, ny)) {
+                p.y = ny;
+            }
+        }
+        if (fabsf(p.vx) > fabsf(p.vy)) {
+            p.facing = p.vx > 0.0f ? 1 : 3;
+        } else if (p.vy != 0.0f) {
+            p.facing = p.vy > 0.0f ? 2 : 0;
+        }
+        int cx, cy;
+        player_cell(&cx, &cy);
+        if (cx != p.last_cell_x || cy != p.last_cell_y) {
+            p.last_cell_x = cx;
+            p.last_cell_y = cy;
+            p.steps++;
+            p.on_top = on_top_at(cx, cy);
+            replay_record();
+            p.last_replay_ms = p.clock_ms;
+        } else if (p.clock_ms - p.last_replay_ms >= 100) {
+            // free movement crosses cells diagonally: sample the replay so
+            // playback stays smooth instead of hopping between cell centres
+            replay_record();
+            p.last_replay_ms = p.clock_ms;
         }
         return;
     }
@@ -179,7 +278,7 @@ int player_steps_taken(void) {
 }
 
 bool player_is_moving(void) {
-    return p.moving;
+    return p.moving || p.input_active;
 }
 
 bool player_is_waiting(void) {

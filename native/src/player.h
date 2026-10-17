@@ -7,9 +7,17 @@ typedef enum {
     PLAYER_RUN,
 } player_move_t;
 
+#define PLAYER_WALK_SPEED_CELLS 3.0f
+#define PLAYER_RUN_SPEED_CELLS 6.5f
+
 void player_init(int x, int y);
 void player_set_cell(int x, int y);
 void player_move_to(int x, int y, player_move_t mode);
+// Realtime steering (WASD / analogue stick): a velocity in cells per second,
+// already scaled for walk/run by the caller. Zero stops her. Collides against
+// the grid (walls, doors, obstacles) and never crosses a climbable edge.
+void player_set_velocity(float vx, float vy);
+bool player_steering(void);
 const path_t* player_path(void);
 void player_stop(void);
 // Stop and settle on the nearest cell centre.
