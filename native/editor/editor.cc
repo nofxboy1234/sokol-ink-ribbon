@@ -755,6 +755,8 @@ static void draw_map(void) {
                 case OBJ_FUSEBOX: r = 0.118f; g = 0.118f; b = 0.118f; break;
                 case OBJ_START: r = 0.588f; g = 0.118f; b = 1.0f; break;
                 case OBJ_GOAL: r = 0.118f; g = 0.118f; b = 0.118f; break;
+                case OBJ_RECIPE: r = 1.0f; g = 1.0f; b = 1.0f; break;    // paper sheet
+                case OBJ_CABINET: r = 0.616f; g = 0.616f; b = 0.616f; break;  // PAL_GRAY
                 default: break;
             }
             float size = scale * 0.3f;

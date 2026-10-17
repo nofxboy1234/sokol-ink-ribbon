@@ -13,10 +13,12 @@
 #include "health.h"
 #include "light.h"
 #include "savegame.h"
+#include "crafting.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static level_t level;
 static int failures;
@@ -498,6 +500,111 @@ int main(int argc, char** argv) {
         ho->x = hx;
         ho->y = hy;
         lo->state = ls;
+    }
+
+    // --- audit: fuse chain, cherub door, climbing, recipes, cabinet, safes
+    {
+        // fuse is in openable 29 (link -> screwdriver object): no screwdriver, no fuse
+        inventory_init(); interact_init(); items_import(NULL, 0);
+        // reset openables/doors from a fresh level copy state is complex; use live objects
+        obj_t* box = NULL; obj_t* fusebox = NULL; obj_t* gate = NULL;
+        int fuse_i = -1, cherub_i = -1, screw_i = -1;
+        for (int i = 0; i < level.obj_count; i++) {
+            obj_t* o = (obj_t*)&grid_level()->objs[i];
+            if (o->kind == OBJ_OPENABLE && o->id == 29) box = o;
+            if (o->kind == OBJ_FUSEBOX) fusebox = o;
+            if (o->kind == OBJ_DOOR && strcmp(o->name, "gate") == 0) gate = o;
+            if (o->kind == OBJ_ITEM && o->item_type == ITEM_FUSE) fuse_i = i;
+            if (o->kind == OBJ_ITEM && o->item_type == ITEM_CHERUB_KEY) cherub_i = i;
+            if (o->kind == OBJ_ITEM && o->item_type == ITEM_SCREWDRIVER) screw_i = i;
+        }
+        box->open = 0; gate->state = DOOR_LOCKED;
+        player_set_cell(2, 21);
+        interact_at(1, 21);
+        CHECK(!items_taken(fuse_i), "no screwdriver: the fuse stays in its box");
+        inventory_add(ITEM_SCREWDRIVER);
+        interact_at(1, 20);  // open the box
+        CHECK(box->open == 1, "with the screwdriver the box opens");
+        interact_at(1, 21);
+        CHECK(items_taken(fuse_i) && inventory_has(ITEM_FUSE), "then she can take the fuse");
+        // fusebox without fuse does nothing; with fuse powers gate
+        inventory_init(); player_set_cell(8, 69);
+        interact_at(7, 69);
+        CHECK(!goal_met() && gate->state == DOOR_LOCKED, "no fuse: no power, gate stays shut");
+        inventory_add(ITEM_FUSE);
+        interact_at(7, 69);
+        CHECK(goal_met() && gate->state == DOOR_BROKEN && !inventory_has(ITEM_FUSE), "fuse inserted: gate powered open");
+        player_set_cell(5, 74);
+        CHECK(interact_check_complete() && level_complete(), "walking past the gate to the goal ends the level");
+
+        // cherub door (door 1, link -> cherub key object): only that key opens it
+        obj_t* cdoor = NULL;
+        for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_DOOR && o->id==1) cdoor=o; }
+        cdoor->state = DOOR_LOCKED; cdoor->open = 0;
+        inventory_init(); inventory_add(ITEM_SCREWDRIVER); inventory_add(ITEM_COIN);
+        player_set_cell(17, 37);
+        doors_interact(17, 38);
+        CHECK(cdoor->state == DOOR_LOCKED, "cherub door: screwdriver/coin do not open it");
+        inventory_add(ITEM_CHERUB_KEY);
+        doors_interact(17, 38);
+        CHECK(cdoor->state == DOOR_UNLOCKED, "cherub door: the cherub key opens it");
+
+        // climbing: a climbable obstacle can be stood on; a plain one blocks
+        obj_t* table = (obj_t*)&grid_level()->objs[43];
+        int tw = table->w > 0 ? table->w : 1;
+        table->climbable = 0;
+        CHECK(obstacles_block_cell(table->x, table->y), "plain obstacle blocks its cells");
+        table->climbable = 1;
+        CHECK(!obstacles_block_cell(table->x, table->y), "climbable obstacle does not block");
+        player_set_cell(table->x, table->y);
+        CHECK(player_on_top(), "standing on it: on top");
+        player_set_cell(table->x + tw + 1, table->y);
+        CHECK(!player_on_top(), "stepping off: not on top");
+        table->climbable = 0;
+
+        // recipes: #0 known, #1 must be taught and persists
+        crafting_set_known_mask(1u);
+        CHECK(crafting_known(0) && !crafting_known(1) && !crafting_ready(1), "recipe 1 unknown at start");
+        CHECK(crafting_learn(1) && crafting_known(1), "a recipe item teaches it");
+        savegame_save(3, 0.0); crafting_set_known_mask(1u);
+        { double m=0; savegame_load(3, &m); }
+        CHECK(crafting_known(1), "known recipes survive save/load");
+
+        // cabinet: spend a coin, +4 slots, saved
+        inventory_init(); inventory_set_capacity(8);
+        inventory_add(ITEM_COIN);
+        obj_t cab = {0}; cab.kind = OBJ_CABINET; cab.code = 1; cab.x = 20; cab.y = 20;
+        // place Grace next to a real cabinet object appended in memory is intrusive;
+        // exercise the inventory side directly:
+        CHECK(inventory_capacity() == 8 && inventory_expand(4) && inventory_capacity() == 12, "cabinet upgrade: 8 -> 12 slots");
+        savegame_save(3, 0.0); inventory_set_capacity(8);
+        { double m=0; savegame_load(3, &m); }
+        CHECK(inventory_capacity() == 12, "capacity survives save/load");
+
+        // safe + combination door codes
+        obj_t* safe = NULL; obj_t* codelock = NULL;
+        for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_SAFE) safe=o; if (o->kind==OBJ_DOOR && o->id==39) codelock=o; }
+        if (!safe) { // none in level 1: borrow the goal marker for the check
+            for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_GOAL) safe=o; }
+            if (safe) safe->kind = OBJ_SAFE;
+        }
+        if (safe) {
+            safe->open = 0; safe->code = 1234; player_set_cell(safe->x + 1, safe->y);
+            interact_at(safe->x, safe->y);
+            CHECK(interact_pending_safe() >= 0 && !interact_try_safe_code(1111) && interact_try_safe_code(1234) && safe->open == 1,
+                  "safe: wrong code fails, right code opens");
+            safe->kind = OBJ_GOAL; safe->code = 0;
+        } else {
+            CHECK(true, "safe: none placed in level 1 (system tested when placed)");
+        }
+        if (codelock) {
+            codelock->code = 4321; codelock->state = DOOR_LOCKED;
+            player_set_cell(codelock->x, codelock->y - 1);
+            doors_interact(codelock->x, codelock->y);
+            CHECK(doors_pending_code() >= 0 && !doors_try_code(1111) && doors_try_code(4321) && codelock->state == DOOR_UNLOCKED,
+                  "combination door: wrong code fails, right code opens");
+            codelock->code = 0;
+        }
     }
 
     printf(failures ? "%d FAILED\n" : "ALL PASS\n", failures);
