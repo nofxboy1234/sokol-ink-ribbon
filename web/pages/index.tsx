@@ -7,6 +7,7 @@ import { GraceActions } from "../src/GraceActions";
 import { MapCanvas } from "../src/MapCanvas";
 import { CodeKeypad, Crafting, Files, GameOver, Inventory, LevelComplete, PauseMenu, RunPanel, SaveLoadMenu } from "../src/panes";
 import { setPaused as setGamePaused, takeSaveMenu } from "../src/wasmBridge";
+import { useGameState } from "../src/GameState";
 
 type Tab = "items" | "crafting" | "files";
 
@@ -15,6 +16,12 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "crafting", label: "CRAFTING" },
   { id: "files", label: "FILES" },
 ];
+
+function DeadMenuCloser({ onDead }: { onDead: () => void }) {
+  const { dead } = useGameState();
+  useEffect(() => { if (dead) onDead(); }, [dead, onDead]);
+  return null;
+}
 
 export default function HomePage() {
   const [tab, setTab] = useState<Tab>("items");
@@ -89,6 +96,7 @@ export default function HomePage() {
             {tab === "files" && <Files />}
           </section>
         </main>
+        <DeadMenuCloser onDead={() => { setPaused(false); setSaveMenu(false); }} />
         <PauseMenu
           open={paused}
           onClose={() => setPaused(false)}
@@ -98,7 +106,7 @@ export default function HomePage() {
           }}
         />
         <GameOver onLoad={() => setSaveMenu(true)} />
-        <LevelComplete />
+        <LevelComplete onLoad={() => setSaveMenu(true)} />
         <CodeKeypad />
         <SaveLoadMenu open={saveMenu} onClose={() => setSaveMenu(false)} />
       </GameStateProvider>

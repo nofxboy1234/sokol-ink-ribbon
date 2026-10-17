@@ -938,10 +938,13 @@ button.recipe[aria-disabled="true"] {
 .keypad-key:active, .keypad-key:hover { background: var(--green); }
 .keypad-display { font-size: 1.5rem; letter-spacing: .3em; text-align: center; }
 .tab[data-active="true"] { background: var(--green); }
-.pause-selected { background: var(--green); }
 
 .replay-player { display: flex; flex-direction: column; gap: 8px; }
 .replay-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .replay-controls button { min-height: 44px; padding: 6px 14px; background: var(--paper); border: 1px solid var(--ink); cursor: pointer; }
 .replay-controls button[data-active="true"] { background: var(--green); }
 .records-list li { flex-wrap: wrap; }
+
+.pause-item:focus-visible { background: var(--green); }
+.level-time { text-align: center; padding: 6px; }
+.level-complete .pause-menu { background: var(--paper); color: var(--ink); font-size: 1rem; }
