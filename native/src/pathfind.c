@@ -75,6 +75,12 @@ bool pathfind_within(int sx, int sy, int tx, int ty, int max_cost, bool through_
             if (!grid_is_floor(nx, ny) || obstacles_block_cell(nx, ny)) {
                 continue;
             }
+            // Climbing is an action, not a walk: routes never step onto a
+            // climbable, or off one. Across the top surface is fine.
+            { bool from_top = cell_on_climbable(cx, cy);
+              bool to_top = cell_on_climbable(nx, ny);
+              if (to_top && !cell_on_climbable(sx, sy)) continue;
+              if (from_top && !to_top) continue; }
             // a door covers the wall line: its state decides, not the wall
             bool blocked = doors_on_edge(cx, cy, nx, ny)
                 ? doors_block_edge(cx, cy, nx, ny) &&

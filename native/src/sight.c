@@ -16,7 +16,7 @@ bool sight_cell_obstructed(int x, int y) {
     const level_t* lv = grid_level();
     for (int i = 0; i < lv->obj_count; i++) {
         const obj_t* o = &lv->objs[i];
-        if (o->kind != OBJ_OBSTACLE && o->kind != OBJ_MOVABLE) {
+        if (o->kind != OBJ_OBSTACLE && o->kind != OBJ_OBSTACLE) {
             continue;
         }
         int w = o->kind == OBJ_OBSTACLE && o->w > 0 ? o->w : 1;

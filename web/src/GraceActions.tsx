@@ -7,8 +7,10 @@ import {
   graceAction,
   quickSelect,
   readGrace,
+  graceDead,
   type GraceView,
 } from "./wasmBridge";
+import { useGameState } from "./GameState";
 
 const same = (a: GraceView, b: GraceView) =>
   (Object.keys(a) as (keyof GraceView)[]).every((key) =>
@@ -183,6 +185,7 @@ type Slot = {
 // action is chosen: an Ok/Cancel pill at the bottom of the map, so the level
 // stays clear for picking a cell.
 export function GraceActions() {
+  const { dead } = useGameState();
   const [grace, setGrace] = useState<GraceView>(readGrace);
   const hostRef = useRef<HTMLDivElement>(null);
   const [pane, setPane] = useState({ w: 0, h: 0, size: 40 });
@@ -305,6 +308,7 @@ export function GraceActions() {
   });
 
   const slots = picking ? actionSlots : equipping ? quickSlots : [];
+  if (dead || graceDead()) return null;  // game over: no action menus/pills underneath
   const status = STATUS[paused ? grace.last : grace.mode] ?? STATUS[3];
   const statusLabel = paused ? `Grace: Paused, last ${status.label}` : `Grace: ${status.label}`;
 

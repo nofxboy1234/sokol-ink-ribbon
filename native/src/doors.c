@@ -214,7 +214,7 @@ void doors_drop_key_if_done(int item_type) {
     for (int k = 0; k < lv->obj_count; k++) {
         const obj_t* d = &lv->objs[k];
         bool waiting = (is_door(d) && will_be_locked(d)) ||
-                       (d->kind == OBJ_OPENABLE && !d->open);
+                       ((d->kind == OBJ_OBSTACLE && d->openable) && !d->open);
         if (waiting && doors_key_type(d) == item_type) {
             return;
         }

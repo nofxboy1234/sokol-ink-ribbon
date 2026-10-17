@@ -34,3 +34,6 @@ bool interact_check_complete(void);
 bool interact_take_save_menu(void);
 void interact_export(bool* lighter, int* saves, bool* goal, int* file_count, int* file_obj, bool* complete);
 void interact_restore(bool lighter, int saves, bool goal, int file_count, const int* file_obj, bool complete);
+
+bool cell_on_climbable(int x, int y);
+bool interact_climb_at(int x, int y);
