@@ -1,10 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
-  GraceAction,
   GraceMode,
-  GraceSetup,
-  ThrowStance,
-  graceAction,
   quickSelect,
   readGrace,
   graceDead,
@@ -66,15 +62,6 @@ function PauseIcon() {
   );
 }
 
-function ThrowIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M5 19L17 7M11 7h6v6" />
-      <circle cx="6" cy="6" r="1.5" />
-    </svg>
-  );
-}
-
 // The Empty Bottle, drawn like its blue dot on the map.
 function BottleIcon() {
   return <span className="grace-bottle" aria-hidden="true" />;
@@ -96,7 +83,7 @@ const STATUS = [
 
 const EDGE = 4;
 
-// Both circle menus sit on the compass points around her dot: N, E, S, W.
+// The Quick Equip circles sit on the compass points around her dot: N, E, S, W.
 const COMPASS = [-90, 0, 90, 180];
 const SLOT_NAMES = ["North", "East", "South", "West"];
 // Tried in order when a compass point is taken or off the map.
@@ -179,11 +166,10 @@ type Slot = {
   title?: string;
 };
 
-// Grace's circle menus. While Paused her action menu (Walk, Run, Wait and,
-// with the bottle active, Throw) sits on the compass points around her dot;
-// a right click or long press on her dot swaps it for Quick Equip. Once an
-// action is chosen: an Ok/Cancel pill at the bottom of the map, so the level
-// stays clear for picking a cell.
+// Grace's remaining circle UI: the status circle (bottom-right) and the
+// Quick Equip circles around her dot (right-click / long-press on Grace
+// while she stands still). The old radial action menu is gone -- movement
+// is WASD / the analogue stick now, and throwing has its own aim mode.
 export function GraceActions() {
   const { dead } = useGameState();
   const [grace, setGrace] = useState<GraceView>(readGrace);
@@ -221,57 +207,13 @@ export function GraceActions() {
   }, []);
 
   const paused = grace.mode === GraceMode.Paused;
-  // Nothing shows until the map is up: before that the bridge reports
-  // Grace at (0, 0) and the icons would bunch up in the top-left corner.
-  const choosing = grace.live && paused && grace.setup === GraceSetup.None;
-  const picking = choosing && grace.menuOpen;
-  const equipping = choosing && grace.quickOpen;
-  const setupName =
-    grace.setup === GraceSetup.Walk
-      ? "Walk"
-      : grace.setup === GraceSetup.Run
-        ? "Run"
-        : grace.setup === GraceSetup.Wait
-          ? "Wait"
-          : grace.setup === GraceSetup.Throw
-            ? "Throw"
-            : "";
-  const hint =
-    grace.setup === GraceSetup.Wait
-      ? "Ok to wait"
-      : grace.setup === GraceSetup.Throw
-        ? grace.ready
-          ? `Tap again or Ok · ${grace.hitChance}% vs enemy`
-          : "Pick a cell in range"
-        : grace.ready
-          ? "Tap again or Ok"
-          : "Pick a cell";
+  const equipping = grace.live && grace.quickOpen;
 
   // An item right next to her sits with equal gaps on both sides: her dot
   // edge, gap, item, gap, the circle's edge (see menuRadius).
   const radius = menuRadius(grace.cell, pane.size);
   const spots = placeSlots(grace.x, grace.y, pane.w, pane.h, radius, pane.size);
 
-  // Action menu: Walk north, Run east, Wait south, Throw west (only with the
-  // bottle active; otherwise an empty circle).
-  const throwSlot: Slot = grace.bottleActive
-    ? {
-        label: "Throw",
-        icon: <ThrowIcon />,
-        disabled: !grace.throwAllowed,
-        title:
-          grace.stance === ThrowStance.Run
-            ? "Throw · not while running"
-            : `Throw the Empty Bottle · ${grace.hitChance}% to hit the enemy`,
-        onClick: () => graceAction(GraceAction.Throw),
-      }
-    : { label: "Empty", icon: null, disabled: true };
-  const actionSlots: Slot[] = [
-    { label: "Walk", icon: <WalkIcon />, onClick: () => graceAction(GraceAction.Walk) },
-    { label: "Run", icon: <RunIcon />, onClick: () => graceAction(GraceAction.Run) },
-    { label: "Wait", icon: <WaitIcon />, onClick: () => graceAction(GraceAction.Wait) },
-    throwSlot,
-  ];
   // Quick Equip: the Lighter sits north once picked up (off until picked here),
   // the bottle east once equipped. With every bottle used up the bottle stays
   // in its slot, greyed out, until she finds another.
@@ -307,10 +249,14 @@ export function GraceActions() {
     return { label: `${name} slot empty`, icon: null, disabled: true };
   });
 
-  const slots = picking ? actionSlots : equipping ? quickSlots : [];
-  if (dead || graceDead()) return null;  // game over: no action menus/pills underneath
-  const status = STATUS[paused ? grace.last : grace.mode] ?? STATUS[3];
-  const statusLabel = paused ? `Grace: Paused, last ${status.label}` : `Grace: ${status.label}`;
+  const slots = equipping ? quickSlots : [];
+  if (dead || graceDead()) return null;  // game over: no circles underneath
+  const status = STATUS[grace.mode] ?? STATUS[3];
+  const statusLabel = grace.aiming
+    ? "Grace: Aiming"
+    : paused
+      ? `Grace: Paused, last ${STATUS[grace.last]?.label ?? "Waiting"}`
+      : `Grace: ${status.label}`;
 
   return (
     <div ref={hostRef} className="grace-actions">
@@ -321,6 +267,7 @@ export function GraceActions() {
           aria-live="polite"
           aria-label={statusLabel}
           data-paused={paused}
+          data-aiming={grace.aiming || undefined}
           data-hurt={grace.mode === GraceMode.Hurt}
         >
           <status.Icon />
@@ -335,8 +282,8 @@ export function GraceActions() {
         <div
           className="grace-ring"
           role="group"
-          aria-label={equipping ? "Quick Equip" : "Actions"}
-          data-kind={equipping ? "quick" : "actions"}
+          aria-label="Quick Equip"
+          data-kind="quick"
         >
           {slots.map((slot, i) => {
             const spot = spots[i] ?? { x: grace.x, y: grace.y };
@@ -363,19 +310,6 @@ export function GraceActions() {
               </button>
             );
           })}
-        </div>
-      )}
-      {grace.live && paused && grace.setup !== GraceSetup.None && (
-        <div className="grace-pill" role="toolbar" aria-label="Confirm action">
-          <span className="grace-pill-label">
-            <strong>{setupName}</strong> · {hint}
-          </span>
-          <button type="button" disabled={!grace.ready} onClick={() => graceAction(GraceAction.Ok)}>
-            Ok
-          </button>
-          <button type="button" onClick={() => graceAction(GraceAction.Cancel)}>
-            Cancel
-          </button>
         </div>
       )}
     </div>

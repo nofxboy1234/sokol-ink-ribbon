@@ -49,6 +49,10 @@ export type EmscriptenModule = {
   _web_enemy_screen_x?: () => number;
   _web_enemy_screen_y?: () => number;
   _web_aim_enemy?: () => number;
+  _web_stick_input?: (x: number, y: number) => void;
+  _web_aim_toggle?: () => number;
+  _web_aiming?: () => number;
+  _web_interact_trigger?: () => number;
   _web_grace_stress_ms?: () => number;
   _web_grace_hurt_ms?: () => number;
   _web_item_visible_at?: (x: number, y: number) => number;
@@ -270,6 +274,7 @@ export type GraceView = {
   // her last action (a GraceMode other than Paused), shown while Paused
   last: number;
   quickOpen: boolean;
+  aiming: boolean;
   bottleEquipped: boolean;
   bottleActive: boolean;
   bottleEmpty: boolean;
@@ -292,6 +297,7 @@ export function readGrace(): GraceView {
     menuOpen: (m?._web_grace_menu_open?.() ?? 0) !== 0,
     last: m?._web_grace_last?.() ?? GraceMode.Waiting,
     quickOpen: (m?._web_quick_open?.() ?? 0) !== 0,
+    aiming: (m?._web_aiming?.() ?? 0) !== 0,
     bottleEquipped: (m?._web_bottle_equipped?.() ?? 0) !== 0,
     bottleActive: (m?._web_bottle_active?.() ?? 0) !== 0,
     bottleEmpty: (m?._web_bottle_empty?.() ?? 0) !== 0,
@@ -319,6 +325,19 @@ export function quickSelect(slot: number): boolean {
 
 export function equipBottle(on: boolean): boolean {
   return (module()?._web_bottle_equip?.(on ? 1 : 0) ?? 0) !== 0;
+}
+
+// Analogue stick vector (-1..1); (0,0) is release.
+export function stickInput(x: number, y: number): void {
+  module()?._web_stick_input?.(x, y);
+}
+
+export function aimToggle(): boolean {
+  return (module()?._web_aim_toggle?.() ?? 0) !== 0;
+}
+
+export function interactTrigger(): boolean {
+  return (module()?._web_interact_trigger?.() ?? 0) !== 0;
 }
 
 export function setPaused(paused: boolean): void {

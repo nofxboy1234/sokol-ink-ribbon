@@ -56,17 +56,9 @@ a {
 }
 
 .pane-map {
-  flex: 3 1 0;
+  flex: 1 1 0;
   overflow: hidden;
   position: relative;
-}
-
-.pane-side {
-  flex: 1 1 0;
-  min-width: 210px;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
 }
 
 .map-canvas {
@@ -739,13 +731,6 @@ button.recipe[aria-disabled="true"] {
     flex: 1 1 0;
     min-height: 0;
   }
-
-  .pane-side {
-    flex: 0 0 45dvh;
-    height: 45dvh;
-    max-height: 45dvh;
-    overflow-y: auto;
-  }
 }
 
 /* Grace's actions: icons around her dot while Paused, then an Ok/Cancel pill. */
@@ -948,3 +933,97 @@ button.recipe[aria-disabled="true"] {
 .pause-item:focus-visible { background: var(--green); }
 .level-time { text-align: center; padding: 6px; }
 .level-complete .pause-menu { background: var(--paper); color: var(--ink); font-size: 1rem; }
+
+/* Realtime layout: buttons over the map, timer chip, inventory overlay, stick. */
+.map-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 8px;
+  z-index: 3;
+}
+
+.map-actions .pause-button {
+  position: static;
+}
+
+.timer-chip {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  padding: 2px 8px;
+  pointer-events: none;
+}
+
+.inventory-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 94vw);
+  max-height: 88dvh;
+  overflow-y: auto;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+
+.inventory-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.inventory-header .records-link {
+  margin-right: auto;
+}
+
+.inventory-close {
+  min-height: 36px;
+}
+
+/* Analogue stick: touch devices only, bottom centre of the map. */
+.stick {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .stick {
+    display: block;
+    position: absolute;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    width: 128px;
+    height: 128px;
+    border: 2px solid var(--ink);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.35);
+    z-index: 3;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .stick-knob {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 52px;
+    height: 52px;
+    border: 2px solid var(--ink);
+    border-radius: 50%;
+    background: var(--paper);
+  }
+
+  .stick[data-active="true"] {
+    background: rgba(255, 255, 255, 0.55);
+  }
+}
+
+.grace-status[data-aiming="true"] {
+  background: var(--green);
+}

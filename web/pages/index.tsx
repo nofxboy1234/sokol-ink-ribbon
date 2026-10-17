@@ -5,6 +5,7 @@ import { AuthPanel } from "../src/AuthPanel";
 import { GameStateProvider } from "../src/GameState";
 import { GraceActions } from "../src/GraceActions";
 import { MapCanvas } from "../src/MapCanvas";
+import { Stick } from "../src/Stick";
 import { CodeKeypad, Crafting, Files, GameOver, Inventory, LevelComplete, PauseMenu, RunPanel, SaveLoadMenu } from "../src/panes";
 import { setPaused as setGamePaused, takeSaveMenu } from "../src/wasmBridge";
 import { useGameState } from "../src/GameState";
@@ -23,26 +24,71 @@ function DeadMenuCloser({ onDead }: { onDead: () => void }) {
   return null;
 }
 
-export default function HomePage() {
+// What used to be the right-hand pane, now an overlay in the pause-menu
+// style: header carries Records + sign-in, then the ITEMS/CRAFTING/FILES
+// tabs. Opening it freezes the world (see setGamePaused below).
+function InventoryOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("items");
+  if (!open) {
+    return null;
+  }
+  return (
+    <div className="pause-overlay" onClick={onClose}>
+      <div className="inventory-panel" role="dialog" aria-label="Inventory" onClick={(event) => event.stopPropagation()}>
+        <header className="inventory-header">
+          <Link className="records-link" href="/records">
+            Records
+          </Link>
+          <AuthPanel />
+          <button type="button" className="pause-item inventory-close" onClick={onClose}>
+            Close
+          </button>
+        </header>
+        <nav className="tabs">
+          {TABS.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              className="tab"
+              data-active={tab === entry.id}
+              onClick={() => setTab(entry.id)}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </nav>
+        {tab === "items" && <Inventory />}
+        {tab === "crafting" && <Crafting />}
+        {tab === "files" && <Files />}
+      </div>
+    </div>
+  );
+}
+
+export default function HomePage() {
   const [paused, setPaused] = useState(false);
   const [saveMenu, setSaveMenu] = useState(false);
+  const [inventoryOpen, setInventoryOpen] = useState(false);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") {
         return;
       }
-      // Escape closes the save/load menu first, then toggles the pause menu.
+      // Escape closes the topmost menu first, then toggles the pause menu.
       if (saveMenu) {
         setSaveMenu(false);
+        return;
+      }
+      if (inventoryOpen) {
+        setInventoryOpen(false);
         return;
       }
       setPaused((value) => !value);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [saveMenu]);
+  }, [saveMenu, inventoryOpen]);
 
   // A typewriter click in the canvas opens the save/load menu.
   useEffect(() => {
@@ -55,8 +101,8 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    setGamePaused(paused || saveMenu);
-  }, [paused, saveMenu]);
+    setGamePaused(paused || saveMenu || inventoryOpen);
+  }, [paused, saveMenu, inventoryOpen]);
 
   return (
     <>
@@ -66,37 +112,22 @@ export default function HomePage() {
           <section className="pane pane-map">
             <MapCanvas />
             <GraceActions />
-            <button type="button" className="pause-button" onClick={() => setPaused(true)}>
-              Pause
-            </button>
-          </section>
-          <section className="pane pane-side">
-            <header className="side-header">
-              <Link className="records-link" href="/records">
-                Records
-              </Link>
-              <AuthPanel />
-            </header>
-            <RunPanel />
-            <nav className="tabs">
-              {TABS.map((entry) => (
-                <button
-                  key={entry.id}
-                  type="button"
-                  className="tab"
-                  data-active={tab === entry.id}
-                  onClick={() => setTab(entry.id)}
-                >
-                  {entry.label}
-                </button>
-              ))}
-            </nav>
-            {tab === "items" && <Inventory />}
-            {tab === "crafting" && <Crafting />}
-            {tab === "files" && <Files />}
+            <Stick />
+            <div className="timer-chip">
+              <RunPanel />
+            </div>
+            <div className="map-actions">
+              <button type="button" className="pause-button" onClick={() => setInventoryOpen(true)}>
+                Inventory
+              </button>
+              <button type="button" className="pause-button" onClick={() => setPaused(true)}>
+                Pause
+              </button>
+            </div>
           </section>
         </main>
-        <DeadMenuCloser onDead={() => { setPaused(false); setSaveMenu(false); }} />
+        <DeadMenuCloser onDead={() => { setPaused(false); setSaveMenu(false); setInventoryOpen(false); }} />
+        <InventoryOverlay open={inventoryOpen} onClose={() => setInventoryOpen(false)} />
         <PauseMenu
           open={paused}
           onClose={() => setPaused(false)}

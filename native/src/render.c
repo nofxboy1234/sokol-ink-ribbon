@@ -539,13 +539,18 @@ void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* ro
         } else {
             fill_circle(px, py, gr, C_PURPLE_R);
         }
-        // on the enemy: a round reticle at its real position
-        if (r.fx.aim && r.fx.aim_enemy) {
+        // The aim reticle at the end of the straight line (snapped onto the
+        // enemy when locked): a ring with cross ticks, never a square.
+        if (r.fx.aim) {
             float cx, cy;
-            camera_cell_to_screen(r.fx.aim_ex, r.fx.aim_ey, &cx, &cy);
+            camera_cell_to_screen(r.fx.aim_wx, r.fx.aim_wy, &cx, &cy);
             float rr = scale * RETICLE_RADIUS;
             float t = scale * 0.1f > 2.0f ? scale * 0.1f : 2.0f;
             float cr = r.fx.aim_ok ? 0.0f : 0.616f, cg = r.fx.aim_ok ? 1.0f : 0.616f, cb = r.fx.aim_ok ? 0.149f : 0.616f;
+            if (!r.fx.aim_enemy && r.fx.aim_ok) {
+                cr = 0.0f; cg = 0.616f; cb = 1.0f;  // cyan line to a floor target, like before
+                cr = 0.149f; cg = 0.616f; cb = 1.0f;
+            }
             thick_line(px, py, cx, cy, 2.0f, cr, cg, cb, 0.9f);
             ring_circle(cx, cy, rr, t, cr, cg, cb, 1.0f);
             float a = rr + scale * 0.22f, b = rr - scale * 0.22f;
@@ -554,19 +559,6 @@ void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* ro
             thick_line(cx, cy - a, cx, cy - b, t, cr, cg, cb, 1.0f);
             thick_line(cx, cy + b, cx, cy + a, t, cr, cg, cb, 1.0f);
             fill_circle(cx, cy, t * 0.8f, cr, cg, cb, 1.0f);
-        }
-        // the aim line runs straight from her centre to the cell's centre
-        else if (r.fx.aim) {
-            float cx, cy, sx, sy;
-            camera_cell_to_screen((float)r.fx.aim_x + 0.5f, (float)r.fx.aim_y + 0.5f, &cx, &cy);
-            camera_cell_to_screen((float)r.fx.aim_x, (float)r.fx.aim_y, &sx, &sy);
-            if (r.fx.aim_ok) {
-                thick_line(px, py, cx, cy, 2.0f, C_CYAN_R);
-                outline_cell(sx, sy, scale, C_CYAN_R);
-            } else {
-                thick_line(px, py, cx, cy, 2.0f, 0.616f, 0.616f, 0.616f, 0.8f);
-                outline_cell(sx, sy, scale, 0.616f, 0.616f, 0.616f, 0.8f);
-            }
         }
     }
 

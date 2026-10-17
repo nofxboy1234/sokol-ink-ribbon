@@ -130,6 +130,16 @@ static struct {
     bool dead;
     int last_save_slot;
     bool section_revealed[LEVEL_MAX_SECTIONS];
+    // Realtime input (Phase 0 spike: sokol delivers key events to the C
+    // callback even with html5.bubble_key_events set -- bubbling only stops
+    // preventDefault -- so WASD/E/Q/X are read here, gated by app.paused so
+    // typing in React overlays never moves her).
+    bool key_w, key_a, key_s, key_d;
+    bool run_latch;          // E while walking: run until she stops
+    float stick_x, stick_y;  // analogue stick vector from React, -1..1
+    bool stick_was_live;     // stick pushed past the dead zone (aim release)
+    bool aiming;             // throw aim mode: mouse/stick direction + reticle
+    float aim_wx, aim_wy;    // the reticle's world position (cells, float)
     bool touch_active;
     bool touch_moved;
     float touch_start_x, touch_start_y;
@@ -522,6 +532,142 @@ static bool grace_do(grace_action_t action) {
     return false;
 }
 
+// The unified interact trigger (X key on desktop, a tap on the stick's
+// centre on mobile): use whatever she faces, then her own cell, then the
+// cells around her -- pickups, switches, doors, and the climb prompt alike.
+static bool input_held(void) {
+    return app.key_w || app.key_a || app.key_s || app.key_d ||
+           app.stick_x * app.stick_x + app.stick_y * app.stick_y >= 0.12f * 0.12f;
+}
+
+static bool interact_trigger(void) {
+    if (app.grace == GRACE_HURT || input_held() || player_climbing()) {
+        return false;
+    }
+    player_stop();
+    int px, py;
+    player_cell(&px, &py);
+    static const int facing_dx[4] = { 0, 1, 0, -1 };
+    static const int facing_dy[4] = { -1, 0, 1, 0 };
+    int f = player_facing();
+    int cells[10][2];
+    int n = 0;
+    cells[n][0] = px + facing_dx[f]; cells[n][1] = py + facing_dy[f]; n++;
+    cells[n][0] = px; cells[n][1] = py; n++;
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            if (dx == 0 && dy == 0) continue;
+            cells[n][0] = px + dx; cells[n][1] = py + dy; n++;
+        }
+    }
+    for (int i = 0; i < n; i++) {
+        if (doors_interact(cells[i][0], cells[i][1]) || interact_at(cells[i][0], cells[i][1])) {
+            bump_revision();
+            return true;
+        }
+    }
+    return false;
+}
+
+// Aim mode (Q on desktop, double-tap on the stick centre): only from a
+// standstill, only with the bottle active. The world stays live (D2).
+static bool aim_enter(void) {
+    if (app.aiming) {
+        app.aiming = false;
+        bump_revision();
+        return true;  // Q again cancels
+    }
+    if (!throw_active() || input_held() || player_climbing() || app.grace == GRACE_HURT || app.grace == GRACE_PAUSED) {
+        return false;
+    }
+    player_stop();
+    app.aiming = true;
+    app.aim_wx = player_x() + 1.0f;
+    app.aim_wy = player_y();
+    app.aim_enemy = false;
+    bump_revision();
+    return true;
+}
+
+static void aim_update(void) {
+    if (!app.aiming) {
+        return;
+    }
+    float dx, dy;
+    if (app.stick_x != 0.0f || app.stick_y != 0.0f) {
+        dx = app.stick_x;
+        dy = app.stick_y;
+    } else {
+        float wx, wy;
+        camera_screen_to_world(app.mouse_x, app.mouse_y, &wx, &wy);
+        dx = wx - player_x();
+        dy = wy - player_y();
+    }
+    float len = sqrtf(dx * dx + dy * dy);
+    if (len < 0.05f) {
+        return;  // keep the last direction
+    }
+    dx /= len;
+    dy /= len;
+    float dist = len > THROW_RANGE_CELLS ? THROW_RANGE_CELLS : len;
+    if (app.stick_x != 0.0f || app.stick_y != 0.0f) {
+        dist = THROW_RANGE_CELLS;  // stick aims at full reach in its direction
+    }
+    app.aim_wx = player_x() + dx * dist;
+    app.aim_wy = player_y() + dy * dist;
+    app.aim_enemy = false;
+    // snap onto the enemy when the reticle passes close to it
+    if (grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
+        float ex = enemy_x() - app.aim_wx, ey = enemy_y() - app.aim_wy;
+        if (ex * ex + ey * ey <= 0.75f * 0.75f) {
+            app.aim_wx = enemy_x();
+            app.aim_wy = enemy_y();
+            app.aim_enemy = true;
+        }
+    }
+}
+
+static bool aim_ok_now(void) {
+    if (!app.aiming) {
+        return false;
+    }
+    int px, py;
+    player_cell(&px, &py);
+    int tx = (int)floorf(app.aim_wx), ty = (int)floorf(app.aim_wy);
+    if (app.aim_enemy) {
+        enemy_cell(&tx, &ty);
+    }
+    return throw_in_reach(px, py, tx, ty);
+}
+
+// Throw along the aim: standing throw (80%). False (nothing spent) when the
+// reticle is grey -- out of range, no clear line, or her own cell.
+static bool aim_confirm(void) {
+    if (!app.aiming || !aim_ok_now()) {
+        return false;
+    }
+    int px, py;
+    player_cell(&px, &py);
+    int tx = (int)floorf(app.aim_wx), ty = (int)floorf(app.aim_wy);
+    if (app.aim_enemy) {
+        enemy_cell(&tx, &ty);
+    }
+    throw_result_t result;
+    bool ok = app.aim_enemy
+        ? throw_resolve_at_enemy(px, py, tx, ty, THROW_STANCE_WAIT, &result)
+        : throw_resolve(px, py, tx, ty, THROW_STANCE_WAIT, &result);
+    if (!ok) {
+        return false;
+    }
+    app.impact_at = app.clock;
+    app.impact_x = tx;
+    app.impact_y = ty;
+    app.aiming = false;
+    app.aim_enemy = false;
+    bump_revision();
+    return true;
+}
+
 static const obj_t* hover_interactable(void);
 static void update_hover(void);
 
@@ -553,119 +699,45 @@ static bool on_grace(float sx, float sy) {
     return hover_interactable() == NULL && near_grace(sx, sy);
 }
 
-// Right click (or a long press) on her dot while Paused opens Quick Equip
-// and closes the action menu; again closes it.
+// Right click (or a long press) on her dot while she stands still opens
+// Quick Equip and closes it again. Moving or hurt: no equip.
 static void handle_quick_equip(void) {
-    if (app.grace == GRACE_WAITING && on_grace(app.mouse_x, app.mouse_y)) {
-        grace_do(GRACE_ACT_PAUSE);  // waiting: pause, then Quick Equip
+    if (app.grace == GRACE_HURT || player_is_moving() || player_climbing()) {
+        return;
     }
-    if (app.grace != GRACE_PAUSED || app.setup != SETUP_NONE || !on_grace(app.mouse_x, app.mouse_y)) {
+    if (!on_grace(app.mouse_x, app.mouse_y)) {
         return;
     }
     app.quick_open = !app.quick_open;
-    app.menu_open = false;  // never both: right click only toggles Quick Equip
     bump_revision();
 }
 
 static void handle_click(void) {
     if (app.grace == GRACE_HURT) {
-        return;  // no moving, no pausing while hurt
+        return;  // no moving, no acting while hurt
     }
-    if (app.grace == GRACE_WAITING && on_grace(app.mouse_x, app.mouse_y)) {
-        // waiting, a tap on her pauses and opens the action menu
-        app.last_click_at = -1.0;
-        grace_do(GRACE_ACT_PAUSE);
+    if (app.aiming) {
+        aim_confirm();  // desktop: the click throws (a grey reticle refuses)
         return;
     }
-    if (app.grace != GRACE_PAUSED) {
-        // During an action a single click does nothing; a double click pauses.
-        float dx = app.mouse_x - app.last_click_x, dy = app.mouse_y - app.last_click_y;
-        float slop = DOUBLE_CLICK_SLOP_PX * sapp_dpi_scale();
-        if (app.clock - app.last_click_at <= DOUBLE_CLICK_SECONDS && dx * dx + dy * dy <= slop * slop) {
-            app.last_click_at = -1.0;
-            grace_do(GRACE_ACT_PAUSE);
-        } else {
-            app.last_click_at = app.clock;
-            app.last_click_x = app.mouse_x;
-            app.last_click_y = app.mouse_y;
+    if (on_grace(app.mouse_x, app.mouse_y)) {
+        // Clicking Grace stops her where she stands (she goes to Waiting).
+        player_stop();
+        app.run_latch = false;
+        app.quick_open = false;
+        if (app.grace == GRACE_WALKING || app.grace == GRACE_RUNNING || app.grace == GRACE_PAUSED) {
+            set_grace(GRACE_WAITING);
         }
-        return;
-    }
-    if (app.setup == SETUP_NONE) {
-        // Paused with nothing chosen: her dot toggles the action menu (and
-        // closes Quick Equip); any other click closes both (and may still
-        // use a door or item).
-        if (on_grace(app.mouse_x, app.mouse_y)) {
-            app.menu_open = app.quick_open || !app.menu_open;
-            app.quick_open = false;
-            bump_revision();
-            return;
-        }
-        if (app.menu_open || app.quick_open) {
-            app.menu_open = false;
-            app.quick_open = false;
-            bump_revision();
-        }
-        if (app.hover_x >= 0 && app.hover_y >= 0 &&
-            (doors_interact(app.hover_x, app.hover_y) || interact_at(app.hover_x, app.hover_y))) {
-            app.last_click_at = -1.0;
-            bump_revision();
-            return;
-        }
-        // A double click on empty map carries on with the paused action.
-        // Only here, with no setup pending, so picking and re-tapping a
-        // target, her dot and pickups never count towards one.
-        float dx = app.mouse_x - app.last_click_x, dy = app.mouse_y - app.last_click_y;
-        float slop = DOUBLE_CLICK_SLOP_PX * sapp_dpi_scale();
-        if (app.clock - app.last_click_at <= DOUBLE_CLICK_SECONDS && dx * dx + dy * dy <= slop * slop) {
-            app.last_click_at = -1.0;
-            grace_resume();
-        } else {
-            app.last_click_at = app.clock;
-            app.last_click_x = app.mouse_x;
-            app.last_click_y = app.mouse_y;
-        }
-        return;
-    }
-    if (app.setup == SETUP_THROW) {
-        // Aiming: no doors or items, just pick a cell; the same cell again
-        // throws. Over the enemy the aim locks onto it; the enemy again throws.
-        if (pointer_on_enemy()) {
-            if (app.setup_has_target && app.aim_enemy) {
-                grace_do(GRACE_ACT_OK);
-            } else {
-                pick_throw_enemy();
-            }
-            return;
-        }
-        if (app.hover_x < 0 || app.hover_y < 0) {
-            return;
-        }
-        if (app.setup_has_target && !app.aim_enemy && app.hover_x == app.setup_x && app.hover_y == app.setup_y) {
-            grace_do(GRACE_ACT_OK);
-        } else {
-            pick_throw(app.hover_x, app.hover_y);
-        }
-        return;
-    }
-    if (app.hover_x < 0 || app.hover_y < 0) {
-        return;
-    }
-    if (doors_interact(app.hover_x, app.hover_y)) {
         bump_revision();
         return;
     }
-    if (interact_at(app.hover_x, app.hover_y)) {
-        bump_revision();
-        return;
+    if (player_is_moving()) {
+        return;  // map taps do not steer her; only Grace herself stops her
     }
-    if (setup_is_move()) {
-        // Tapping the picked cell again confirms, like Ok; another cell retargets.
-        if (app.setup_has_target && app.hover_x == app.setup_x && app.hover_y == app.setup_y) {
-            grace_do(GRACE_ACT_OK);
-        } else {
-            pick_target(app.hover_x, app.hover_y);
-        }
+    // Map taps are for the world now: doors, pickups, switches, climb prompts.
+    if (app.hover_x >= 0 && app.hover_y >= 0 &&
+        (doors_interact(app.hover_x, app.hover_y) || interact_at(app.hover_x, app.hover_y))) {
+        bump_revision();
     }
 }
 
@@ -683,6 +755,9 @@ static void grace_hurt(void) {
     // Hurt: she stops where she is, drops what she was doing and can't act.
     // A second hit while Hurt starts the 5 s again.
     player_halt();
+    app.aiming = false;
+    app.key_w = app.key_a = app.key_s = app.key_d = false;
+    app.run_latch = false;
     clear_pending();
     if (app.setup != SETUP_NONE) {
         clear_setup();
@@ -743,13 +818,15 @@ static void init(void) {
     app.last_save_slot = -1;
     app.paused = false;
     app.save_menu = false;
-    app.grace = GRACE_PAUSED;
+    app.grace = GRACE_WAITING;  // realtime: the world is live from the start
     app.last = GRACE_WAITING;
     app.prev = GRACE_WAITING;
-    app.menu_open = true;  // start with the action menu open
+    app.menu_open = false;  // the radial action menu is gone
     app.quick_open = false;
     app.pending = false;
-    app.resume_wait = true;  // Paused Wait: a double click waits
+    app.resume_wait = false;
+    app.aiming = false;
+    app.run_latch = false;
     app.impact_at = -1.0;
     app.grace_flash_until = -1.0;
     app.grace_stress_until = -1.0;
@@ -842,6 +919,51 @@ void _dbgui_extra(void) {
     }
 }
 
+// Realtime movement input: WASD keys and/or the analogue stick become a
+// velocity on Grace. Releasing everything puts her in Waiting (the world
+// stays live, D1) and clears the run latch. While aiming, movement input
+// aims (stick) or is ignored (keys) -- she can only throw standing still.
+static void input_update(void) {
+    if (app.paused || app.dead || level_complete() || app.grace == GRACE_HURT || player_climbing()) {
+        player_set_velocity(0.0f, 0.0f);
+        return;
+    }
+    float ix = (app.key_d ? 1.0f : 0.0f) - (app.key_a ? 1.0f : 0.0f) + app.stick_x;
+    float iy = (app.key_s ? 1.0f : 0.0f) - (app.key_w ? 1.0f : 0.0f) + app.stick_y;
+    float mag = sqrtf(ix * ix + iy * iy);
+    if (mag > 1.0f) {
+        ix /= mag;
+        iy /= mag;
+        mag = 1.0f;
+    }
+    if (app.aiming || mag < 0.12f) {
+        player_set_velocity(0.0f, 0.0f);
+        if (!app.aiming) {
+            app.run_latch = false;  // stopped: the next move walks again
+            if (app.grace == GRACE_WALKING || app.grace == GRACE_RUNNING) {
+                set_grace(GRACE_WAITING);
+            }
+        }
+        return;
+    }
+    bool keys = app.key_w || app.key_a || app.key_s || app.key_d;
+    bool run = keys ? app.run_latch : mag > 0.5f;
+    float speed;
+    if (keys) {
+        speed = run ? PLAYER_RUN_SPEED_CELLS : PLAYER_WALK_SPEED_CELLS;
+    } else if (mag <= 0.5f) {
+        speed = PLAYER_WALK_SPEED_CELLS * (mag / 0.5f);  // proportional in the walk band
+    } else {
+        speed = PLAYER_WALK_SPEED_CELLS +
+                (PLAYER_RUN_SPEED_CELLS - PLAYER_WALK_SPEED_CELLS) * ((mag - 0.5f) / 0.5f);
+    }
+    player_set_velocity(ix / mag * speed, iy / mag * speed);
+    grace_mode_t want = run ? GRACE_RUNNING : GRACE_WALKING;
+    if (app.grace != want) {
+        set_grace(want);
+    }
+}
+
 static void frame(void) {
     const float dt = (float)sapp_frame_duration();
     app.clock += (double)dt;
@@ -867,8 +989,10 @@ static void frame(void) {
         }
     }
     if (!app.paused && app.grace == GRACE_HURT && app.clock >= app.grace_hurt_until) {
-        grace_finish(GS_HURT, state_of(app.prev));  // Hurt over: Paused Wait
+        set_grace(GRACE_WAITING);  // Hurt over: Waiting (world live)
     }
+    input_update();
+    aim_update();
     if (!app.paused && !app.dead && !level_complete() && app.grace != GRACE_PAUSED) {
         {
             // sight needs her lit: her Lighter, or a level light on her cell
@@ -899,7 +1023,8 @@ static void frame(void) {
         }
         if ((app.grace == GRACE_WALKING || app.grace == GRACE_RUNNING) && !player_is_moving()) {
             clear_pending();
-            grace_finish(state_of(app.grace), state_of(app.prev));  // arrived: back to before, paused
+            app.run_latch = false;
+            set_grace(GRACE_WAITING);  // arrived / stopped: Waiting, world live
         }
         app.elapsed += (double)dt;
 
@@ -920,25 +1045,14 @@ static void frame(void) {
 
     _dbgui_update();
     render_fx_t fx = { 0 };
-    if (app.setup == SETUP_THROW) {
-        bool hover = !app.touch_pointer || app.touch_active;
-        bool on_enemy = app.setup_has_target ? app.aim_enemy : hover && pointer_on_enemy();
-        int ax = app.setup_has_target ? app.setup_x : hover ? app.hover_x : -1;
-        int ay = app.setup_has_target ? app.setup_y : hover ? app.hover_y : -1;
-        if (on_enemy) {
-            enemy_cell(&ax, &ay);
-        }
-        if (ax >= 0 && ay >= 0) {
-            int px, py;
-            player_cell(&px, &py);
-            fx.aim = true;
-            fx.aim_x = ax;
-            fx.aim_y = ay;
-            fx.aim_ok = throw_in_reach(px, py, ax, ay);
-            fx.aim_enemy = on_enemy;
-            fx.aim_ex = enemy_x();
-            fx.aim_ey = enemy_y();
-        }
+    if (app.aiming) {
+        fx.aim = true;
+        fx.aim_wx = app.aim_wx;
+        fx.aim_wy = app.aim_wy;
+        fx.aim_ok = aim_ok_now();
+        fx.aim_enemy = app.aim_enemy;
+        fx.aim_ex = enemy_x();
+        fx.aim_ey = enemy_y();
     }
     if (app.impact_at >= 0.0) {
         float age = (float)(app.clock - app.impact_at);
@@ -956,18 +1070,7 @@ static void frame(void) {
     fx.grace_waiting = app.grace == GRACE_WAITING;
     fx.clock = (float)fmod(app.clock, 1000.0);
     render_set_fx(&fx);
-    // While setting up Walk/Run the rope shows the picked cell's route, or
-    // follows the pointer until one is picked (touch: only while a finger is
-    // down, since touch has no hover).
-    if (setup_is_move() && app.setup_has_target) {
-        render_scene(app.setup_x, app.setup_y, &app.setup_route, &app.route);
-    } else {
-        bool hover = setup_is_move() && (!app.touch_pointer || app.touch_active);
-        render_scene(hover ? app.hover_x : -1,
-                     hover ? app.hover_y : -1,
-                     hover ? &app.preview : NULL,
-                     &app.route);
-    }
+    render_scene(-1, -1, NULL, &app.route);
 
     sg_begin_pass(&(sg_pass){
         .action = app.pass_action,
@@ -997,6 +1100,43 @@ static void event(const sapp_event* e) {
         return;
     }
     switch (e->type) {
+        case SAPP_EVENTTYPE_KEY_DOWN:
+        case SAPP_EVENTTYPE_KEY_UP: {
+            bool down = e->type == SAPP_EVENTTYPE_KEY_DOWN;
+            // React overlays freeze the world via app.paused; keys read then
+            // (e.g. typing in Auth inputs) must never move or act for her.
+            if (app.paused) {
+                app.key_w = app.key_a = app.key_s = app.key_d = false;
+                return;
+            }
+            switch (e->key_code) {
+                case SAPP_KEYCODE_W: app.key_w = down; break;
+                case SAPP_KEYCODE_A: app.key_a = down; break;
+                case SAPP_KEYCODE_S: app.key_s = down; break;
+                case SAPP_KEYCODE_D: app.key_d = down; break;
+                case SAPP_KEYCODE_E:
+                    // run latch: pressing E while walking (or while a move
+                    // key is held, before the next frame lands) runs; while
+                    // running it is a no-op (it never toggles run off)
+                    if (down && !e->key_repeat &&
+                        (app.grace == GRACE_WALKING || app.key_w || app.key_a || app.key_s || app.key_d)) {
+                        app.run_latch = true;
+                    }
+                    break;
+                case SAPP_KEYCODE_Q:
+                    if (down && !e->key_repeat) {
+                        aim_enter();
+                    }
+                    break;
+                case SAPP_KEYCODE_X:
+                    if (down && !e->key_repeat) {
+                        interact_trigger();
+                    }
+                    break;
+                default: break;
+            }
+            return;
+        }
         case SAPP_EVENTTYPE_RESIZED:
             camera_set_viewport(sapp_width(), sapp_height());
             return;
@@ -1225,7 +1365,6 @@ WEB_EXPORT int web_quick_select(int slot) {
     }
     throw_set_active(!throw_active());
     app.quick_open = false;
-    app.menu_open = true;
     bump_revision();
     return 1;
 }
@@ -1288,16 +1427,21 @@ TEST_EXPORT int web_test_bottle_ready(void) {
     return throw_active() ? 1 : 0;
 }
 
-// Tests: from Paused, Throw at a cell and confirm (as the menu would).
+// Tests: throw at a cell from a standstill (the realtime aim's resolve).
 TEST_EXPORT int web_test_throw_at(int x, int y) {
-    if (!grace_do(GRACE_ACT_THROW)) {
+    if (!throw_active() || player_is_moving()) {
         return 0;
     }
-    pick_throw(x, y);
-    if (!grace_do(GRACE_ACT_OK)) {
-        grace_do(GRACE_ACT_CANCEL);
+    int px, py;
+    player_cell(&px, &py);
+    throw_result_t result;
+    if (!throw_resolve(px, py, x, y, THROW_STANCE_WAIT, &result)) {
         return 0;
     }
+    app.impact_at = app.clock;
+    app.impact_x = x;
+    app.impact_y = y;
+    bump_revision();
     return 1;
 }
 
@@ -1330,7 +1474,7 @@ WEB_EXPORT int web_bottle_equip(int on) {
 }
 
 WEB_EXPORT int web_throw_hit_chance(void) {
-    return throw_hit_chance(grace_stance());
+    return throw_hit_chance(THROW_STANCE_WAIT);
 }
 
 TEST_EXPORT int web_throw_in_reach(int x, int y) {
@@ -1344,7 +1488,8 @@ TEST_EXPORT int web_cell_floor(int x, int y) {
 }
 
 WEB_EXPORT int web_throw_allowed(void) {
-    return throw_active() && grace_can(GS_THROW) && throw_allowed(grace_stance()) ? 1 : 0;
+    // realtime: she can only throw standing still, bottle active
+    return throw_active() && !player_is_moving() && app.grace != GRACE_HURT ? 1 : 0;
 }
 
 TEST_EXPORT float web_enemy_flash(void) {
@@ -1422,6 +1567,56 @@ TEST_EXPORT void web_test_hurt(void) {
 
 WEB_EXPORT int web_grace_ready(void) {
     return setup_ready() ? 1 : 0;
+}
+
+// Analogue stick vector from React (-1..1). Releasing the stick (exact
+// zero) while aiming throws along the last aim; a release that never left
+// the dead zone cancels instead.
+WEB_EXPORT void web_stick_input(float x, float y) {
+    float mag = sqrtf(x * x + y * y);
+    if (app.aiming) {
+        if (x == 0.0f && y == 0.0f) {
+            if (app.stick_was_live) {
+                aim_confirm();  // mobile: release throws
+            } else {
+                app.aiming = false;  // dead-zone release cancels
+                bump_revision();
+            }
+            app.stick_was_live = false;
+        } else if (mag >= 0.12f) {
+            app.stick_was_live = true;
+        }
+    }
+    app.stick_x = x;
+    app.stick_y = y;
+}
+
+WEB_EXPORT int web_aim_toggle(void) {
+    return aim_enter() ? 1 : 0;
+}
+
+WEB_EXPORT int web_aiming(void) {
+    return app.aiming ? 1 : 0;
+}
+
+WEB_EXPORT int web_interact_trigger(void) {
+    return interact_trigger() ? 1 : 0;
+}
+
+TEST_EXPORT int web_test_run_latch(void) {
+    return app.run_latch ? 1 : 0;
+}
+
+TEST_EXPORT int web_test_aiming(void) {
+    return app.aiming ? 1 : 0;
+}
+
+TEST_EXPORT float web_test_aim_x(void) {
+    return app.aim_wx;
+}
+
+TEST_EXPORT float web_test_aim_y(void) {
+    return app.aim_wy;
 }
 
 WEB_EXPORT int web_grace_action(int action) {

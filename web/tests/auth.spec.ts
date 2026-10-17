@@ -30,6 +30,8 @@ test("sign up and save a run", async ({ request, baseURL }) => {
 test("sign up through the form", async ({ page }) => {
   await page.goto("/");
   const email = `ui_${Date.now()}@example.com`;
+  // the sign-in form lives in the Inventory overlay header now
+  await page.getByRole("button", { name: "Inventory", exact: true }).click();
   await page.locator('input[type="email"]').click();
   await page.keyboard.type(email);
   await page.locator('input[type="password"]').click();

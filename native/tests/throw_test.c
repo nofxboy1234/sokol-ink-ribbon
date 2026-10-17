@@ -793,6 +793,40 @@ int main(int argc, char** argv) {
         CHECK(light_broken_count() == broken0, "and the entry count is restored with the lamp");
     }
 
+
+    {
+        // Realtime steering: continuous movement, wall collision, no routes.
+        player_set_cell(level.start_x, level.start_y);
+        float sx0 = player_x(), sy0 = player_y();
+        player_set_velocity(3.0f, 0.0f);
+        for (int i = 0; i < 20; i++) player_update(0.05f);
+        CHECK(player_x() > sx0 + 1.5f && player_y() == sy0, "steering: holding a direction moves her continuously");
+        CHECK(player_steering() && player_is_moving(), "steering counts as moving");
+        player_set_velocity(0.0f, 0.0f);
+        CHECK(!player_steering() && !player_is_moving(), "releasing the input stops her");
+        // diagonal steering moves on both axes
+        player_set_cell(level.start_x, level.start_y);
+        player_set_velocity(2.1f, 2.1f);
+        for (int i = 0; i < 10; i++) player_update(0.05f);
+        CHECK(player_x() > sx0 + 0.5f && player_y() > sy0 + 0.5f, "steering: diagonal movement works");
+        player_set_velocity(0.0f, 0.0f);
+        // steering into a wall: she stays in the room (position stays on floor)
+        player_set_cell(level.start_x, level.start_y);
+        player_set_velocity(-3.0f, 0.0f);
+        for (int i = 0; i < 200; i++) player_update(0.05f);
+        int wx, wy; player_cell(&wx, &wy);
+        CHECK(grid_is_floor(wx, wy), "steering: pushing into a wall never leaves the floor");
+        CHECK(player_x() < sx0, "steering: she did travel to the wall");
+        player_set_velocity(0.0f, 0.0f);
+        // replay samples while steering (smooth playback, not cell hops)
+        player_set_cell(level.start_x, level.start_y);
+        int rl0 = player_replay_length();
+        player_note_time(0);
+        player_set_velocity(3.0f, 0.0f);
+        for (int i = 1; i <= 10; i++) { player_note_time(i * 100); player_update(0.1f); }
+        player_set_velocity(0.0f, 0.0f);
+        CHECK(player_replay_length() > rl0 + 3, "steering records replay samples as she moves");
+    }
     printf(failures ? "%d FAILED\n" : "ALL PASS\n", failures);
     return failures ? 1 : 0;
 }

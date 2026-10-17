@@ -21,27 +21,11 @@ declare global {
   }
 }
 
-// From Paused (menu open): tap an action icon, click a cell dx cells to Grace's right,
-// then Ok on the pill.
-async function orderGrace(page: Page, action: "Walk" | "Run", dx: number) {
-  const box = await page.locator("canvas#canvas").boundingBox();
-  if (!box) {
-    throw new Error("canvas has no box");
-  }
-  const at = await page.evaluate(() => ({
-    x: window.Module?._web_grace_screen_x?.() ?? 0,
-    y: window.Module?._web_grace_screen_y?.() ?? 0,
-  }));
-  const cellPx = await page.evaluate(() => window.Module?._level_cell_px?.() ?? 20);
-  // the menu is open whenever she is Paused
-  await page.getByRole("button", { name: action, exact: true }).click();
-  const ok = page
-    .getByRole("toolbar", { name: "Confirm action" })
-    .getByRole("button", { name: "Ok", exact: true });
-  await expect(ok).toBeDisabled();
-  const scale = await page.evaluate(() => window.devicePixelRatio);
-  await page.mouse.click(box.x + at.x + (cellPx / scale) * dx, box.y + at.y);
-  await ok.click();
+// Realtime: hold a movement key (WASD) for a while; E latches run.
+async function steer(page: Page, key: string, ms: number) {
+  await page.keyboard.down(key);
+  await page.waitForTimeout(ms);
+  await page.keyboard.up(key);
 }
 
 test("the map app boots and renders the level", async ({ page }) => {
@@ -72,11 +56,21 @@ test("the map app boots and renders the level", async ({ page }) => {
   expect(grid.revealed).toBeGreaterThan(100);
 });
 
-test("the side panes and pause menu are present", async ({ page }) => {
+test("the map is full-width and the Inventory overlay carries the old side pane", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "ITEMS" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "CRAFTING" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "FILES" })).toBeVisible();
+  // no right-hand pane any more
+  await expect(page.locator(".pane-side")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "ITEMS" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Inventory", exact: true }).click();
+  const overlay = page.getByRole("dialog", { name: "Inventory" });
+  await expect(overlay).toBeVisible();
+  await expect(overlay.getByRole("button", { name: "ITEMS" })).toBeVisible();
+  await expect(overlay.getByRole("button", { name: "CRAFTING" })).toBeVisible();
+  await expect(overlay.getByRole("button", { name: "FILES" })).toBeVisible();
+  await expect(overlay.getByRole("link", { name: "Records" })).toBeVisible();
+  await overlay.getByRole("button", { name: "Close" }).click();
+  await expect(overlay).toHaveCount(0);
 
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   await expect(page.getByRole("button", { name: "Restart level" })).toBeVisible();
@@ -91,67 +85,60 @@ test("walking records a replay", async ({ page }) => {
   });
 
   const before = await page.evaluate(() => window.Module?._replay_length?.() ?? 0);
-  // walk ~2 cells to her right, within the room
-  await orderGrace(page, "Walk", 2);
-  await page.waitForTimeout(1500);
+  await steer(page, "d", 700); // ~2 cells right at walk speed
   const after = await page.evaluate(() => window.Module?._replay_length?.() ?? 0);
   expect(after).toBeGreaterThan(before);
-  // arrived: back to what she did before (Wait), paused
-  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(0);
-  expect(await page.evaluate(() => window.Module?._web_grace_last?.())).toBe(3);
+  // released: she waits, and the world stays live
+  await expect.poll(() => page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
 });
 
-test("the world is frozen while Grace is paused", async ({ page }) => {
+test("the world is live while she waits, and the Pause menu freezes it", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
     timeout: 30_000,
   });
-  // the action menu starts open; with nothing done yet the indicator shows Wait
-  await expect(page.getByRole("button", { name: "Walk", exact: true })).toBeVisible();
-  await expect(page.getByRole("status", { name: "Grace: Paused, last Waiting" })).toBeVisible();
+  await expect(page.getByRole("status", { name: "Grace: Waiting" })).toBeVisible();
   const t0 = await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0);
   await page.waitForTimeout(600);
-  expect(await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0)).toBe(t0);
+  expect(await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0)).toBeGreaterThan(t0);
+
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  const t1 = await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0);
+  await page.waitForTimeout(600);
+  expect(await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0)).toBe(t1);
 });
 
-test("a double click on the map pauses Grace mid-move", async ({ page }) => {
+test("clicking Grace stops her mid-move; WASD and the E run latch drive her", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
     timeout: 30_000,
   });
-
-  await orderGrace(page, "Walk", 6);
-  await page.waitForTimeout(300);
   const box = await page.locator("canvas#canvas").boundingBox();
-  if (!box) {
-    throw new Error("canvas has no box");
-  }
-  const x = box.x + box.width / 2 + 60;
-  const y = box.y + box.height / 2 + 60;
-  await page.mouse.click(x, y);
-  await page.waitForTimeout(400);
-  // a single click does nothing
-  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(1);
-  await expect(page.getByRole("status", { name: "Grace: Walking" })).toBeVisible();
-  await page.mouse.dblclick(x, y);
-  await expect.poll(() => page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(0);
-  // paused by double-click: the menu opens again, the indicator keeps her
-  // last state and the cyan route to her target stays drawn
-  await expect(page.getByRole("button", { name: "Walk", exact: true })).toBeVisible();
-  await expect(page.getByRole("status", { name: "Grace: Paused, last Walking" })).toBeVisible();
-  expect(await page.evaluate(() => window.Module?._web_grace_pending?.())).toBe(1);
-  expect(await page.evaluate(() => window.Module?._web_route_length?.() ?? 0)).toBeGreaterThan(1);
+  if (!box) throw new Error("canvas has no box");
+  const mode = () => page.evaluate(() => window.Module?._web_grace_mode?.());
 
-  const t1 = await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0);
-  const s1 = await page.evaluate(() => window.Module?._player_total_steps?.() ?? 0);
-  await page.waitForTimeout(900);
-  const t2 = await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0);
-  const s2 = await page.evaluate(() => window.Module?._player_total_steps?.() ?? 0);
+  await page.keyboard.down("d");
+  await expect.poll(mode).toBe(1); // Walking
+  await page.keyboard.press("e");
+  await expect.poll(mode).toBe(2); // Running (latched)
+  await page.keyboard.press("e");
+  await page.waitForTimeout(200);
+  expect(await mode()).toBe(2); // E while running does not toggle off
 
-  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(0);
-  expect(t1).toBeGreaterThan(0);
-  expect(t2).toBe(t1);
-  expect(s2).toBe(s1);
+  // click on her dot: she stops where she stands, back to Waiting
+  const at = await page.evaluate(() => ({
+    x: window.Module?._web_grace_screen_x?.() ?? 0,
+    y: window.Module?._web_grace_screen_y?.() ?? 0,
+  }));
+  await page.mouse.click(box.x + at.x, box.y + at.y);
+  await page.keyboard.up("d");
+  await expect.poll(mode).toBe(3);
+
+  // the latch cleared when she stopped: moving again walks
+  await page.keyboard.down("d");
+  await expect.poll(mode).toBe(1);
+  await page.keyboard.up("d");
+  await expect.poll(mode).toBe(3);
 });
 
 test("the Pause Menu stops movement", async ({ page }) => {
@@ -160,7 +147,7 @@ test("the Pause Menu stops movement", async ({ page }) => {
     timeout: 30_000,
   });
 
-  await orderGrace(page, "Walk", 6);
+  await page.keyboard.down("d");
   await page.waitForTimeout(300);
   await page.getByRole("button", { name: "Pause", exact: true }).click();
 
@@ -169,6 +156,7 @@ test("the Pause Menu stops movement", async ({ page }) => {
   await page.waitForTimeout(900);
   const t2 = await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0);
   const s2 = await page.evaluate(() => window.Module?._player_total_steps?.() ?? 0);
+  await page.keyboard.up("d");
 
   expect(t2 - t1).toBeLessThan(50);
   expect(s2).toBe(s1);
@@ -227,7 +215,8 @@ test("no save button and records navigates client-side", async ({ page }) => {
   await page.evaluate(() => {
     (window as unknown as { __marker?: number }).__marker = 1;
   });
-  await page.getByRole("link", { name: "Records" }).click();
+  await page.getByRole("button", { name: "Inventory", exact: true }).click();
+  await page.getByRole("dialog", { name: "Inventory" }).getByRole("link", { name: "Records" }).click();
   await expect(page.getByRole("heading", { name: "Records" })).toBeVisible();
   const marker = await page.evaluate(() => (window as unknown as { __marker?: number }).__marker);
   expect(marker).toBe(1);
@@ -257,19 +246,21 @@ test("right click on Grace opens Quick Equip and an active bottle can be thrown"
 
   await page.mouse.click(box.x + at.x, box.y + at.y, { button: "right" });
   await expect(quick).toBeVisible();
-  await expect(page.getByRole("button", { name: "Walk", exact: true })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Walk", exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => (window as unknown as { __ctx: boolean[] }).__ctx)).toEqual([
     true,
   ]);
   // nothing equipped yet: no bottle
   await expect(page.getByRole("button", { name: "Empty Bottle", exact: true })).toHaveCount(0);
 
-  // equip a bottle from the Inventory
+  // equip a bottle from the Inventory overlay
   await page.evaluate(() => window.Module?._web_test_give?.(0));
+  await page.getByRole("button", { name: "Inventory", exact: true }).click();
   const slot = page.locator(".inventory-slot", { hasText: "Empty Bottle" });
   await slot.click({ button: "right" });
   await page.locator(".item-menu").getByRole("button", { name: "Equip", exact: true }).click();
   await expect(slot).toHaveAttribute("data-equipped", "true");
+  await page.getByRole("dialog", { name: "Inventory" }).getByRole("button", { name: "Close" }).click();
 
   // the bottle sits East in Quick Equip (still open); picking it makes it active
   const bottle = quick.getByRole("button", { name: "Empty Bottle", exact: true });
@@ -277,60 +268,38 @@ test("right click on Grace opens Quick Equip and an active bottle can be thrown"
   await bottle.click();
   expect(await page.evaluate(() => window.Module?._web_bottle_active?.())).toBe(1);
 
-  // Throw sits West; aim at a cell in reach, confirm on the pill
-  const throwButton = page.getByRole("button", { name: "Throw", exact: true });
-  await expect(throwButton).toHaveAttribute("data-slot", "West");
-  await throwButton.click();
-  const target = await page.evaluate(() => {
-    const m = window.Module;
-    const px = m?._player_cell_x?.() ?? 0;
-    const py = m?._player_cell_y?.() ?? 0;
-    for (let d = 5; d >= 2; d--) {
-      for (const [dx, dy] of [
-        [d, 0],
-        [-d, 0],
-        [0, d],
-        [0, -d],
-      ]) {
-        if (m?._web_throw_in_reach?.(px + dx, py + dy)) {
-          return { dx, dy };
-        }
-      }
-    }
-    return null;
-  });
-  expect(target).not.toBeNull();
+  // Q enters aim mode; moving the mouse aims, the click throws
+  await page.keyboard.press("q");
+  await expect.poll(() => wasm(page, "web_test_aiming")).toBe(1);
   const cellPx = await page.evaluate(() => window.Module?._web_cell_css_px?.() ?? 0);
-  await page.mouse.click(
-    box.x + at.x + (target?.dx ?? 0) * cellPx,
-    box.y + at.y + (target?.dy ?? 0) * cellPx,
-  );
-  const ok = page
-    .getByRole("toolbar", { name: "Confirm action" })
-    .getByRole("button", { name: "Ok", exact: true });
-  await expect(ok).toBeEnabled();
-  await ok.click();
+  const at2 = await page.evaluate(() => ({
+    x: window.Module?._web_grace_screen_x?.() ?? 0,
+    y: window.Module?._web_grace_screen_y?.() ?? 0,
+  }));
+  await page.mouse.move(box.x + at2.x + cellPx * 3, box.y + at2.y);
+  await page.waitForTimeout(150);
+  await page.mouse.click(box.x + at2.x + cellPx * 3, box.y + at2.y);
   expect(
     await page.evaluate(() => window.Module?._web_impact_age_ms?.() ?? -1),
   ).toBeGreaterThanOrEqual(0);
+  expect(await wasm(page, "web_test_aiming")).toBe(0);
   // the last bottle is spent: its slot stays equipped but greyed out
   await expect(slot).toHaveCount(0);
   expect(await page.evaluate(() => window.Module?._web_bottle_equipped?.())).toBe(1);
   expect(await page.evaluate(() => window.Module?._web_bottle_empty?.())).toBe(1);
   expect(await page.evaluate(() => window.Module?._web_bottle_active?.())).toBe(0);
-  // the throw done, back to Paused Wait
-  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(0);
-  expect(await page.evaluate(() => window.Module?._web_grace_last?.())).toBe(3);
+  // realtime: after the throw she is simply Waiting
+  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
 });
 
-test("a tap on an item next to Grace picks it up instead of toggling her menu", async ({
+test("a tap on an item next to Grace picks it up; tapping her stops her", async ({
   page,
 }) => {
   await page.goto("/");
   await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
     timeout: 30_000,
   });
-  // stand just west of the Green Herb at (95, 8), menu open
+  // stand just west of the Green Herb at (95, 8)
   await page.evaluate(() => window.Module?._web_test_grace_at?.(94, 8));
   await page.waitForTimeout(250);
   const box = await page.locator("canvas#canvas").boundingBox();
@@ -342,56 +311,34 @@ test("a tap on an item next to Grace picks it up instead of toggling her menu", 
     y: window.Module?._web_grace_screen_y?.() ?? 0,
     cell: window.Module?._web_cell_css_px?.() ?? 0,
   }));
-  expect(await page.evaluate(() => window.Module?._web_grace_menu_open?.())).toBe(1);
   const before = await page.evaluate(() => window.Module?._items_collected?.() ?? 0);
-  // just inside the herb's cell, within the old generous dot radius
+  // just inside the herb's cell
   await page.mouse.click(box.x + at.x + at.cell * 0.5 + 3, box.y + at.y);
   await expect
     .poll(() => page.evaluate(() => window.Module?._items_collected?.() ?? 0))
     .toBe(before + 1);
-  // a tap on her own cell still toggles the menu
-  await page.mouse.click(box.x + at.x, box.y + at.y);
-  await expect.poll(() => page.evaluate(() => window.Module?._web_grace_menu_open?.())).toBe(1);
-  await page.mouse.click(box.x + at.x, box.y + at.y);
-  await expect.poll(() => page.evaluate(() => window.Module?._web_grace_menu_open?.())).toBe(0);
+  // the X key is the same interact trigger: face east back at her cell is a
+  // no-op, but the mode stays Waiting and nothing breaks
+  await page.keyboard.press("x");
+  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
 });
 
-test("a double click while Paused resumes the paused walk, and starts waiting at start", async ({
+test("she starts Waiting in a live world, and steering west/east works from spawn", async ({
   page,
 }) => {
   await page.goto("/");
   await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
     timeout: 30_000,
   });
-  const box = await page.locator("canvas#canvas").boundingBox();
-  if (!box) {
-    throw new Error("canvas has no box");
-  }
-  const x = box.x + box.width / 2 + 60;
-  const y = box.y + box.height / 2 + 60;
   const mode = () => page.evaluate(() => window.Module?._web_grace_mode?.());
-  await orderGrace(page, "Walk", 6);
-  await page.waitForTimeout(300);
-  await page.mouse.dblclick(x, y);
-  await expect.poll(mode).toBe(0);
-  // stays Paused until asked
-  await page.waitForTimeout(600);
-  expect(await mode()).toBe(0);
-  await page.mouse.dblclick(x, y);
-  await expect.poll(mode).toBe(1);
-
-  // the game starts in Paused Wait: a double click carries on waiting
-  await page.reload();
-  await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
-    timeout: 30_000,
-  });
-  expect(await mode()).toBe(0);
-  expect(await page.evaluate(() => window.Module?._web_grace_resumable?.())).toBe(1);
-  await page.mouse.dblclick(x, y);
+  expect(await mode()).toBe(3); // Waiting, not Paused
+  const x0 = await page.evaluate(() => window.Module?._player_cell_x?.() ?? 0);
+  await steer(page, "a", 400);
+  expect(await page.evaluate(() => window.Module?._player_cell_x?.() ?? 0)).toBeLessThanOrEqual(x0);
   await expect.poll(mode).toBe(3);
 });
 
-test("left click toggles only the action menu, right click only Quick Equip", async ({ page }) => {
+test("right click toggles only Quick Equip; there is no action menu", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
     timeout: 30_000,
@@ -411,19 +358,14 @@ test("left click toggles only the action menu, right click only Quick Equip", as
     ]);
   const left = () => page.mouse.click(box.x + at.x, box.y + at.y);
   const right = () => page.mouse.click(box.x + at.x, box.y + at.y, { button: "right" });
-  expect(await state()).toEqual([1, 0]);
+  expect(await state()).toEqual([0, 0]);
   await right();
   await expect.poll(state).toEqual([0, 1]);
   await right();
   await expect.poll(state).toEqual([0, 0]);
   await left();
-  await expect.poll(state).toEqual([1, 0]);
-  await left();
-  await expect.poll(state).toEqual([0, 0]);
-  await right();
-  await expect.poll(state).toEqual([0, 1]);
-  await left();
-  await expect.poll(state).toEqual([1, 0]);
+  await expect.poll(state).toEqual([0, 0]); // left click on Grace only stops her
+  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
 });
 
 // Calls a wasm export by name (without the leading underscore).
@@ -447,56 +389,32 @@ async function boot(page: Page) {
   return box;
 }
 
-test("aiming over the enemy locks onto it, even between cells", async ({ page }) => {
+test("aiming over the enemy snaps the reticle onto it, and the click throws", async ({ page }) => {
   const box = await boot(page);
-  await wasm(page, "web_test_give", 0);
-  await wasm(page, "web_bottle_equip", 1);
+  await wasm(page, "web_test_bottle_ready");
+  // put the enemy 3 cells east of Grace, in the open
   const gx = await wasm(page, "player_cell_x");
   const gy = await wasm(page, "player_cell_y");
-  // find an open cell in reach and put the enemy half a cell off it
-  const target = await page.evaluate(
-    ([px, py]) => {
-      const m = window.Module as unknown as Record<string, (...x: number[]) => number>;
-      for (let d = 4; d >= 2; d--) {
-        for (const [dx, dy] of [
-          [d, 0],
-          [-d, 0],
-          [0, d],
-          [0, -d],
-        ]) {
-          if (m._web_throw_in_reach(px + dx, py + dy)) {
-            return [px + dx, py + dy];
-          }
-        }
-      }
-      return null;
-    },
-    [gx, gy] as const,
-  );
-  expect(target).not.toBeNull();
-  const [tx, ty] = target ?? [0, 0];
-  await wasm(page, "web_test_enemy_place", tx * 100 + 50, ty * 100 + 80);
-  // make the bottle active from Quick Equip, then Throw
-  const at = {
-    x: await wasm(page, "web_grace_screen_x"),
-    y: await wasm(page, "web_grace_screen_y"),
-  };
-  await page.mouse.click(box.x + at.x, box.y + at.y, { button: "right" });
-  await page
-    .getByRole("group", { name: "Quick Equip" })
-    .getByRole("button", { name: "Empty Bottle" })
-    .click();
-  await page.getByRole("button", { name: "Throw", exact: true }).click();
+  await wasm(page, "web_test_enemy_place", (gx + 3) * 100 + 50, gy * 100 + 80);
+  await page.keyboard.press("q");
+  await expect.poll(() => wasm(page, "web_test_aiming")).toBe(1);
+  // the world is live: track the enemy with the mouse until the reticle snaps
+  await expect
+    .poll(
+      async () => {
+        const ex = await wasm(page, "web_enemy_screen_x");
+        const ey = await wasm(page, "web_enemy_screen_y");
+        await page.mouse.move(box.x + ex + 3, box.y + ey - 3);
+        return wasm(page, "web_aim_enemy");
+      },
+      { timeout: 5000 },
+    )
+    .toBe(1);
   const ex = await wasm(page, "web_enemy_screen_x");
   const ey = await wasm(page, "web_enemy_screen_y");
-  await page.mouse.move(box.x + ex + 3, box.y + ey - 3);
   await page.mouse.click(box.x + ex + 3, box.y + ey - 3);
-  expect(await wasm(page, "web_aim_enemy")).toBe(1);
-  expect(await wasm(page, "web_grace_ready")).toBe(1);
-  // tapping the enemy again throws at it
-  await page.mouse.click(box.x + ex, box.y + ey);
   expect(await wasm(page, "web_impact_age_ms")).toBeGreaterThanOrEqual(0);
-  expect(await wasm(page, "web_aim_enemy")).toBe(0);
+  expect(await wasm(page, "web_test_aiming")).toBe(0);
 });
 
 test("a Med Injector heals fully and a Green Herb one level", async ({ page }) => {
@@ -569,43 +487,33 @@ test("a hit makes the enemy angry", async ({ page }) => {
 });
 
 test("a hit leaves Grace Hurt for 5 s, unable to move, then she waits", async ({ page }) => {
-  const box = await boot(page);
-  await orderGrace(page, "Walk", 6);
-  await page.waitForTimeout(200);
+  await boot(page);
+  await wasm(page, "web_test_enemy_place", 500, 8000); // keep the enemy far away
+  await steer(page, "d", 400);
   await wasm(page, "web_test_hurt");
   expect(await wasm(page, "web_grace_mode")).toBe(4);
   await expect(page.getByRole("status", { name: "Grace: Hurt" })).toBeVisible();
-  const x0 = await wasm(page, "player_cell_x");
-  // a double click (pause) and a tap on her do nothing; she doesn't move
-  const gx = await wasm(page, "web_grace_screen_x");
-  const gy = await wasm(page, "web_grace_screen_y");
-  await page.mouse.dblclick(box.x + gx + 60, box.y + gy + 60);
-  await page.mouse.click(box.x + gx, box.y + gy);
-  expect(await wasm(page, "web_grace_action", 0)).toBe(0);
-  await page.waitForTimeout(1500);
+  const x0 = await wasm(page, "player_px");
+  // WASD does nothing while hurt; she doesn't move
+  await page.keyboard.down("d");
+  await page.waitForTimeout(600);
+  await page.keyboard.up("d");
   expect(await wasm(page, "web_grace_mode")).toBe(4);
-  expect(await wasm(page, "player_cell_x")).toBe(x0);
-  // Hurt over: Paused Wait
-  await expect.poll(() => wasm(page, "web_grace_mode"), { timeout: 6000 }).toBe(0);
-  expect(await wasm(page, "web_grace_last")).toBe(3);
+  expect(await wasm(page, "player_px")).toBeCloseTo(x0, 1);
+  // Hurt over: Waiting (world live), not Paused
+  await expect.poll(() => wasm(page, "web_grace_mode"), { timeout: 7000 }).toBe(3);
   expect(await wasm(page, "web_grace_hurt_ms")).toBe(0);
 });
 
-test("waiting, a tap on Grace pauses her and opens the action menu", async ({ page }) => {
-  const box = await boot(page);
-  await page.getByRole("button", { name: "Wait", exact: true }).click();
-  await page
-    .getByRole("toolbar", { name: "Confirm action" })
-    .getByRole("button", { name: "Ok" })
-    .click();
-  expect(await wasm(page, "web_grace_mode")).toBe(3);
-  await page.waitForTimeout(400);
-  await page.mouse.click(
-    box.x + (await wasm(page, "web_grace_screen_x")),
-    box.y + (await wasm(page, "web_grace_screen_y")),
-  );
-  expect(await wasm(page, "web_grace_mode")).toBe(0);
-  await expect(page.getByRole("button", { name: "Walk", exact: true })).toBeVisible();
+test("the X key triggers the interact in front of her (pickup)", async ({ page }) => {
+  await boot(page);
+  // stand just west of the Green Herb at (95, 8), facing east after a nudge
+  await page.evaluate(() => window.Module?._web_test_grace_at?.(94, 8));
+  await page.waitForTimeout(200);
+  await steer(page, "d", 60); // face east without leaving the cell
+  const before = await wasm(page, "items_collected");
+  await page.keyboard.press("x");
+  await expect.poll(() => wasm(page, "items_collected")).toBe(before + 1);
 });
 
 test("an item the Lighter has shown stays visible", async ({ page }) => {
@@ -631,47 +539,45 @@ test("a typewriter save keeps the enemy where it was", async ({ page }) => {
   expect(await wasm(page, "web_enemy_py")).toBeCloseTo(12.3, 3);
 });
 
-test("a throw while walking returns to Paused Walking; a double click carries on", async ({
+test("she can only throw standing still: moving blocks the aim, stopping allows it", async ({
   page,
 }) => {
-  const box = await boot(page);
-  await orderGrace(page, "Walk", 6);
-  await page.waitForTimeout(300);
-  const x = box.x + box.width / 2 + 60;
-  const y = box.y + box.height / 2 + 60;
-  await page.mouse.dblclick(x, y);
-  await expect.poll(() => wasm(page, "web_grace_mode")).toBe(0);
-  expect(await wasm(page, "web_grace_last")).toBe(1);
+  await boot(page);
   expect(await wasm(page, "web_test_bottle_ready")).toBe(1);
-  const px = await wasm(page, "player_cell_x");
-  const py = await wasm(page, "player_cell_y");
+  // moving: Q does nothing, the direct throw refuses
+  await page.keyboard.down("d");
+  await page.waitForTimeout(300);
+  await page.keyboard.press("q");
+  expect(await wasm(page, "web_test_aiming")).toBe(0);
+  expect(await wasm(page, "web_throw_allowed")).toBe(0);
+  await page.keyboard.up("d");
+  await expect.poll(() => wasm(page, "web_grace_mode")).toBe(3);
+  // stopped: the throw works and she stays Waiting
   let thrown = 0;
   for (const [dx, dy] of [[0, 2], [0, -2], [-2, 0], [2, 0], [0, 3], [0, -3]]) {
-    if (await wasm(page, "web_throw_in_reach", px + dx, py + dy)) {
-      thrown = await wasm(page, "web_test_throw_at", px + dx, py + dy);
+    const cx = await wasm(page, "player_cell_x");
+    const cy = await wasm(page, "player_cell_y");
+    if (await wasm(page, "web_throw_in_reach", cx + dx, cy + dy)) {
+      thrown = await wasm(page, "web_test_throw_at", cx + dx, cy + dy);
       if (thrown) break;
     }
   }
   expect(thrown).toBe(1);
-  // back to Paused Walking, the route kept
-  expect(await wasm(page, "web_grace_mode")).toBe(0);
-  expect(await wasm(page, "web_grace_last")).toBe(1);
-  expect(await wasm(page, "web_grace_resumable")).toBe(1);
-  await page.mouse.dblclick(x, y);
-  await expect.poll(() => wasm(page, "web_grace_mode")).toBe(1);
+  expect(await wasm(page, "web_grace_mode")).toBe(3);
 });
 
-test("Throw is disabled while paused running", async ({ page }) => {
-  const box = await boot(page);
+test("running blocks throwing until she stops and the latch clears", async ({ page }) => {
+  await boot(page);
   expect(await wasm(page, "web_test_bottle_ready")).toBe(1);
-  await orderGrace(page, "Run", 6);
-  await page.waitForTimeout(150);
-  await page.mouse.dblclick(box.x + box.width / 2 + 60, box.y + box.height / 2 + 60);
-  await expect.poll(() => wasm(page, "web_grace_mode")).toBe(0);
-  expect(await wasm(page, "web_grace_last")).toBe(2);
+  await page.keyboard.down("d");
+  await page.keyboard.press("e");
+  await expect.poll(() => wasm(page, "web_grace_mode")).toBe(2);
   expect(await wasm(page, "web_throw_allowed")).toBe(0);
-  await expect(page.getByRole("button", { name: "Throw", exact: true })).toBeDisabled();
-  expect(await wasm(page, "web_grace_action", 6)).toBe(0);
+  await page.keyboard.press("q");
+  expect(await wasm(page, "web_test_aiming")).toBe(0);
+  await page.keyboard.up("d");
+  await expect.poll(() => wasm(page, "web_grace_mode")).toBe(3);
+  expect(await wasm(page, "web_throw_allowed")).toBe(1);
 });
 
 test("items lit by a switch light stay visible after it is switched off", async ({ page }) => {
@@ -712,14 +618,17 @@ test("the fuse chain: gate stays shut without the fuse, opens with it, goal past
   await expect.poll(() => wasm(page, "web_level_complete")).toBe(1);
 });
 
-test("climbing: she stops at the edge, climbs on after the delay, and climbs off", async ({ page }) => {
+test("climbing: X climbs on after the delay, and X climbs off again", async ({ page }) => {
   await boot(page);
-  // obstacle 43 at (68,53) 4x2: make it climbable for this check via a fresh
-  // page is not possible, so use the native-tested path through interact:
-  // place Grace west of it and click its nearest cell with the test hook.
+  // obstacle at (68,53): make it climbable with the test hook, stand west.
   await page.evaluate(() => window.Module?._web_test_grace_at?.(67, 53));
   await page.waitForTimeout(200);
-  // not climbable in level 1, so nothing happens; the on/off flow is covered
-  // by the native test. Here we assert she is not on top.
-  expect(await wasm(page, "web_on_top")).toBe(0);
+  expect(await wasm(page, "web_test_set_climbable", 68, 53)).toBe(1);
+  await steer(page, "d", 60); // face east, stay in her cell
+  await page.waitForTimeout(250);
+  await page.keyboard.press("x");
+  await expect.poll(() => wasm(page, "web_on_top"), { timeout: 3000 }).toBe(1);
+  // climb off with X again (facing decides the landing cell)
+  await page.keyboard.press("x");
+  await expect.poll(() => wasm(page, "web_on_top"), { timeout: 3000 }).toBe(0);
 });
