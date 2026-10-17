@@ -65,6 +65,14 @@ typedef enum {
     DOOR_BROKEN,
 } door_state_t;
 
+// A level light's condition, stored in obj_t.state. Once broken it never
+// lights again, so 0 and 1 keep the meaning of the old bool.
+typedef enum {
+    LIGHT_OFF = 0,
+    LIGHT_ON = 1,
+    LIGHT_BROKEN = 2,
+} light_state_t;
+
 typedef struct {
     int x0, y0, x1, y1;
 } wall_seg_t;

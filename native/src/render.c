@@ -234,10 +234,18 @@ static void draw_objects_pass(int item_pass) {
             case OBJ_LIGHT: {
                 float lx = sx + scale * 0.5f;
                 float ly = sy + scale * 0.5f;
-                if (o->state) {
+                if (light_is_on(o)) {
                     fill_circle(lx, ly, scale * 0.60f, 0.949f, 1.0f, 0.0f, 0.18f);
                     fill_circle(lx, ly, scale * 0.40f, 0.949f, 1.0f, 0.0f, 0.35f);
                     fill_circle(lx, ly, scale * 0.30f, 1.0f, 0.95f, 0.2f, 1.0f);
+                    ring_circle(lx, ly, scale * 0.33f, scale * 0.06f, C_INK_R);
+                } else if (light_is_broken(o)) {
+                    fill_circle(lx, ly, scale * 0.30f, 0.35f, 0.33f, 0.30f, 1.0f);
+                    float w = scale * 0.10f;
+                    fill_rect(lx - scale * 0.26f, ly - scale * 0.20f, w, w, C_INK_R);
+                    fill_rect(lx - scale * 0.14f, ly - scale * 0.08f, w, w, C_INK_R);
+                    fill_rect(lx - scale * 0.02f, ly + scale * 0.04f, w, w, C_INK_R);
+                    fill_rect(lx + scale * 0.10f, ly + scale * 0.16f, w, w, C_INK_R);
                     ring_circle(lx, ly, scale * 0.33f, scale * 0.06f, C_INK_R);
                 } else {
                     fill_circle(lx, ly, scale * 0.30f, C_GRAY_R);

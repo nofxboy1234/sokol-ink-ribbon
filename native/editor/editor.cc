@@ -700,13 +700,13 @@ static void draw_map(void) {
             // its light radius, as a plain circle (the game also stops light at walls)
             float lr = (o->radius > 0.0f ? o->radius : LIGHT_DEFAULT_RADIUS) * scale;
             bool picked = ed.selected == i;
-            float k = o->state ? 1.0f : 0.45f;
+            float k = o->state == LIGHT_ON ? 1.0f : 0.45f;
             for (int seg = 0; seg < 64; seg++) {
                 float a0 = (float)seg / 64.0f * 6.2831853f, a1 = (float)(seg + 1) / 64.0f * 6.2831853f;
                 draw_line(cx + cosf(a0) * lr, cy + sinf(a0) * lr, cx + cosf(a1) * lr, cy + sinf(a1) * lr,
                           picked ? 3.0f : 2.0f, 0.8f * k, 0.84f * k, 0.0f, 1.0f);  // the game's yellow, darkened to read on paper
             }
-            if (o->state) {
+            if (o->state == LIGHT_ON) {
                 fill_circle(cx, cy, scale * 0.55f, 0.949f, 1.0f, 0.0f, 0.18f);
                 fill_circle(cx, cy, scale * 0.35f, 0.949f, 1.0f, 0.0f, 0.35f);
                 fill_circle(cx, cy, scale * 0.33f, 0.118f, 0.118f, 0.118f, 1.0f);
@@ -999,7 +999,15 @@ static void ui_properties(void) {
             changed |= ImGui::SliderFloat("light radius", &o->radius, LIGHT_RADIUS_MIN, LIGHT_RADIUS_MAX, "%.1f cells");
             ImGui::TextDisabled("game: unlit items are hidden");
             ImGui::TextDisabled("link: the switch that toggles it");
-            changed |= ImGui::Checkbox("on", (bool*)&o->state);
+            if (o->state == LIGHT_BROKEN) {
+                ImGui::TextDisabled("broken");
+            } else {
+                bool on = o->state == LIGHT_ON;
+                if (ImGui::Checkbox("on", &on)) {
+                    o->state = on ? LIGHT_ON : LIGHT_OFF;
+                    changed = true;
+                }
+            }
             changed |= ImGui::InputInt("group_id", &o->group_id);
             changed |= ImGui::Checkbox("breakable", (bool*)&o->breakable);
         } else if (o->kind == OBJ_SWITCH) {
