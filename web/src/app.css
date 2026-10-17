@@ -788,6 +788,14 @@ button.recipe[aria-disabled="true"] {
   opacity: 0.3;
 }
 
+/* the radial slot currently pointed at (mouse or right stick) */
+.grace-icon[data-highlighted="true"] {
+  box-shadow:
+    0 0 0 3px var(--paper),
+    0 0 0 6px var(--green);
+  background: var(--green);
+}
+
 /* the active weapon in Quick Equip */
 .grace-icon[aria-pressed="true"] {
   box-shadow:
@@ -1036,6 +1044,14 @@ button.recipe[aria-disabled="true"] {
   .aim-stick {
     left: auto;
     right: calc(18px + env(safe-area-inset-right, 0px));
+  }
+
+  /* Always shown, but with no bottle active aiming is unavailable:
+     greyed and dimmed (its centre tap/hold -- interact / Quick Equip --
+     still works). */
+  .aim-stick[data-inactive="true"] {
+    opacity: 0.45;
+    filter: grayscale(1);
   }
 }
 

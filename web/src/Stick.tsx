@@ -1,15 +1,24 @@
 import { useEffect, useRef, useState } from "react";
-import { aimDeadZone, aimInput, interactTrigger, readGrace, stickInput } from "./wasmBridge";
+import {
+  aimDeadZone,
+  aimInput,
+  interactTrigger,
+  quickSelect,
+  quickToggle,
+  radialSlot,
+  readGrace,
+  setRadialDirection,
+  stickInput,
+} from "./wasmBridge";
 
 // Twin sticks (touch only, see app.css). LEFT stick moves Grace: the first
 // half of its throw walks, further runs -- the C side turns the vector
-// into a speed. A quick tap on its centre is the interact trigger (pick up
-// / climb / use); the old double-tap-to-aim gesture is retired now that
-// aiming has its own stick. RIGHT stick aims the bottle throw (only shown
-// while a bottle is active): direction sets the aim line, push distance
-// sets the throw length, and releasing it throws -- or cancels if the
-// release never left the dead zone. She can aim while moving; aiming caps
-// her speed to a walk in C.
+// into a speed. RIGHT stick is always shown: it aims the bottle throw
+// while a bottle is active (greyed, aim unavailable, otherwise), its
+// centre tap is the interact trigger (pick up / climb / use -- the X key
+// on desktop), and holding its centre opens Quick Equip, after which
+// pointing it at a radial slot and releasing equips that slot. She can
+// aim while moving; aiming caps her speed to a walk in C.
 // Stick travel as a fraction of the stick's rendered size: 52px at the
 // full 128px size (see --stick-size in app.css). The CSS shrinks the stick
 // on short (landscape) screens, so travel -- and with it the walk/run
@@ -29,12 +38,18 @@ const RADIUS_RATIO = 52 / 128;
 // hovering near the edge does not flicker between dead and moving.
 const DEAD_ZONE_EXIT = 0.2;
 const DEAD_ZONE_ENTER = 0.12;
+// Tap vs hold on the right stick's centre: a release under TAP_MAX_MS is
+// a tap (interact); still touching at HOLD_MS is a hold (Quick Equip) and
+// the tap is suppressed. Releases in between do neither -- a deliberate
+// ambiguity guard so the two inputs can never both fire.
 const TAP_MAX_MS = 300;
+const HOLD_MS = 450;
 
 function useStickVector(
   onVector: (x: number, y: number) => void,
   onTap?: () => void,
   onDeadZone?: () => void,
+  onHold?: () => void,
 ) {
   const baseRef = useRef<HTMLDivElement>(null);
   const [knob, setKnob] = useState({ x: 0, y: 0, active: false });
@@ -43,6 +58,8 @@ function useStickVector(
     startAt: number;
     live: boolean; // pushed past the dead-zone exit at least once
     exceeded: boolean; // same latch as live, kept for the tap decision
+    holdFired: boolean;
+    holdTimer: ReturnType<typeof setTimeout> | null;
   } | null>(null);
 
   const vector = (event: React.PointerEvent) => {
@@ -62,12 +79,23 @@ function useStickVector(
 
   const onDown = (event: React.PointerEvent) => {
     (event.target as HTMLElement).setPointerCapture(event.pointerId);
-    drag.current = {
+    const current: NonNullable<typeof drag.current> = {
       id: event.pointerId,
       startAt: performance.now(),
       live: false,
       exceeded: false,
+      holdFired: false,
+      holdTimer: null,
     };
+    drag.current = current;
+    if (onHold) {
+      current.holdTimer = setTimeout(() => {
+        if (drag.current === current && !current.exceeded) {
+          current.holdFired = true;
+          onHold();
+        }
+      }, HOLD_MS);
+    }
     const v = vector(event);
     setKnob({ x: v.px, y: v.py, active: true });
   };
@@ -81,6 +109,10 @@ function useStickVector(
       if (mag > DEAD_ZONE_EXIT) {
         drag.current.live = true;
         drag.current.exceeded = true;
+        if (drag.current.holdTimer) {
+          clearTimeout(drag.current.holdTimer);
+          drag.current.holdTimer = null;
+        }
         onVector(v.x, v.y);
       } else if (mag <= DEAD_ZONE_ENTER) {
         // Held inside the dead zone: emit only the zero/dead signal, so a
@@ -103,11 +135,14 @@ function useStickVector(
 
   const onUp = (event: React.PointerEvent) => {
     if (!drag.current || event.pointerId !== drag.current.id) return;
+    if (drag.current.holdTimer) {
+      clearTimeout(drag.current.holdTimer);
+    }
     const quick = performance.now() - drag.current.startAt < TAP_MAX_MS;
-    const wasTap = quick && !drag.current.exceeded;
+    const wasTap = quick && !drag.current.exceeded && !drag.current.holdFired;
     drag.current = null;
     setKnob({ x: 0, y: 0, active: false });
-    onVector(0, 0); // release: stops her (move) / throws or cancels (aim, in C)
+    onVector(0, 0); // release: stops her (move) / throws, cancels, or equips (right, in C/React)
     if (wasTap && onTap) onTap();
   };
 
@@ -115,8 +150,9 @@ function useStickVector(
 }
 
 export function Stick() {
-  // Dead zone on the move stick is a true zero vector: she does not move.
-  const { baseRef, knob, onDown, onMove, onUp } = useStickVector(stickInput, interactTrigger, () =>
+  // Move stick only: its centre tap is NOT interact any more (that moved
+  // to the right stick). Dead zone here is a true zero vector.
+  const { baseRef, knob, onDown, onMove, onUp } = useStickVector(stickInput, undefined, () =>
     stickInput(0, 0),
   );
   return (
@@ -125,7 +161,7 @@ export function Stick() {
       className="stick"
       data-active={knob.active || undefined}
       role="application"
-      aria-label="Move stick. Tap centre to interact."
+      aria-label="Move stick."
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={onUp}
@@ -141,22 +177,111 @@ export function Stick() {
 }
 
 export function AimStick() {
-  const [bottleActive, setBottleActive] = useState(false);
+  const [state, setState] = useState({ bottleActive: false, quickOpen: false });
+  // Mirrors for the touch callbacks, which must not read stale state
+  // mid-drag (the menu can open from this very touch's hold).
+  const quickOpenRef = useRef(false);
+  const equipDir = useRef({ x: 0, y: 0 });
+  const equipExceeded = useRef(false);
+
   useEffect(() => {
-    const id = setInterval(() => setBottleActive(readGrace().bottleActive), 250);
+    const sync = () => {
+      const grace = readGrace();
+      quickOpenRef.current = grace.quickOpen;
+      setState((prev) =>
+        prev.bottleActive === grace.bottleActive && prev.quickOpen === grace.quickOpen
+          ? prev
+          : { bottleActive: grace.bottleActive, quickOpen: grace.quickOpen },
+      );
+    };
+    sync();
+    const id = setInterval(sync, 150);
     return () => clearInterval(id);
   }, []);
-  const { baseRef, knob, onDown, onMove, onUp } = useStickVector(aimInput, undefined, aimDeadZone);
-  if (!bottleActive) {
-    return null;
-  }
+
+  const closeEquip = () => {
+    quickToggle();
+    quickOpenRef.current = false;
+    equipDir.current = { x: 0, y: 0 };
+    equipExceeded.current = false;
+    setRadialDirection(0, 0);
+  };
+
+  // While Quick Equip is open the right stick points at radial slots and
+  // aiming is suspended: no aim vector ever reaches C, so no throw can
+  // fire. Releasing beyond the dead zone equips the pointed slot (an
+  // empty slot keeps the menu open); releasing back in the dead zone
+  // after pointing cancels and closes; a plain centre tap closes too.
+  const onAimVector = (x: number, y: number) => {
+    if (!quickOpenRef.current) {
+      aimInput(x, y);
+      return;
+    }
+    if (x === 0 && y === 0) {
+      // release
+      const slot = radialSlot(equipDir.current.x, equipDir.current.y);
+      const wasPointing = equipExceeded.current;
+      equipDir.current = { x: 0, y: 0 };
+      equipExceeded.current = false;
+      setRadialDirection(0, 0);
+      if (slot >= 0) {
+        quickSelect(slot);
+        quickOpenRef.current = readGrace().quickOpen; // bottle closes it, Lighter stays open
+      } else if (wasPointing) {
+        closeEquip(); // pointed, then pulled back to centre: cancel
+      }
+      return;
+    }
+    equipExceeded.current = true;
+    equipDir.current = { x, y };
+    setRadialDirection(x, y);
+  };
+
+  const onAimDeadZone = () => {
+    if (quickOpenRef.current) {
+      equipDir.current = { x: 0, y: 0 };
+      setRadialDirection(0, 0);
+      return;
+    }
+    aimDeadZone();
+  };
+
+  const onAimTap = () => {
+    if (quickOpenRef.current) {
+      closeEquip(); // a centre tap while the menu is open cancels it
+      return;
+    }
+    interactTrigger();
+  };
+
+  const onAimHold = () => {
+    if (quickOpenRef.current) {
+      return;
+    }
+    if (quickToggle()) {
+      quickOpenRef.current = true;
+    }
+  };
+
+  const { baseRef, knob, onDown, onMove, onUp } = useStickVector(
+    onAimVector,
+    onAimTap,
+    onAimDeadZone,
+    onAimHold,
+  );
   return (
     <div
       ref={baseRef}
       className="stick aim-stick"
       data-active={knob.active || undefined}
+      data-inactive={!state.bottleActive || undefined}
+      data-equip-open={state.quickOpen || undefined}
       role="application"
-      aria-label="Aim stick. Push to aim, release to throw."
+      aria-label={
+        state.bottleActive
+          ? "Aim stick. Push to aim, release to throw. Tap centre to interact, hold centre for Quick Equip."
+          : "Interact stick. Tap centre to interact, hold centre for Quick Equip. No bottle active, so aiming is unavailable."
+      }
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={onUp}

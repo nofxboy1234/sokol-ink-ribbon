@@ -706,17 +706,23 @@ static bool on_grace(float sx, float sy) {
     return hover_interactable() == NULL && near_grace(sx, sy);
 }
 
-// Right click (or a long press) on her dot while she stands still opens
-// Quick Equip and closes it again. Moving or hurt: no equip.
-static void handle_quick_equip(void) {
+// Quick Equip opens/closes: right click (or a long press) on her dot,
+// the Z key, or a long hold on the right stick's centre (via
+// web_quick_toggle). While she stands still only; moving or hurt: no equip.
+static bool quick_toggle(void) {
     if (app.grace == GRACE_HURT || player_is_moving() || player_climbing()) {
-        return;
-    }
-    if (!on_grace(app.mouse_x, app.mouse_y)) {
-        return;
+        return false;
     }
     app.quick_open = !app.quick_open;
     bump_revision();
+    return true;
+}
+
+static void handle_quick_equip(void) {
+    if (!on_grace(app.mouse_x, app.mouse_y)) {
+        return;
+    }
+    quick_toggle();
 }
 
 static void handle_click(void) {
@@ -1144,6 +1150,11 @@ static void event(const sapp_event* e) {
                         interact_trigger();
                     }
                     break;
+                case SAPP_KEYCODE_Z:
+                    if (down && !e->key_repeat) {
+                        quick_toggle();
+                    }
+                    break;
                 default: break;
             }
             return;
@@ -1360,6 +1371,13 @@ TEST_EXPORT int web_route_length(void) {
 
 WEB_EXPORT int web_quick_open(void) {
     return app.quick_open ? 1 : 0;
+}
+
+// Toggle Quick Equip from React (a long hold on the right stick's
+// centre); the Z key and right-click on Grace route through the same
+// quick_toggle, with the same standing-still conditions.
+WEB_EXPORT int web_quick_toggle(void) {
+    return quick_toggle() ? 1 : 0;
 }
 
 // Quick Equip slot 0..3 = N, E, S, W. Only East holds anything (the bottle):
