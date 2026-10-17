@@ -2,6 +2,7 @@
 
 // Fixed cells, so a move can leave an empty slot in the middle.
 static int inv_slots[INV_SLOTS];
+static int inv_capacity = INV_BASE_SLOTS;
 
 void inventory_init(void) {
     for (int i = 0; i < INV_SLOTS; i++) {
@@ -9,8 +10,17 @@ void inventory_init(void) {
     }
 }
 
+int inventory_capacity(void) { return inv_capacity; }
+bool inventory_expand(int by) {
+    if (by <= 0 || inv_capacity >= INV_SLOTS) return false;
+    inv_capacity += by; if (inv_capacity > INV_SLOTS) inv_capacity = INV_SLOTS;
+    return true;
+}
+void inventory_set_capacity(int cap) {
+    inv_capacity = cap < INV_BASE_SLOTS ? INV_BASE_SLOTS : cap > INV_SLOTS ? INV_SLOTS : cap;
+}
 bool inventory_add(int item_type) {
-    for (int i = 0; i < INV_SLOTS; i++) {
+    for (int i = 0; i < inv_capacity; i++) {
         if (inv_slots[i] < 0) {
             inv_slots[i] = item_type;
             return true;

@@ -16,12 +16,12 @@ typedef struct {
 } recipe_t;
 
 static const recipe_t recipes[] = {
-    {
-        .inputs = { { ITEM_HERB, 2 } },
-        .input_count = 1,
-        .output = { ITEM_MIXED_HERB, 1 },
-    },
+    { .inputs = { { ITEM_HERB, 2 } }, .input_count = 1, .output = { ITEM_MIXED_HERB, 1 } },
+    // taught by a recipe item in a later level; none is placed in level 1
+    { .inputs = { { ITEM_HERB, 3 } }, .input_count = 1, .output = { ITEM_INJECTOR, 1 } },
 };
+// bit i set = recipe i known; recipe 0 is known from the start
+static unsigned int known_mask = 1u;
 
 static int recipe_len(void) {
     return (int)(sizeof(recipes) / sizeof(recipes[0]));
@@ -99,13 +99,20 @@ static bool ingredients_ready(int index) {
     return true;
 }
 
+bool crafting_known(int index) { return index >= 0 && index < recipe_len() && (known_mask & (1u << index)) != 0; }
+bool crafting_learn(int index) {
+    if (index < 0 || index >= recipe_len() || crafting_known(index)) return false;
+    known_mask |= (1u << index); return true;
+}
+unsigned int crafting_known_mask(void) { return known_mask; }
+void crafting_set_known_mask(unsigned int m) { known_mask = m | 1u; }
 bool crafting_ready(int index) {
-    return ingredients_ready(index);
+    return crafting_known(index) && ingredients_ready(index);
 }
 
 bool craft(int index) {
     const recipe_t* recipe = 0;
-    if (!recipe_at(index, &recipe) || !ingredients_ready(index)) {
+    if (!recipe_at(index, &recipe) || !crafting_ready(index)) {
         return false;
     }
     int freed = 0;

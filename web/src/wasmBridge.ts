@@ -87,6 +87,17 @@ export type EmscriptenModule = {
   _replay_length?: () => number;
   _replay_x?: (index: number) => number;
   _replay_y?: (index: number) => number;
+  _replay_t?: (index: number) => number;
+  _web_level_complete?: () => number;
+  _web_grace_dead?: () => number;
+  _web_last_save_slot?: () => number;
+  _web_inventory_capacity?: () => number;
+  _web_crafting_known?: (index: number) => number;
+  _web_on_top?: () => number;
+  _web_pending_safe?: () => number;
+  _web_try_safe_code?: (code: number) => number;
+  _web_pending_code_door?: () => number;
+  _web_try_door_code?: (code: number) => number;
   _set_paused?: (paused: number) => void;
   _take_save_menu?: () => number;
   _save_game?: (slot: number) => number;
@@ -137,11 +148,16 @@ export type GameSnapshot = {
   filesFound: number;
   saves: number;
   goalMet: boolean;
+  levelComplete: boolean;
+  dead: boolean;
+  lastSaveSlot: number;
+  capacity: number;
+  onTop: boolean;
   bottleEquipped: boolean;
   bottleEmpty: boolean;
 };
 
-const EMPTY_INVENTORY = [-1, -1, -1, -1, -1, -1, -1, -1];
+const EMPTY_INVENTORY = Array.from({ length: 16 }, () => -1);
 
 export function readSnapshot(revision: number): GameSnapshot {
   const m = module();
@@ -165,11 +181,17 @@ export function readSnapshot(revision: number): GameSnapshot {
       filesFound: 0,
       saves: 0,
       goalMet: false,
+      levelComplete: false,
+      dead: false,
+      lastSaveSlot: -1,
+      capacity: 8,
+      onTop: false,
       bottleEquipped: false,
       bottleEmpty: false,
     };
   }
-  const inventory = EMPTY_INVENTORY.slice();
+  const capacity = m._web_inventory_capacity?.() ?? 8;
+  const inventory = EMPTY_INVENTORY.slice(0, capacity);
   for (let i = 0; i < inventory.length; i++) {
     inventory[i] = m._web_inventory_slot?.(i) ?? -1;
   }
@@ -192,6 +214,11 @@ export function readSnapshot(revision: number): GameSnapshot {
     filesFound: m._web_files_found?.() ?? 0,
     saves: m._web_saves_made?.() ?? 0,
     goalMet: (m._web_goal_met?.() ?? 0) !== 0,
+    levelComplete: (m._web_level_complete?.() ?? 0) !== 0,
+    dead: (m._web_grace_dead?.() ?? 0) !== 0,
+    lastSaveSlot: m._web_last_save_slot?.() ?? -1,
+    capacity: m._web_inventory_capacity?.() ?? 8,
+    onTop: (m._web_on_top?.() ?? 0) !== 0,
     bottleEquipped: (m._web_bottle_equipped?.() ?? 0) !== 0,
     bottleEmpty: (m._web_bottle_empty?.() ?? 0) !== 0,
   };
@@ -351,6 +378,7 @@ export type RecipePart = {
 };
 
 export type RecipeView = {
+  index: number;
   inputs: RecipePart[];
   output: RecipePart;
 };
@@ -398,7 +426,9 @@ export function readRecipes(): RecipeView[] {
       continue;
     }
     const outQty = m._web_crafting_part_qty?.(index, -1) ?? 0;
+    if ((m._web_crafting_known?.(index) ?? 1) === 0) continue;
     recipes.push({
+      index,
       inputs,
       output: { item: outItem, qty: outQty, label: itemAppearance(outItem).label },
     });
@@ -410,14 +440,14 @@ export function recipeReady(index: number): boolean {
   return (module()?._web_crafting_ready?.(index) ?? 0) !== 0;
 }
 
-export type ReplayPoint = { x: number; y: number };
+export type ReplayPoint = { x: number; y: number; t?: number };
 
 export function readReplay(): ReplayPoint[] {
   const m = module();
   const count = m?._replay_length?.() ?? 0;
   const points: ReplayPoint[] = [];
   for (let i = 0; i < count; i++) {
-    points.push({ x: m?._replay_x?.(i) ?? 0, y: m?._replay_y?.(i) ?? 0 });
+    points.push({ x: m?._replay_x?.(i) ?? 0, y: m?._replay_y?.(i) ?? 0, t: m?._replay_t?.(i) ?? 0 });
   }
   return points;
 }
@@ -425,3 +455,11 @@ export function readReplay(): ReplayPoint[] {
 export function runElapsedMs(): number {
   return module()?._run_elapsed_ms?.() ?? 0;
 }
+
+export function graceDead(): boolean { return (module()?._web_grace_dead?.() ?? 0) !== 0; }
+export function levelComplete(): boolean { return (module()?._web_level_complete?.() ?? 0) !== 0; }
+export function lastSaveSlot(): number { return module()?._web_last_save_slot?.() ?? -1; }
+export function pendingSafe(): number { return module()?._web_pending_safe?.() ?? -1; }
+export function trySafeCode(code: number): boolean { return (module()?._web_try_safe_code?.(code) ?? 0) !== 0; }
+export function pendingCodeDoor(): number { return module()?._web_pending_code_door?.() ?? -1; }
+export function tryDoorCode(code: number): boolean { return (module()?._web_try_door_code?.(code) ?? 0) !== 0; }

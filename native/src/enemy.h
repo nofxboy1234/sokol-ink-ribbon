@@ -46,7 +46,7 @@ float enemy_flash(void);
 float enemy_angry(void);
 // A smashed bottle at a cell carrying radius cells: the top priority. It goes
 // to look at and around the impact unless it is stunned, winded, waiting,
-// smashing a door, or chasing Grace with her in sight. True if it went.
+// smashing a lamp or door, or chasing Grace with her in sight. True if it went.
 bool enemy_hear_noise(int x, int y, float radius);
 // The cell it last sensed Grace at, or the noise it is investigating.
 int enemy_focus_x(void);

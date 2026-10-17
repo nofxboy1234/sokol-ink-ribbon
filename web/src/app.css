@@ -150,7 +150,7 @@ a {
 }
 
 .pause-item:hover {
-  background: var(--teal);
+  background: var(--green);
 }
 
 .pause-item:last-child {
@@ -180,7 +180,7 @@ a {
 }
 
 .save-row:hover {
-  background: var(--teal);
+  background: var(--green);
 }
 
 .save-row:last-child {
@@ -195,7 +195,7 @@ a {
 }
 
 .save-row:hover .save-btn {
-  background: var(--teal);
+  background: var(--green);
 }
 
 .save-btn:disabled {
@@ -219,7 +219,7 @@ button.recipe {
 }
 
 button.recipe:hover {
-  background: var(--teal);
+  background: var(--green);
 }
 
 button.recipe:disabled {
@@ -227,7 +227,7 @@ button.recipe:disabled {
 }
 
 .file:hover {
-  background: var(--teal);
+  background: var(--green);
 }
 
 .replay {
@@ -254,7 +254,7 @@ button.recipe:disabled {
 }
 
 .tab:hover {
-  background: var(--teal);
+  background: var(--green);
 }
 
 .tab[data-active="true"] {
@@ -308,18 +308,18 @@ button.recipe:disabled {
 }
 
 .inventory-slot[data-moving="true"] {
-  background: var(--teal);
+  background: var(--green);
 }
 
 /* Touch screens keep :hover on the last tapped slot, which reads as a selection. */
 @media (hover: hover) {
   .inventory-slot:hover {
-    background: var(--teal);
+    background: var(--green);
   }
 }
 
 .inventory-slot[data-selected="true"] {
-  outline: 2px solid var(--ink);
+  outline: 3px solid var(--green);
   outline-offset: -2px;
 }
 
@@ -529,7 +529,7 @@ button.recipe:disabled {
 }
 
 .item-menu button:hover {
-  background: var(--teal);
+  background: var(--green);
 }
 
 .move-catch {
@@ -929,3 +929,19 @@ button.recipe[aria-disabled="true"] {
   color: #ff002a;
   border-color: #ff002a;
 }
+
+.level-complete { position: fixed; inset: 0; background: #000; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 2rem; z-index: 60; animation: fadein 1.2s ease-in; }
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+.keypad { background: var(--paper); padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 240px; }
+.keypad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.keypad-key { min-height: 48px; font-size: 1.2rem; background: var(--paper); border: 1px solid var(--ink); cursor: pointer; }
+.keypad-key:active, .keypad-key:hover { background: var(--green); }
+.keypad-display { font-size: 1.5rem; letter-spacing: .3em; text-align: center; }
+.tab[data-active="true"] { background: var(--green); }
+.pause-selected { background: var(--green); }
+
+.replay-player { display: flex; flex-direction: column; gap: 8px; }
+.replay-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.replay-controls button { min-height: 44px; padding: 6px 14px; background: var(--paper); border: 1px solid var(--ink); cursor: pointer; }
+.replay-controls button[data-active="true"] { background: var(--green); }
+.records-list li { flex-wrap: wrap; }

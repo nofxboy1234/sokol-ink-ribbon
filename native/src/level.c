@@ -126,7 +126,7 @@ void level_init(level_t* lv) {
 const char* obj_kind_name(obj_kind_t kind) {
     static const char* names[OBJ_KIND_COUNT] = {
         "door", "item", "fusebox", "light", "switch", "typewriter", "file",
-        "safe", "obstacle", "movable", "openable", "start", "goal",
+        "safe", "obstacle", "movable", "openable", "start", "goal", "recipe", "cabinet",
     };
     return (kind >= 0 && kind < OBJ_KIND_COUNT) ? names[kind] : "door";
 }
@@ -331,12 +331,17 @@ static void parse_objects(const char* js, const jsmntok_t* t, level_t* lv, int a
             if ((v = obj_find(js, t, i, "name")) >= 0) tok_str(js, &t[v], o->name, LEVEL_MAX_NAME);
             char state[LEVEL_MAX_NAME] = "unknown";
             if ((v = obj_find(js, t, i, "state")) >= 0) {
-                if (t[v].type == JSMN_STRING) {
+                if (t[v].type == JSMN_STRING && o->kind == OBJ_LIGHT) {
+                    o->state = LIGHT_OFF;
+                } else if (t[v].type == JSMN_STRING) {
                     tok_str(js, &t[v], state, LEVEL_MAX_NAME);
                     o->state = door_state_from_name(state);
                 } else {
                     o->state = tok_int(js, &t[v], 0);
                 }
+            }
+            if (o->kind == OBJ_LIGHT && (o->state < LIGHT_OFF || o->state > LIGHT_BROKEN)) {
+                o->state = LIGHT_OFF;
             }
             char item[LEVEL_MAX_NAME] = "herb";
             if ((v = obj_find(js, t, i, "item")) >= 0) {

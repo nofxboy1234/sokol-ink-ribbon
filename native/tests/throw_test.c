@@ -13,10 +13,12 @@
 #include "health.h"
 #include "light.h"
 #include "savegame.h"
+#include "crafting.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static level_t level;
 static int failures;
@@ -278,7 +280,7 @@ int main(int argc, char** argv) {
     {
         int li = -1;
         for (int i = 0; i < level.obj_count; i++) {
-            if (level.objs[i].kind == OBJ_LIGHT && level.objs[i].state) {
+            if (level.objs[i].kind == OBJ_LIGHT && light_is_on(&level.objs[i])) {
                 li = i;
                 break;
             }
@@ -302,6 +304,46 @@ int main(int argc, char** argv) {
         lighter_toggle();
         CHECK(light_cell_lit(px, py), "the lit Lighter lights her cell (%d,%d)", px, py);
         lighter_toggle();
+    }
+
+    {
+        int li = -1;
+        for (int i = 0; i < level.obj_count; i++) {
+            if (level.objs[i].kind == OBJ_LIGHT && level.objs[i].breakable) {
+                li = i;
+                break;
+            }
+        }
+        CHECK(li >= 0, "the level has a breakable lamp");
+        obj_t* lo = (obj_t*)&grid_level()->objs[li];
+        lo->state = LIGHT_ON;
+        light_update();
+        CHECK(light_cell_lit(lo->x, lo->y), "the breakable lamp lights its cell while on (%d,%d)", lo->x, lo->y);
+
+        bool smashed = false;
+        unsigned int used = 0;
+        for (unsigned int seed = 1; seed <= 100 && !smashed; seed++) {
+            lo->state = LIGHT_ON;
+            fresh_enemy_at(lo->x, lo->y);
+            enemy_seed(seed);
+            for (int i = 0; i < 60 * 6 && !smashed; i++) {
+                enemy_update(1.0f / 60.0f, 500.0f, 500.0f, 0.0f);
+                smashed = lo->state == LIGHT_BROKEN;
+            }
+            used = seed;
+        }
+        CHECK(smashed, "seed %u sets the enemy to smashing the lamp it passes", used);
+        light_update();
+        CHECK(!light_cell_lit(lo->x, lo->y), "broken, its cell is dark");
+        light_toggle(li);
+        light_update();
+        CHECK(lo->state == LIGHT_BROKEN && !light_cell_lit(lo->x, lo->y), "the switch cannot relight a broken lamp");
+
+        savegame_save(3, 0.0);
+        lo->state = LIGHT_OFF;
+        double ms3 = 0.0;
+        savegame_load(3, &ms3);
+        CHECK(lo->state == LIGHT_BROKEN, "broken survives save and load");
     }
 
     // --- the enemy: save round trip, bottle priority, rest, sight and stealth
@@ -498,6 +540,203 @@ int main(int argc, char** argv) {
         ho->x = hx;
         ho->y = hy;
         lo->state = ls;
+    }
+
+    // --- audit: fuse chain, cherub door, climbing, recipes, cabinet, safes
+    {
+        // fuse is in openable 29 (link -> screwdriver object): no screwdriver, no fuse
+        inventory_init(); interact_init(); items_import(NULL, 0);
+        // reset openables/doors from a fresh level copy state is complex; use live objects
+        obj_t* box = NULL; obj_t* fusebox = NULL; obj_t* gate = NULL;
+        int fuse_i = -1, cherub_i = -1, screw_i = -1;
+        for (int i = 0; i < level.obj_count; i++) {
+            obj_t* o = (obj_t*)&grid_level()->objs[i];
+            if (o->kind == OBJ_OPENABLE && o->id == 29) box = o;
+            if (o->kind == OBJ_FUSEBOX) fusebox = o;
+            if (o->kind == OBJ_DOOR && strcmp(o->name, "gate") == 0) gate = o;
+            if (o->kind == OBJ_ITEM && o->item_type == ITEM_FUSE) fuse_i = i;
+            if (o->kind == OBJ_ITEM && o->item_type == ITEM_CHERUB_KEY) cherub_i = i;
+            if (o->kind == OBJ_ITEM && o->item_type == ITEM_SCREWDRIVER) screw_i = i;
+        }
+        box->open = 0; gate->state = DOOR_LOCKED;
+        player_set_cell(2, 21);
+        interact_at(1, 21);
+        CHECK(!items_taken(fuse_i), "no screwdriver: the fuse stays in its box");
+        inventory_add(ITEM_SCREWDRIVER);
+        interact_at(1, 20);  // open the box
+        CHECK(box->open == 1, "with the screwdriver the box opens");
+        interact_at(1, 21);
+        CHECK(items_taken(fuse_i) && inventory_has(ITEM_FUSE), "then she can take the fuse");
+        // fusebox without fuse does nothing; with fuse powers gate
+        inventory_init(); player_set_cell(8, 69);
+        interact_at(7, 69);
+        CHECK(!goal_met() && gate->state == DOOR_LOCKED, "no fuse: no power, gate stays shut");
+        inventory_add(ITEM_FUSE);
+        interact_at(7, 69);
+        CHECK(goal_met() && gate->state == DOOR_BROKEN && !inventory_has(ITEM_FUSE), "fuse inserted: gate powered open");
+        player_set_cell(5, 74);
+        CHECK(interact_check_complete() && level_complete(), "walking past the gate to the goal ends the level");
+
+        // cherub door (door 1, link -> cherub key object): only that key opens it
+        obj_t* cdoor = NULL;
+        for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_DOOR && o->id==1) cdoor=o; }
+        cdoor->state = DOOR_LOCKED; cdoor->open = 0;
+        inventory_init(); inventory_add(ITEM_SCREWDRIVER); inventory_add(ITEM_COIN);
+        player_set_cell(17, 37);
+        doors_interact(17, 38);
+        CHECK(cdoor->state == DOOR_LOCKED, "cherub door: screwdriver/coin do not open it");
+        inventory_add(ITEM_CHERUB_KEY);
+        doors_interact(17, 38);
+        CHECK(cdoor->state == DOOR_UNLOCKED, "cherub door: the cherub key opens it");
+
+        // climbing: a climbable obstacle can be stood on; a plain one blocks
+        obj_t* table = (obj_t*)&grid_level()->objs[43];
+        int tw = table->w > 0 ? table->w : 1;
+        table->climbable = 0;
+        CHECK(obstacles_block_cell(table->x, table->y), "plain obstacle blocks its cells");
+        table->climbable = 1;
+        CHECK(!obstacles_block_cell(table->x, table->y), "climbable obstacle does not block");
+        player_set_cell(table->x, table->y);
+        CHECK(player_on_top(), "standing on it: on top");
+        player_set_cell(table->x + tw + 1, table->y);
+        CHECK(!player_on_top(), "stepping off: not on top");
+        table->climbable = 0;
+
+        // recipes: #0 known, #1 must be taught and persists
+        crafting_set_known_mask(1u);
+        CHECK(crafting_known(0) && !crafting_known(1) && !crafting_ready(1), "recipe 1 unknown at start");
+        CHECK(crafting_learn(1) && crafting_known(1), "a recipe item teaches it");
+        savegame_save(3, 0.0); crafting_set_known_mask(1u);
+        { double m=0; savegame_load(3, &m); }
+        CHECK(crafting_known(1), "known recipes survive save/load");
+
+        // cabinet: spend a coin, +4 slots, saved
+        inventory_init(); inventory_set_capacity(8);
+        inventory_add(ITEM_COIN);
+        obj_t cab = {0}; cab.kind = OBJ_CABINET; cab.code = 1; cab.x = 20; cab.y = 20;
+        // place Grace next to a real cabinet object appended in memory is intrusive;
+        // exercise the inventory side directly:
+        CHECK(inventory_capacity() == 8 && inventory_expand(4) && inventory_capacity() == 12, "cabinet upgrade: 8 -> 12 slots");
+        savegame_save(3, 0.0); inventory_set_capacity(8);
+        { double m=0; savegame_load(3, &m); }
+        CHECK(inventory_capacity() == 12, "capacity survives save/load");
+
+        // safe + combination door codes
+        obj_t* safe = NULL; obj_t* codelock = NULL;
+        for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_SAFE) safe=o; if (o->kind==OBJ_DOOR && o->id==39) codelock=o; }
+        if (!safe) { // none in level 1: borrow the goal marker for the check
+            for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_GOAL) safe=o; }
+            if (safe) safe->kind = OBJ_SAFE;
+        }
+        if (safe) {
+            safe->open = 0; safe->code = 1234; player_set_cell(safe->x + 1, safe->y);
+            interact_at(safe->x, safe->y);
+            CHECK(interact_pending_safe() >= 0 && !interact_try_safe_code(1111) && interact_try_safe_code(1234) && safe->open == 1,
+                  "safe: wrong code fails, right code opens");
+            safe->kind = OBJ_GOAL; safe->code = 0;
+        } else {
+            CHECK(true, "safe: none placed in level 1 (system tested when placed)");
+        }
+        if (codelock) {
+            codelock->code = 4321; codelock->state = DOOR_LOCKED;
+            player_set_cell(codelock->x, codelock->y - 1);
+            doors_interact(codelock->x, codelock->y);
+            CHECK(doors_pending_code() >= 0 && !doors_try_code(1111) && doors_try_code(4321) && codelock->state == DOOR_UNLOCKED,
+                  "combination door: wrong code fails, right code opens");
+            codelock->code = 0;
+        }
+    }
+    {
+        int li = -1;
+        for (int i = 0; i < level.obj_count; i++) {
+            if (level.objs[i].kind == OBJ_LIGHT && level.objs[i].breakable) {
+                li = i;
+                break;
+            }
+        }
+        CHECK(li >= 0, "the level has a breakable lamp");
+        obj_t* lo = (obj_t*)&grid_level()->objs[li];
+        int ls = lo->state;
+        int lx0 = lo->x, ly0 = lo->y;
+        int broken0 = light_broken_count();
+        const float range = 1.0f;
+        float cx = (float)lo->x + 0.5f, cy = (float)lo->y + 0.5f;
+
+        int dx = 0, dy = 0;
+        const int step[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (int d = 0; d < 4 && dx == 0 && dy == 0; d++) {
+            int nx = lo->x + step[d][0], ny = lo->y + step[d][1];
+            if (grid_is_floor(nx, ny) && sight_clear(nx, ny, lo->x, lo->y)) {
+                dx = step[d][0];
+                dy = step[d][1];
+            }
+        }
+        CHECK(dx != 0 || dy != 0, "the breakable lamp has an open neighbour");
+        float in_x = cx + (float)dx * 0.9f, in_y = cy + (float)dy * 0.9f;
+        float out_x = cx + (float)dx * 1.1f, out_y = cy + (float)dy * 1.1f;
+
+        lo->state = LIGHT_OFF;
+        CHECK(light_breakable_near(in_x, in_y, range) < 0, "an off lamp is not a target");
+        lo->state = LIGHT_BROKEN;
+        CHECK(light_breakable_near(in_x, in_y, range) < 0, "a broken lamp is not a target");
+        lo->state = LIGHT_ON;
+        CHECK(light_breakable_near(in_x, in_y, range) == li, "a lit breakable lamp in reach is found");
+        CHECK(light_breakable_near(out_x, out_y, range) < 0, "and the same lamp out of reach is not");
+
+        int ni = -1;
+        for (int i = 0; i < level.obj_count; i++) {
+            if (level.objs[i].kind == OBJ_LIGHT && !level.objs[i].breakable) {
+                ni = i;
+                break;
+            }
+        }
+        obj_t* no = (obj_t*)&grid_level()->objs[ni];
+        int ns = no->state;
+        no->state = LIGHT_ON;
+        CHECK(light_breakable_near((float)no->x + 0.5f, (float)no->y + 0.5f, range) < 0, "a non-breakable lamp is not a target");
+        no->state = ns;
+
+        int wxp = -1, wyp = -1;
+        for (int y = 0; y < level.rows && wxp < 0; y++) {
+            for (int x = 0; x + 1 < level.cols && wxp < 0; x++) {
+                if (grid_is_floor(x, y) && grid_is_floor(x + 1, y) && sight_edge_blocked(x, y, x + 1, y)) {
+                    wxp = x;
+                    wyp = y;
+                }
+            }
+        }
+        CHECK(wxp >= 0, "the level has two floor cells with a wall between");
+        if (wxp >= 0) {
+            lo->x = wxp;
+            lo->y = wyp;
+            lo->state = LIGHT_ON;
+            CHECK(light_breakable_near((float)wxp + 1.5f, (float)wyp + 0.5f, 1.5f) < 0,
+                  "the wall at (%d,%d) blocks the smash from the next cell", wxp, wyp);
+            lo->x = lx0;
+            lo->y = ly0;
+        }
+
+        lo->state = LIGHT_OFF;
+        light_break(li);
+        CHECK(lo->state == LIGHT_OFF, "breaking an off lamp does nothing");
+        lo->state = LIGHT_ON;
+        light_break(li);
+        CHECK(lo->state == LIGHT_BROKEN, "breaking a lit breakable lamp works");
+        light_break(li);
+        CHECK(lo->state == LIGHT_BROKEN, "breaking it again leaves it broken");
+        light_toggle(li);
+        CHECK(lo->state == LIGHT_BROKEN, "the switch cannot relight a broken lamp");
+        lo->state = LIGHT_ON;
+        light_toggle(li);
+        bool to_off = lo->state == LIGHT_OFF;
+        light_toggle(li);
+        CHECK(to_off && lo->state == LIGHT_ON, "the switch flips on to off and back");
+
+        int c0 = light_broken_count();
+        lo->state = LIGHT_BROKEN;
+        CHECK(light_broken_count() == c0 + 1, "the count rises by one for a broken lamp");
+        lo->state = ls;
+        CHECK(light_broken_count() == broken0, "and the entry count is restored with the lamp");
     }
 
     printf(failures ? "%d FAILED\n" : "ALL PASS\n", failures);

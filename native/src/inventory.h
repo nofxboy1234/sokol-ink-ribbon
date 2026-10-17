@@ -1,7 +1,8 @@
 #pragma once
 #include <stdbool.h>
 
-#define INV_SLOTS 8
+#define INV_SLOTS 16
+#define INV_BASE_SLOTS 8
 
 void inventory_init(void);
 bool inventory_add(int item_type);
@@ -13,3 +14,7 @@ int inventory_slot(int index);
 bool inventory_has(int item_type);
 int inventory_count_of(int item_type);
 void inventory_set(int count, const int* slots);
+
+int inventory_capacity(void);
+bool inventory_expand(int by);
+void inventory_set_capacity(int cap);

@@ -127,6 +127,8 @@ static struct {
     double elapsed;
     bool paused;
     bool save_menu;
+    bool dead;
+    int last_save_slot;
     bool section_revealed[LEVEL_MAX_SECTIONS];
     bool touch_active;
     bool touch_moved;
@@ -628,12 +630,7 @@ static void handle_click(void) {
 static void grace_hurt(void) {
     int health = health_state();
     if (health >= HEALTH_DANGER) {
-        player_set_cell(app.respawn_x, app.respawn_y);
-        health_set(0);
-        clear_pending();
-        app.preview.count = 0;
-        camera_follow(player_x(), player_y());
-        camera_recentre();
+        app.dead = true;  // a hit in Danger kills her; the timer stops (frame skips the world)
     } else {
         health_set(health + 1);
     }
@@ -698,6 +695,8 @@ static void init(void) {
     app.last_moving = false;
     app.revision = 0;
     app.elapsed = 0.0;
+    app.dead = false;
+    app.last_save_slot = -1;
     app.paused = false;
     app.save_menu = false;
     app.grace = GRACE_PAUSED;
@@ -819,14 +818,16 @@ static void frame(void) {
     if (!app.paused && app.grace == GRACE_HURT && app.clock >= app.grace_hurt_until) {
         grace_finish(GS_HURT, state_of(app.prev));  // Hurt over: Paused Wait
     }
-    if (!app.paused && app.grace != GRACE_PAUSED) {
+    if (!app.paused && !app.dead && !level_complete() && app.grace != GRACE_PAUSED) {
         {
             // sight needs her lit: her Lighter, or a level light on her cell
             int px, py;
             player_cell(&px, &py);
             enemy_set_grace_lit((lighter_on() && inventory_has(ITEM_LIGHTER)) || light_cell_lit(px, py));
         }
+        player_note_time((int)(app.elapsed * 1000.0));
         player_update(dt);
+        if (interact_check_complete()) { bump_revision(); }
         float noise = !player_is_moving() ? 0.0f
             : player_move_mode() == PLAYER_RUN ? GRACE_NOISE_RUN : GRACE_NOISE_WALK;
         if (enemy_update(dt, player_x(), player_y(), noise)) {
@@ -1340,12 +1341,14 @@ TEST_EXPORT float web_enemy_screen_y(void) {
 }
 
 TEST_EXPORT void web_test_grace_at(int x, int y) {
+    // (body below teleports her; also run the goal check a walk would run)
     player_set_cell(x, y);
     app.route.count = 0;
     app.pending = false;
     camera_follow(player_x(), player_y());
     camera_recentre();
     reveal_sections();
+    interact_check_complete();
     bump_revision();
 }
 
@@ -1394,6 +1397,10 @@ TEST_EXPORT int web_doors_broken(void) {
         count += o->kind == OBJ_DOOR && o->state == DOOR_BROKEN;
     }
     return count;
+}
+
+TEST_EXPORT int web_lights_broken(void) {
+    return light_broken_count();
 }
 
 TEST_EXPORT int web_enemy_sense(void) {
@@ -1446,6 +1453,17 @@ WEB_EXPORT int web_saves_made(void) {
 WEB_EXPORT int web_goal_met(void) {
     return goal_met() ? 1 : 0;
 }
+WEB_EXPORT int web_level_complete(void) { return level_complete() ? 1 : 0; }
+WEB_EXPORT int web_grace_dead(void) { return app.dead ? 1 : 0; }
+WEB_EXPORT int web_last_save_slot(void) { return app.last_save_slot; }
+WEB_EXPORT int web_inventory_capacity(void) { return inventory_capacity(); }
+WEB_EXPORT int web_crafting_known(int index) { return crafting_known(index) ? 1 : 0; }
+WEB_EXPORT int web_on_top(void) { return player_on_top() ? 1 : 0; }
+// Keypad / cabinet bridges (React calls these from touch-friendly UI).
+WEB_EXPORT int web_pending_safe(void) { return interact_pending_safe(); }
+WEB_EXPORT int web_try_safe_code(int code) { return interact_try_safe_code(code) ? 1 : 0; }
+WEB_EXPORT int web_pending_code_door(void) { return doors_pending_code(); }
+WEB_EXPORT int web_try_door_code(int code) { return doors_try_code(code) ? 1 : 0; }
 
 WEB_EXPORT int web_crafting_count(void) {
     return crafting_count();
@@ -1494,6 +1512,9 @@ WEB_EXPORT int replay_length(void) {
 WEB_EXPORT int replay_x(int index) {
     return player_replay_x(index);
 }
+WEB_EXPORT int replay_t(int index) {
+    return player_replay_t(index);
+}
 
 WEB_EXPORT int replay_y(int index) {
     return player_replay_y(index);
@@ -1520,6 +1541,8 @@ WEB_EXPORT void game_reset(void) {
     memset(app.section_revealed, 0, sizeof(app.section_revealed));
     reveal_sections();
     app.elapsed = 0.0;
+    app.dead = false;
+    app.last_save_slot = -1;
     app.paused = false;
     app.grace = GRACE_PAUSED;
     app.last = GRACE_WAITING;
@@ -1559,6 +1582,7 @@ WEB_EXPORT int save_game(int slot) {
         return 0;
     }
     savegame_save(slot, app.elapsed * 1000.0);
+    app.last_save_slot = slot;
     player_cell(&app.respawn_x, &app.respawn_y);
     bump_revision();
     return 1;
@@ -1567,6 +1591,8 @@ WEB_EXPORT int save_game(int slot) {
 WEB_EXPORT int load_game(int slot) {
     double e = 0.0;
     if (savegame_load(slot, &e)) {
+        app.dead = false;
+        app.last_save_slot = slot;
         app.elapsed = e / 1000.0;
         player_cell(&app.respawn_x, &app.respawn_y);
         if (!savegame_has_enemy(slot)) {

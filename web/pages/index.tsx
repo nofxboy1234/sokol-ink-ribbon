@@ -5,7 +5,7 @@ import { AuthPanel } from "../src/AuthPanel";
 import { GameStateProvider } from "../src/GameState";
 import { GraceActions } from "../src/GraceActions";
 import { MapCanvas } from "../src/MapCanvas";
-import { Crafting, Files, Inventory, PauseMenu, RunPanel, SaveLoadMenu } from "../src/panes";
+import { CodeKeypad, Crafting, Files, GameOver, Inventory, LevelComplete, PauseMenu, RunPanel, SaveLoadMenu } from "../src/panes";
 import { setPaused as setGamePaused, takeSaveMenu } from "../src/wasmBridge";
 
 type Tab = "items" | "crafting" | "files";
@@ -97,6 +97,9 @@ export default function HomePage() {
             setSaveMenu(true);
           }}
         />
+        <GameOver onLoad={() => setSaveMenu(true)} />
+        <LevelComplete />
+        <CodeKeypad />
         <SaveLoadMenu open={saveMenu} onClose={() => setSaveMenu(false)} />
       </GameStateProvider>
     </>

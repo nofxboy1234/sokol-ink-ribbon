@@ -3,12 +3,13 @@
 //  One stalker that roams the map on A* paths. Its behaviour is a state
 //  machine: patrol random nearby cells, stop to look around, chase Grace on
 //  sight, smell or sound, search where she was probably heading, smash
-//  through breakable doors, catch its breath after a long chase, and freeze
-//  after a hit.
+//  through breakable doors and lamps, catch its breath after a long chase, and
+//  freeze after a hit.
 //------------------------------------------------------------------------------
 #include "enemy.h"
 #include "doors.h"
 #include "grid.h"
+#include "light.h"
 #include "pathfind.h"
 #include "sight.h"
 
@@ -62,6 +63,11 @@
 #define ENEMY_INVESTIGATE_RADIUS 3
 #define ENEMY_INVESTIGATE_SWEEP_STEPS 6
 
+#define ENEMY_LIGHT_BREAK_DIST 1.5f
+#define ENEMY_LIGHT_BREAK_PCT 20
+#define ENEMY_LIGHT_BREAK_MIN 1.0f
+#define ENEMY_LIGHT_BREAK_MAX 1.6f
+
 static struct {
     enemy_state_t state;
     float x, y;
@@ -76,7 +82,7 @@ static struct {
     int seen_x, seen_y;
     int heading_x, heading_y;
     enemy_sense_t sense;
-    int door;
+    int break_target;
     enemy_state_t resume;
     unsigned int rng;
     float flash;  // seconds of damage flashing left (counts down with the stun)
@@ -303,7 +309,7 @@ static void cross_door(int ax, int ay, int bx, int by) {
     const obj_t* o = &grid_level()->objs[door];
     bool locked = doors_block_edge(ax, ay, bx, by);
     if (o->breakable && (locked || rnd() % 2u == 0u)) {
-        e.door = door;
+        e.break_target = door;
         e.resume = e.state;
         e.state = ENEMY_BREAKING;
         e.timer = rnd_range(1.2f, 2.0f);
@@ -312,6 +318,21 @@ static void cross_door(int ax, int ay, int bx, int by) {
     } else {
         e.path.count = 0;
     }
+}
+
+// Roll only when a lamp is in reach, so arrivals elsewhere leave the seeded stream alone.
+static void pass_light(void) {
+    if (e.state == ENEMY_BREAKING) {
+        return;
+    }
+    int lamp = light_breakable_near(e.x, e.y, ENEMY_LIGHT_BREAK_DIST);
+    if (lamp < 0 || (int)(rnd() % 100u) >= ENEMY_LIGHT_BREAK_PCT) {
+        return;
+    }
+    e.break_target = lamp;
+    e.resume = e.state;
+    e.state = ENEMY_BREAKING;
+    e.timer = rnd_range(ENEMY_LIGHT_BREAK_MIN, ENEMY_LIGHT_BREAK_MAX);
 }
 
 // Returns true once the path is used up.
@@ -329,6 +350,7 @@ static bool walk(float dt) {
             e.index++;
             if (e.index < e.path.count) {
                 cross_door(e.path.x[e.index - 1], e.path.y[e.index - 1], e.path.x[e.index], e.path.y[e.index]);
+                pass_light();
             }
             return e.index >= e.path.count;
         }
@@ -379,16 +401,23 @@ bool enemy_update(float dt, float gx, float gy, float noise) {
             }
             break;
         case ENEMY_BREAKING: {
-            // If the door was opened (or broken) mid-swing there is nothing
-            // left to smash: stop and walk through instead.
-            const obj_t* d = &grid_level()->objs[e.door];
-            if (d->open || d->state == DOOR_BROKEN) {
+            const obj_t* t = &grid_level()->objs[e.break_target];
+            if (t->kind == OBJ_LIGHT) {
+                if (!light_is_breakable_now(t)) {
+                    e.state = e.resume;
+                    break;
+                }
+            } else if (t->open || t->state == DOOR_BROKEN) {
                 e.state = e.resume;
                 break;
             }
             e.timer -= dt;
             if (e.timer <= 0.0f) {
-                doors_break(e.door);
+                if (t->kind == OBJ_LIGHT) {
+                    light_break(e.break_target);
+                } else {
+                    doors_break(e.break_target);
+                }
                 e.state = e.resume;
             }
             break;
@@ -498,7 +527,7 @@ float enemy_flash(void) {
 
 // A sound at a cell: if it carries as far as the enemy (walls don't stop it,
 // like footsteps), it goes to look. Search heads for the remembered cell and
-// then sweeps around it. A stunned, winded or door-smashing enemy ignores it.
+// then sweeps around it.
 bool enemy_hear_noise(int x, int y, float radius) {
     if (e.state == ENEMY_STUNNED || e.state == ENEMY_WINDED || e.state == ENEMY_BREAKING || e.state == ENEMY_WAIT) {
         return false;

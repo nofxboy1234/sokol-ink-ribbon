@@ -26,6 +26,8 @@ typedef enum {
     OBJ_START,
     // a marker for where the level ends (the game itself ignores it)
     OBJ_GOAL,
+    OBJ_RECIPE,
+    OBJ_CABINET,
     OBJ_KIND_COUNT,
 } obj_kind_t;
 
@@ -62,6 +64,14 @@ typedef enum {
     // smashed by the enemy: the slab is gone and the gap stays open
     DOOR_BROKEN,
 } door_state_t;
+
+// A level light's condition, stored in obj_t.state. Once broken it never
+// lights again, so 0 and 1 keep the meaning of the old bool.
+typedef enum {
+    LIGHT_OFF = 0,
+    LIGHT_ON = 1,
+    LIGHT_BROKEN = 2,
+} light_state_t;
 
 typedef struct {
     int x0, y0, x1, y1;

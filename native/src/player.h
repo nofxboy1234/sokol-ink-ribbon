@@ -29,3 +29,7 @@ int player_facing(void);
 int player_replay_length(void);
 int player_replay_x(int index);
 int player_replay_y(int index);
+
+void player_note_time(int ms);
+bool player_on_top(void);
+int player_replay_t(int index);
