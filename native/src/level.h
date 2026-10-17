@@ -26,6 +26,8 @@ typedef enum {
     OBJ_START,
     // a marker for where the level ends (the game itself ignores it)
     OBJ_GOAL,
+    OBJ_RECIPE,
+    OBJ_CABINET,
     OBJ_KIND_COUNT,
 } obj_kind_t;
 

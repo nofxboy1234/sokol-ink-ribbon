@@ -20,3 +20,6 @@ int doors_key_type(const obj_t* o);
 void doors_drop_key_if_done(int item_type);
 int doors_discovered_count(void);
 void doors_restore_from_level(void);
+
+int doors_pending_code(void);
+bool doors_try_code(int code);

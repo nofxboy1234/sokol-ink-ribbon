@@ -10,6 +10,7 @@
 #include "health.h"
 #include "interact.h"
 #include "inventory.h"
+#include "crafting.h"
 #include "items.h"
 #include "level.h"
 #include "player.h"
@@ -21,7 +22,10 @@
 // 3 keeps an equipped slot with no bottle left (greyed out).
 // 4 adds the enemy (position, state, timers, anger, route) and the items the
 // Lighter has shown; older slots respawn the enemy away from Grace as before.
-#define SAVE_VERSION 4
+// 5 adds inventory capacity, known recipes, level-complete, on-top and the
+// last save slot is tracked in the app (not the slot); older slots get the
+// defaults (8 slots, recipe 0 only, not complete, on the floor).
+#define SAVE_VERSION 5
 
 typedef struct {
     bool used;
@@ -44,6 +48,10 @@ typedef struct {
     bool active;
     unsigned char item_seen[LEVEL_MAX_OBJECTS];
     enemy_save_t enemy;
+    int inv_capacity;
+    unsigned int known_recipes;
+    bool complete;
+    bool on_top;
 } save_slot_t;
 
 static save_slot_t g_slots[SAVE_SLOTS];
@@ -83,11 +91,14 @@ bool savegame_save(int slot, double elapsed_ms) {
         s->obj_open[i] = (unsigned char)lv->objs[i].open;
     }
     items_export(s->item_taken, LEVEL_MAX_OBJECTS);
-    interact_export(&s->lighter, &s->saves, &s->goal, &s->file_count, s->file_obj);
+    interact_export(&s->lighter, &s->saves, &s->goal, &s->file_count, s->file_obj, &s->complete);
     s->equipped = throw_equipped();
     s->active = throw_active();
     items_export_seen(s->item_seen, LEVEL_MAX_OBJECTS);
     enemy_export(&s->enemy);
+    s->inv_capacity = inventory_capacity();
+    s->known_recipes = crafting_known_mask();
+    s->on_top = player_on_top();
     return true;
 }
 
@@ -109,7 +120,7 @@ bool savegame_load(int slot, double* elapsed_ms) {
     items_import(s->item_taken, LEVEL_MAX_OBJECTS);
     inventory_set(s->inv_count, s->inv);
     health_set(s->health);
-    interact_restore(s->lighter, s->saves, s->goal, s->file_count, s->file_obj);
+    interact_restore(s->lighter, s->saves, s->goal, s->file_count, s->file_obj, s->version >= 5 && s->complete);
     player_set_cell(s->px, s->py);
     doors_restore_from_level();
     bool v2 = s->version >= 2;
@@ -118,6 +129,8 @@ bool savegame_load(int slot, double* elapsed_ms) {
     throw_restore(equipped, equipped && s->active);
     bool v4 = s->version >= 4;
     items_import_seen(v4 ? s->item_seen : NULL, LEVEL_MAX_OBJECTS);
+    inventory_set_capacity(s->version >= 5 ? s->inv_capacity : INV_BASE_SLOTS);
+    crafting_set_known_mask(s->version >= 5 ? s->known_recipes : 1u);
     if (v4) {
         enemy_import(&s->enemy);
     }

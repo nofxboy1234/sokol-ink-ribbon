@@ -25,8 +25,12 @@ int file_code_at(int index);
 int saves_made(void);
 
 bool goal_met(void);
+int interact_pending_safe(void);
+bool interact_try_safe_code(int code);
+bool level_complete(void);
+bool interact_check_complete(void);
 
 // Save/load state.
 bool interact_take_save_menu(void);
-void interact_export(bool* lighter, int* saves, bool* goal, int* file_count, int* file_obj);
-void interact_restore(bool lighter, int saves, bool goal, int file_count, const int* file_obj);
+void interact_export(bool* lighter, int* saves, bool* goal, int* file_count, int* file_obj, bool* complete);
+void interact_restore(bool lighter, int saves, bool goal, int file_count, const int* file_obj, bool complete);

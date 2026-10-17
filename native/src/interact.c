@@ -2,6 +2,7 @@
 #include "doors.h"
 #include "grid.h"
 #include "inventory.h"
+#include "crafting.h"
 #include "items.h"
 #include "light.h"
 #include "level.h"
@@ -17,6 +18,8 @@ static struct {
     int saves;
     bool goal;
     bool save_menu;
+    bool complete;
+    int pending_safe;
 } in;
 
 static bool rect_covers(const obj_t* o, int x, int y);
@@ -24,6 +27,7 @@ int interact_distance(int object_index);
 
 void interact_init(void) {
     memset(&in, 0, sizeof(in));
+    in.pending_safe = -1;
     in.level = (level_t*)grid_level();
 }
 
@@ -109,20 +113,37 @@ bool interact_at(int x, int y) {
             }
             return true;
         }
-        if (o->kind == OBJ_SAFE && !file_found(i)) {
-            if (in.file_count < LEVEL_MAX_OBJECTS) {
-                in.file_obj[in.file_count++] = i;
+        if (o->kind == OBJ_SAFE && !o->open) {
+            in.pending_safe = i;  // React opens the keypad; interact_try_safe_code checks it
+            return true;
+        }
+        if (o->kind == OBJ_RECIPE && !o->state) {
+            crafting_learn(o->code);
+            o->state = 1;
+            return true;
+        }
+        if (o->kind == OBJ_CABINET && !o->state) {
+            int cost = o->code > 0 ? o->code : 1;
+            if (inventory_capacity() < INV_SLOTS && inventory_count_of(ITEM_COIN) >= cost) {
+                for (int k = 0; k < cost; k++) inventory_remove(ITEM_COIN);
+                inventory_expand(4);
+                o->state = 1;
             }
             return true;
         }
         if (o->kind == OBJ_FUSEBOX && !in.goal) {
-            if (o->link_id > 0 && !items_taken_by_id(o->link_id)) {
+            // the box by the gate is already open: it only needs the Fuse
+            if (!inventory_has(ITEM_FUSE)) {
                 return true;
             }
-            if (inventory_has(ITEM_FUSE)) {
-                inventory_remove(ITEM_FUSE);
-            }
+            inventory_remove(ITEM_FUSE);
             in.goal = true;
+            for (int k = 0; k < in.level->obj_count; k++) {
+                obj_t* d = &in.level->objs[k];
+                if (d->kind == OBJ_DOOR && strcmp(d->name, "gate") == 0) {
+                    d->state = DOOR_BROKEN;  // powered: the gate slab is gone (fade in React)
+                }
+            }
             return true;
         }
     }
@@ -212,7 +233,7 @@ bool obstacles_block_cell(int x, int y) {
 bool openable_covers_closed(int x, int y) {
     for (int i = 0; i < in.level->obj_count; i++) {
         const obj_t* o = &in.level->objs[i];
-        if (o->kind == OBJ_OPENABLE && !o->open && rect_covers(o, x, y)) {
+        if ((o->kind == OBJ_OPENABLE || o->kind == OBJ_SAFE) && !o->open && rect_covers(o, x, y)) {
             return true;
         }
     }
@@ -253,6 +274,23 @@ int saves_made(void) {
 bool goal_met(void) {
     return in.goal;
 }
+int interact_pending_safe(void) { return in.pending_safe; }
+bool interact_try_safe_code(int code) {
+    if (in.pending_safe < 0 || in.pending_safe >= in.level->obj_count) return false;
+    obj_t* o = &in.level->objs[in.pending_safe];
+    if (o->kind != OBJ_SAFE || o->code != code) return false;
+    o->open = 1; in.pending_safe = -1; return true;
+}
+bool level_complete(void) { return in.complete; }
+bool interact_check_complete(void) {
+    if (!in.goal || in.complete) return false;
+    int px, py; player_cell(&px, &py);
+    for (int i = 0; i < in.level->obj_count; i++) {
+        const obj_t* o = &in.level->objs[i];
+        if (o->kind == OBJ_GOAL && o->x == px && o->y == py) { in.complete = true; return true; }
+    }
+    return false;
+}
 
 bool interact_take_save_menu(void) {
     bool open = in.save_menu;
@@ -260,20 +298,23 @@ bool interact_take_save_menu(void) {
     return open;
 }
 
-void interact_export(bool* lighter, int* saves, bool* goal, int* file_count, int* file_obj) {
+void interact_export(bool* lighter, int* saves, bool* goal, int* file_count, int* file_obj, bool* complete) {
     *lighter = in.lighter;
     *saves = in.saves;
     *goal = in.goal;
+    *complete = in.complete;
     *file_count = in.file_count;
     for (int i = 0; i < in.file_count; i++) {
         file_obj[i] = in.file_obj[i];
     }
 }
 
-void interact_restore(bool lighter, int saves, bool goal, int file_count, const int* file_obj) {
+void interact_restore(bool lighter, int saves, bool goal, int file_count, const int* file_obj, bool complete) {
     in.lighter = lighter;
     in.saves = saves;
     in.goal = goal;
+    in.complete = complete;
+    in.pending_safe = -1;
     in.file_count = file_count < 0 ? 0 : file_count;
     for (int i = 0; i < in.file_count; i++) {
         in.file_obj[i] = file_obj[i];

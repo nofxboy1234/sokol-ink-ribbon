@@ -1,5 +1,7 @@
 #include "player.h"
 #include "pathfind.h"
+#include "grid.h"
+#include "level.h"
 
 #include <math.h>
 
@@ -20,7 +22,21 @@ static struct {
     int replay_len;
     int replay_x[REPLAY_MAX];
     int replay_y[REPLAY_MAX];
+    int replay_t[REPLAY_MAX];
+    int clock_ms;
+    bool on_top;
+    float climb_timer;
 } p;
+
+static bool on_top_at(int cx, int cy) {
+    const level_t* lv = grid_level();
+    if (!lv) return false;
+    for (int i = 0; i < lv->obj_count; i++) {
+        const obj_t* o = &lv->objs[i];
+        if (o->kind == OBJ_OBSTACLE && o->climbable && cx >= o->x && cx < o->x + (o->w > 0 ? o->w : 1) && cy >= o->y && cy < o->y + (o->h > 0 ? o->h : 1)) return true;
+    }
+    return false;
+}
 
 static void replay_record(void) {
     if (p.replay_len >= REPLAY_MAX) {
@@ -28,6 +44,7 @@ static void replay_record(void) {
     }
     p.replay_x[p.replay_len] = (int)floorf(p.x);
     p.replay_y[p.replay_len] = (int)floorf(p.y);
+    p.replay_t[p.replay_len] = p.clock_ms;
     p.replay_len++;
 }
 
@@ -42,6 +59,9 @@ void player_init(int x, int y) {
     p.waiting = false;
     p.facing = 0;
     p.replay_len = 0;
+    p.clock_ms = 0;
+    p.climb_timer = 0.0f;
+    p.on_top = on_top_at(x, y);
     replay_record();
 }
 
@@ -78,7 +98,11 @@ void player_halt(void) {
     p.y = floorf(p.y) + 0.5f;
 }
 
+void player_note_time(int ms) { p.clock_ms = ms; }
+bool player_on_top(void) { return p.on_top; }
+int player_replay_t(int index) { return index >= 0 && index < p.replay_len ? p.replay_t[index] : 0; }
 void player_update(float dt) {
+    if (p.climb_timer > 0.0f) { p.climb_timer -= dt; return; }
     if (!p.moving || p.index >= p.path.count) {
         p.moving = false;
         return;
@@ -95,6 +119,8 @@ void player_update(float dt) {
         p.y = ty;
         p.steps++;
         replay_record();
+        { bool now = on_top_at(p.path.x[p.index], p.path.y[p.index]);
+          if (now != p.on_top) { p.on_top = now; p.climb_timer = 0.35f; } }
         p.index++;
         if (p.index >= p.path.count) {
             p.moving = false;

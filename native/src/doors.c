@@ -222,6 +222,16 @@ void doors_drop_key_if_done(int item_type) {
     inventory_remove(item_type);
 }
 
+static int pending_code_door = -1;
+int doors_pending_code(void) { return pending_code_door; }
+bool doors_try_code(int code) {
+    level_t* lv = dr.level;
+    if (pending_code_door < 0 || pending_code_door >= lv->obj_count) return false;
+    obj_t* o = &lv->objs[pending_code_door];
+    if (o->kind != OBJ_DOOR || o->code != code) return false;
+    o->state = DOOR_UNLOCKED; o->open = 0; dr.discovered[pending_code_door] = 1; pending_code_door = -1;
+    return true;
+}
 bool doors_interact(int x, int y) {
     level_t* lv = dr.level;
     for (int i = 0; i < lv->obj_count; i++) {
@@ -236,6 +246,7 @@ bool doors_interact(int x, int y) {
         if (!covered || interact_distance(i) > 2) {
             continue;
         }
+        if (o->state == DOOR_LOCKED && o->code > 0) { pending_code_door = i; return true; }
         int key = doors_key_type(o);
         if (o->state == DOOR_LOCKED && key >= 0 && inventory_has(key)) {
             o->state = DOOR_UNLOCKED;

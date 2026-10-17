@@ -215,6 +215,22 @@ static void draw_objects_pass(int item_pass) {
                 }
                 break;
             }
+            case OBJ_RECIPE: {
+                if (o->state) break;
+                fill_rect(sx + scale * 0.25f, sy + scale * 0.15f, scale * 0.5f, scale * 0.7f, PAL_PAPER, 1.0f);
+                thick_line(sx + scale * 0.32f, sy + scale * 0.35f, sx + scale * 0.68f, sy + scale * 0.35f, scale * 0.06f, C_INK_R);
+                thick_line(sx + scale * 0.32f, sy + scale * 0.55f, sx + scale * 0.68f, sy + scale * 0.55f, scale * 0.06f, C_INK_R);
+                break;
+            }
+            case OBJ_CABINET: {
+                fill_rect(sx + scale * 0.15f, sy + scale * 0.1f, scale * 0.7f, scale * 0.8f, PAL_GRAY, 1.0f);
+                ring_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.18f, scale * 0.07f, C_YELLOW_R);
+                break;
+            }
+            case OBJ_GOAL: {
+                ring_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.36f, scale * 0.1f, C_GREEN_R);
+                break;
+            }
             case OBJ_LIGHT: {
                 float lx = sx + scale * 0.5f;
                 float ly = sy + scale * 0.5f;
@@ -463,7 +479,15 @@ void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* ro
 
     draw_discovery_markers();
 
-    if (grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
+    if (grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y())) &&
+        !light_cell_lit((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
+        // not seen: only a faint marker when she can hear it
+        if (enemy_sense() == SENSE_HEARING) {
+            float ex, ey; camera_cell_to_screen(enemy_x(), enemy_y(), &ex, &ey);
+            ring_circle(ex, ey, scale * 0.30f, scale * 0.06f, 0.4f, 0.4f, 0.4f, 0.4f);
+            fill_circle(ex, ey, scale * 0.07f, 0.4f, 0.4f, 0.4f, 0.4f);
+        }
+    } else if (grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
         float ex, ey;
         camera_cell_to_screen(enemy_x(), enemy_y(), &ex, &ey);
         // a winded enemy fades so the escape window reads at a glance
@@ -491,6 +515,9 @@ void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* ro
     {
         float px, py;
         camera_cell_to_screen(player_x(), player_y(), &px, &py);
+        if (player_on_top()) {
+            ring_circle(px, py, scale * 0.52f, scale * 0.07f, C_INK_R);  // on a table: outlined
+        }
         // Waiting: slow breathing; after a hit: the flash, with fast breathing
         // that carries on for a few seconds. Paused: still.
         float gr = scale * 0.51f;
