@@ -758,8 +758,8 @@ button.recipe[aria-disabled="true"] {
 /* the current state, bottom-right of the map; display only */
 .grace-status {
   position: absolute;
-  right: 10px;
-  bottom: 10px;
+  left: 10px;
+  top: 46px;
   width: 40px;
   height: 40px;
   display: grid;
@@ -994,9 +994,8 @@ button.recipe[aria-disabled="true"] {
   .stick {
     display: block;
     position: absolute;
-    left: 50%;
+    left: 18px;
     bottom: 18px;
-    transform: translateX(-50%);
     width: 128px;
     height: 128px;
     border: 2px solid var(--ink);
@@ -1026,4 +1025,13 @@ button.recipe[aria-disabled="true"] {
 
 .grace-status[data-aiming="true"] {
   background: var(--green);
+}
+
+/* Aim stick: bottom-right, mirroring the move stick. Only rendered while
+   a bottle is active (AimStick in Stick.tsx). */
+@media (pointer: coarse) {
+  .aim-stick {
+    left: auto;
+    right: 18px;
+  }
 }

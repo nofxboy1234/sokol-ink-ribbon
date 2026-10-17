@@ -1,4 +1,4 @@
-// Native checks for the bottle throw: hit chances, Run blocking, bottle use,
+// Native checks for the bottle throw: hitscan hits, Run blocking, bottle use,
 // the stun and noise-led investigation, the kept equip slot, anger and light. Build and run with tests/run.sh.
 #include "enemy.h"
 #include "grid.h"
@@ -124,13 +124,11 @@ int main(int argc, char** argv) {
     CHECK(!throw_set_active(true), "activating needs it equipped");
     CHECK(throw_set_equipped(true) && throw_set_active(true), "equip then activate");
 
-    // statistics
-    const int n = 4000;
+    // hitscan replaced the percentage roll: a clear aimed throw always hits
+    const int n = 50;
     double wait = hit_rate(gx, gy, tx, ty, THROW_STANCE_WAIT, n);
     double walk = hit_rate(gx, gy, tx, ty, THROW_STANCE_WALK, n);
-    CHECK(fabs(wait - THROW_HIT_WAIT_PCT / 100.0) < 0.03, "Wait hit rate %.3f over %d throws (want %d%%)", wait, n, THROW_HIT_WAIT_PCT);
-    CHECK(fabs(walk - THROW_HIT_WALK_PCT / 100.0) < 0.03, "Walk hit rate %.3f over %d throws (want %d%%)", walk, n, THROW_HIT_WALK_PCT);
-    CHECK(wait > walk + 0.2, "standing still hits more often than walking");
+    CHECK(wait == 1.0 && walk == 1.0, "hitscan: clear aimed throws always hit (wait %.2f, walk %.2f over %d)", wait, walk, n);
     // a target next to the enemy still counts as aimed at it
     inventory_init();
     fresh_enemy_at(tx, ty);
@@ -462,7 +460,7 @@ int main(int argc, char** argv) {
         int wx = -1, wy = -1;
         for (int y = 0; y < level.rows && wx < 0; y++) {
             for (int x = 0; x + 2 < level.cols && wx < 0; x++) {
-                if (grid_is_floor(x, y) && grid_is_floor(x + 2, y) && !sight_clear(x, y, x + 2, y)) {
+                if (grid_is_floor(x, y) && grid_is_floor(x + 2, y) && sight_edge_blocked(x, y, x + 1, y)) {
                     wx = x;
                     wy = y;
                 }
@@ -551,7 +549,7 @@ int main(int argc, char** argv) {
         int fuse_i = -1, cherub_i = -1, screw_i = -1;
         for (int i = 0; i < level.obj_count; i++) {
             obj_t* o = (obj_t*)&grid_level()->objs[i];
-            if (o->kind == OBJ_OBSTACLE && o->openable && o->id == 29) box = o;
+            if (o->kind == OBJ_OBSTACLE && o->openable && o->x == 0 && o->y == 20) box = o;  // by place, not id (ids shift with level edits)
             if (o->kind == OBJ_FUSEBOX) fusebox = o;
             if (o->kind == OBJ_DOOR && strcmp(o->name, "gate") == 0) gate = o;
             if (o->kind == OBJ_ITEM && o->item_type == ITEM_FUSE) fuse_i = i;
@@ -620,12 +618,14 @@ int main(int argc, char** argv) {
 
         // door smashing still works: conditions and the enemy doing it
         {
+            // find doors by where they stand (ids shift when the level is edited)
             obj_t* bd = NULL; obj_t* nd = NULL;
             for (int i = 0; i < level.obj_count; i++) {
                 obj_t* o = (obj_t*)&grid_level()->objs[i];
-                if (o->kind == OBJ_DOOR && o->id == 39) bd = o;
-                if (o->kind == OBJ_DOOR && o->id == 1) nd = o;
+                if (o->kind == OBJ_DOOR && o->x == 69 && o->y == 49) bd = o;
+                if (o->kind == OBJ_DOOR && o->x == 16 && o->y == 38) nd = o;
             }
+            CHECK(bd && nd, "door-smash checks found their doors");
             bd->breakable = 1; bd->state = DOOR_LOCKED; bd->open = 0;
             // doors_break takes an object index: find it
             int bi = -1, ni = -1;
@@ -826,6 +826,66 @@ int main(int argc, char** argv) {
         for (int i = 1; i <= 10; i++) { player_note_time(i * 100); player_update(0.1f); }
         player_set_velocity(0.0f, 0.0f);
         CHECK(player_replay_length() > rl0 + 3, "steering records replay samples as she moves");
+    }
+
+    {
+        // Hitscan geometry: clear shot, wall block, enemy behind a wall,
+        // floor smash noise, moving throw, and the Run guard.
+        inventory_init();
+        arm();
+        fresh_enemy_at(tx, ty);
+        float gxf = (float)gx + 0.5f, gyf = (float)gy + 0.5f;
+        float dx = ((float)tx + 0.5f) - gxf, dy = ((float)ty + 0.5f) - gyf;
+        float dl = sqrtf(dx * dx + dy * dy);
+        throw_scan_t scan;
+        CHECK(throw_hitscan(gxf, gyf, dx, dy, THROW_RANGE_CELLS, &scan) && scan.hit_enemy,
+              "hitscan: a clear ray touches the enemy circle");
+        // a ray that misses the circle sideways does not hit
+        CHECK(throw_hitscan(gxf, gyf, -dy, dx, THROW_RANGE_CELLS, &scan) && !scan.hit_enemy,
+              "hitscan: a perpendicular ray misses");
+        // find two floor cells with no sight line (a wall between), enemy beyond
+        int ax = -1, ay = -1, bx = -1, by = -1;
+        for (int y = 1; y < level.rows - 1 && ax < 0; y++) {
+            for (int x = 1; x < level.cols - 3 && ax < 0; x++) {
+                if (grid_is_floor(x, y) && grid_is_floor(x + 2, y) && sight_edge_blocked(x, y, x + 1, y)) {
+                    ax = x; ay = y; bx = x + 2; by = y;
+                }
+            }
+        }
+        CHECK(ax >= 0, "hitscan: found a wall to shoot through (%d,%d)->(%d,%d)", ax, ay, bx, by);
+        if (ax >= 0) {
+            fresh_enemy_at(bx, by);
+            float wx = (float)ax + 0.5f, wy = (float)ay + 0.5f;
+            CHECK(throw_hitscan(wx, wy, 1.0f, 0.0f, THROW_RANGE_CELLS, &scan) && !scan.hit_enemy && scan.blocked,
+                  "hitscan: the wall blocks the ray before the enemy");
+            inventory_init();
+            arm();
+            throw_result_t rr;
+            float ix = 0, iy = 0;
+            CHECK(throw_resolve_ray(wx, wy, 1.0f, 0.0f, THROW_RANGE_CELLS, THROW_STANCE_WAIT, &rr, &ix, &iy) && !rr.hit,
+                  "hitscan: enemy behind the wall is not hit");
+            CHECK(inventory_count_of(ITEM_BOTTLE) == 0, "hitscan: the blocked throw still spends the bottle (smash)");
+            // floor throw: lands, makes noise, no hit
+            inventory_init();
+            arm();
+            fresh_enemy_at(tx, ty);
+            CHECK(throw_resolve_ray(gxf, gyf, -dy / (dl > 0 ? dl : 1), dx / (dl > 0 ? dl : 1), 3.0f, THROW_STANCE_WALK, &rr, &ix, &iy) && !rr.hit,
+                  "hitscan: a floor throw while walking hits nothing");
+            // moving throw at walk stance: a clear ray still hits
+            inventory_init();
+            arm();
+            fresh_enemy_at(tx, ty);
+            CHECK(throw_resolve_ray(gxf, gyf, dx, dy, THROW_RANGE_CELLS, THROW_STANCE_WALK, &rr, &ix, &iy) && rr.hit,
+                  "hitscan: a walking throw with a clear ray hits");
+            CHECK(enemy_state() == ENEMY_STUNNED, "hitscan: the walking hit stuns");
+            // Run stance stays impossible (the aim speed-cap makes it unreachable)
+            inventory_init();
+            arm();
+            fresh_enemy_at(tx, ty);
+            CHECK(!throw_resolve_ray(gxf, gyf, dx, dy, THROW_RANGE_CELLS, THROW_STANCE_RUN, &rr, &ix, &iy) &&
+                      inventory_count_of(ITEM_BOTTLE) == 1,
+                  "hitscan: Run stance refuses and keeps the bottle");
+        }
     }
     printf(failures ? "%d FAILED\n" : "ALL PASS\n", failures);
     return failures ? 1 : 0;

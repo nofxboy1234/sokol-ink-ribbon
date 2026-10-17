@@ -1,22 +1,25 @@
-import { useRef, useState } from "react";
-import { aimToggle, interactTrigger, stickInput } from "./wasmBridge";
+import { useEffect, useRef, useState } from "react";
+import { aimInput, interactTrigger, readGrace, stickInput } from "./wasmBridge";
 
-// The analogue stick at the bottom centre of the map (touch only, see
-// app.css). Push it to move: the first half of its throw walks, further
-// runs -- the C side turns the vector into a speed. A quick tap on the
-// centre is the interact trigger (pick up / climb / use); a double-tap
-// toggles throw aiming, and releasing the stick while aiming throws.
+// Twin sticks (touch only, see app.css). LEFT stick moves Grace: the first
+// half of its throw walks, further runs -- the C side turns the vector
+// into a speed. A quick tap on its centre is the interact trigger (pick up
+// / climb / use); the old double-tap-to-aim gesture is retired now that
+// aiming has its own stick. RIGHT stick aims the bottle throw (only shown
+// while a bottle is active): direction sets the aim line, push distance
+// sets the throw length, and releasing it throws -- or cancels if the
+// release never left the dead zone. She can aim while moving; aiming caps
+// her speed to a walk in C.
 const RADIUS = 52; // px of stick travel
 
-export function Stick() {
+function useStickVector(onVector: (x: number, y: number) => void, onTap?: () => void) {
   const baseRef = useRef<HTMLDivElement>(null);
   const [knob, setKnob] = useState({ x: 0, y: 0, active: false });
   const drag = useRef<{ id: number; startAt: number; moved: boolean } | null>(null);
-  const taps = useRef<{ at: number; timer: number | null }>({ at: 0, timer: null });
 
   const vector = (event: React.PointerEvent) => {
     const base = baseRef.current;
-    if (!base) return { x: 0, y: 0 };
+    if (!base) return { x: 0, y: 0, px: 0, py: 0 };
     const rect = base.getBoundingClientRect();
     let dx = event.clientX - (rect.left + rect.width / 2);
     let dy = event.clientY - (rect.top + rect.height / 2);
@@ -32,15 +35,15 @@ export function Stick() {
     (event.target as HTMLElement).setPointerCapture(event.pointerId);
     drag.current = { id: event.pointerId, startAt: performance.now(), moved: false };
     const v = vector(event);
-    setKnob({ x: v.px ?? 0, y: v.py ?? 0, active: true });
+    setKnob({ x: v.px, y: v.py, active: true });
   };
 
   const onMove = (event: React.PointerEvent) => {
     if (!drag.current || event.pointerId !== drag.current.id) return;
     const v = vector(event);
     if (Math.hypot(v.x, v.y) > 0.12) drag.current.moved = true;
-    setKnob({ x: v.px ?? 0, y: v.py ?? 0, active: true });
-    stickInput(v.x, v.y);
+    setKnob({ x: v.px, y: v.py, active: true });
+    onVector(v.x, v.y);
   };
 
   const onUp = (event: React.PointerEvent) => {
@@ -49,30 +52,53 @@ export function Stick() {
     const wasTap = quick && !drag.current.moved;
     drag.current = null;
     setKnob({ x: 0, y: 0, active: false });
-    stickInput(0, 0); // release: stops her; while aiming, this throws/cancels in C
-    if (!wasTap) return;
-    // A centre tap is interact; a second tap inside the window aims instead.
-    const now = performance.now();
-    if (now - taps.current.at < 350) {
-      if (taps.current.timer) window.clearTimeout(taps.current.timer);
-      taps.current = { at: 0, timer: null };
-      aimToggle();
-    } else {
-      taps.current.at = now;
-      taps.current.timer = window.setTimeout(() => {
-        taps.current = { at: 0, timer: null };
-        interactTrigger();
-      }, 340);
-    }
+    onVector(0, 0); // release: stops her (move) / throws or cancels (aim, in C)
+    if (wasTap && onTap) onTap();
   };
 
+  return { baseRef, knob, onDown, onMove, onUp };
+}
+
+export function Stick() {
+  const { baseRef, knob, onDown, onMove, onUp } = useStickVector(stickInput, interactTrigger);
   return (
     <div
       ref={baseRef}
       className="stick"
       data-active={knob.active || undefined}
       role="application"
-      aria-label="Move stick. Tap centre to interact, double-tap to aim."
+      aria-label="Move stick. Tap centre to interact."
+      onPointerDown={onDown}
+      onPointerMove={onMove}
+      onPointerUp={onUp}
+      onPointerCancel={onUp}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      <div
+        className="stick-knob"
+        style={{ transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))` }}
+      />
+    </div>
+  );
+}
+
+export function AimStick() {
+  const [bottleActive, setBottleActive] = useState(false);
+  useEffect(() => {
+    const id = setInterval(() => setBottleActive(readGrace().bottleActive), 250);
+    return () => clearInterval(id);
+  }, []);
+  const { baseRef, knob, onDown, onMove, onUp } = useStickVector(aimInput);
+  if (!bottleActive) {
+    return null;
+  }
+  return (
+    <div
+      ref={baseRef}
+      className="stick aim-stick"
+      data-active={knob.active || undefined}
+      role="application"
+      aria-label="Aim stick. Push to aim, release to throw."
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={onUp}

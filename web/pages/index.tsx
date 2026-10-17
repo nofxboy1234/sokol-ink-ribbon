@@ -5,7 +5,7 @@ import { AuthPanel } from "../src/AuthPanel";
 import { GameStateProvider } from "../src/GameState";
 import { GraceActions } from "../src/GraceActions";
 import { MapCanvas } from "../src/MapCanvas";
-import { Stick } from "../src/Stick";
+import { AimStick, Stick } from "../src/Stick";
 import { CodeKeypad, Crafting, Files, GameOver, Inventory, LevelComplete, PauseMenu, RunPanel, SaveLoadMenu } from "../src/panes";
 import { setPaused as setGamePaused, takeSaveMenu } from "../src/wasmBridge";
 import { useGameState } from "../src/GameState";
@@ -113,6 +113,7 @@ export default function HomePage() {
             <MapCanvas />
             <GraceActions />
             <Stick />
+            <AimStick />
             <div className="timer-chip">
               <RunPanel />
             </div>

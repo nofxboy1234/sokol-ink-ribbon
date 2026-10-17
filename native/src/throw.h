@@ -4,8 +4,7 @@
 // The Empty Bottle: equip it from the Inventory, make it the active weapon
 // from Quick Equip, then throw it at a cell. Tunables:
 #define THROW_RANGE_CELLS 8.0f    // furthest target, centre to centre
-#define THROW_HIT_WAIT_PCT 80     // hit chance when she throws standing still
-#define THROW_HIT_WALK_PCT 45     // hit chance when she throws on the move
+#define THROW_ENEMY_RADIUS 0.64f  // the enemy's circle a hitscan ray must touch
 #define THROW_ENEMY_REACH 1       // a target this many cells from the enemy is aimed at it
 #define THROW_NOISE_CELLS 10.0f   // how far the smash carries
 #define THROW_STUN_SECONDS 3.0f   // a hit stuns (and flashes) the enemy this long
@@ -40,7 +39,26 @@ bool throw_sync(void);
 bool throw_other_weapon_active(void);
 
 bool throw_allowed(throw_stance_t stance);
-int throw_hit_chance(throw_stance_t stance);
+
+// Hitscan: a straight ray from (gx, gy) along the unit direction (dx, dy),
+// up to max_dist cells. The first thing touched wins: the enemy's circle
+// (THROW_ENEMY_RADIUS), or a blocker -- a wall or closed door edge, a
+// non-floor cell, or an obstacle cell. There is no percentage roll any
+// more: if the ray reaches the enemy's circle unblocked, it hits.
+typedef struct {
+    bool hit_enemy;
+    bool blocked;   // stopped by a wall, door or obstacle before max_dist
+    float x, y;     // where the bottle lands / smashes (world cells)
+    float dist;     // distance along the ray to that point
+} throw_scan_t;
+bool throw_hitscan(float gx, float gy, float dx, float dy, float max_dist, throw_scan_t* out);
+
+// Spend a bottle and resolve a hitscan throw along a ray. The impact point
+// (enemy, blocker, or the end of the ray) comes back in impact_x/impact_y.
+// False (nothing spent) when the throw isn't allowed (e.g. Run stance,
+// which the aim speed-cap makes unreachable in play).
+bool throw_resolve_ray(float gx, float gy, float dx, float dy, float max_dist,
+                       throw_stance_t stance, throw_result_t* out, float* impact_x, float* impact_y);
 // In range, on the floor, not her own cell, with a clear line.
 bool throw_in_reach(int px, int py, int tx, int ty);
 bool throw_aims_at_enemy(int tx, int ty);
