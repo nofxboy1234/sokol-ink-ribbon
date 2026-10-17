@@ -28,6 +28,7 @@ export type EmscriptenModule = {
   _web_route_length?: () => number;
   _web_quick_open?: () => number;
   _web_quick_select?: (slot: number) => number;
+  _web_quick_toggle?: () => number;
   _web_bottle_equipped?: () => number;
   _web_bottle_active?: () => number;
   _web_bottle_empty?: () => number;
@@ -324,6 +325,34 @@ export function quickSelect(slot: number): boolean {
   return (module()?._web_quick_select?.(slot) ?? 0) !== 0;
 }
 
+export function quickToggle(): boolean {
+  return (module()?._web_quick_toggle?.() ?? 0) !== 0;
+}
+
+// While Quick Equip is open, the right stick (or the mouse) points at a
+// radial slot instead of aiming. The stick writes its live direction
+// here; GraceActions reads it each frame to highlight the pointed slot,
+// and the stick itself confirms the selection on release. (-1,-1) is
+// "no direction" (centre / dead zone).
+let radialDirection = { x: 0, y: 0 };
+export function setRadialDirection(x: number, y: number): void {
+  radialDirection = { x, y };
+}
+export function readRadialDirection(): { x: number; y: number } {
+  return radialDirection;
+}
+
+// Compass slot (N=0, E=1, S=2, W=3) a direction points at, or -1 in the
+// dead zone.
+export function radialSlot(x: number, y: number): number {
+  if (Math.hypot(x, y) <= 0.2) {
+    return -1;
+  }
+  const deg = (Math.atan2(y, x) * 180) / Math.PI; // E=0, S=90, W=+-180, N=-90
+  const compass = ((Math.round(deg / 90) % 4) + 4) % 4; // E=0, S=1, W=2, N=3
+  return [1, 2, 3, 0][compass];
+}
+
 export function equipBottle(on: boolean): boolean {
   return (module()?._web_bottle_equip?.(on ? 1 : 0) ?? 0) !== 0;
 }
@@ -336,6 +365,15 @@ export function stickInput(x: number, y: number): void {
 // Aim stick vector (-1..1); (0,0) is release (throws/cancels in C).
 export function aimInput(x: number, y: number): void {
   module()?._web_aim_input?.(x, y);
+}
+
+// The aim stick is held but inside its dead zone. C tells this apart from
+// a release by magnitude alone: exactly (0,0) on release throws/cancels,
+// while a non-zero vector under its 0.12 gate just marks the stick back
+// inside the dead zone. So the dead signal is a token sub-gate vector;
+// it sets no aim direction or length (C ignores sub-gate vectors).
+export function aimDeadZone(): void {
+  module()?._web_aim_input?.(0.01, 0);
 }
 
 export function aimToggle(): boolean {

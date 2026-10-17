@@ -2,7 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import {
   GraceMode,
   quickSelect,
+  radialSlot,
   readGrace,
+  readRadialDirection,
   graceDead,
   type GraceView,
 } from "./wasmBridge";
@@ -176,12 +178,42 @@ export function GraceActions() {
   const [grace, setGrace] = useState<GraceView>(readGrace);
   const hostRef = useRef<HTMLDivElement>(null);
   const [pane, setPane] = useState({ w: 0, h: 0, size: 40 });
+  const [highlight, setHighlight] = useState(-1);
+  const mouseRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const onMouse = (event: MouseEvent) => {
+      mouseRef.current = { x: event.clientX, y: event.clientY };
+    };
+    window.addEventListener("mousemove", onMouse);
+    return () => window.removeEventListener("mousemove", onMouse);
+  }, []);
 
   useEffect(() => {
     let frame = 0;
     const poll = () => {
       const next = readGrace();
       setGrace((prev) => (same(prev, next) ? prev : next));
+      // Radial selection: while Quick Equip is open, whichever slot the
+      // pointer direction indicates is highlighted -- the right stick's
+      // live direction on touch, the mouse's direction from Grace on
+      // desktop. Clicking (desktop) or releasing the stick (touch)
+      // confirms it; the centre/dead zone highlights nothing.
+      let idx = -1;
+      if (next.live && next.quickOpen) {
+        const dir = readRadialDirection();
+        if (Math.hypot(dir.x, dir.y) > 0.2) {
+          idx = radialSlot(dir.x, dir.y);
+        } else if (mouseRef.current && hostRef.current?.parentElement) {
+          const rect = hostRef.current.parentElement.getBoundingClientRect();
+          const dx = mouseRef.current.x - rect.left - next.x;
+          const dy = mouseRef.current.y - rect.top - next.y;
+          if (Math.hypot(dx, dy) > 36) {
+            idx = radialSlot(dx, dy);
+          }
+        }
+      }
+      setHighlight((prev) => (prev === idx ? prev : idx));
       frame = requestAnimationFrame(poll);
     };
     frame = requestAnimationFrame(poll);
@@ -297,6 +329,7 @@ export function GraceActions() {
                 data-empty={empty}
                 data-spent={slot.spent || undefined}
                 data-slot={SLOT_NAMES[i]}
+                data-highlighted={highlight === i || undefined}
                 aria-label={slot.label}
                 aria-pressed={slot.pressed}
                 aria-hidden={empty || undefined}

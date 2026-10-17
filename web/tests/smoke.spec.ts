@@ -590,49 +590,337 @@ test("aiming caps a run to a walk; un-aiming restores the run latch", async ({ p
   await expect.poll(() => wasm(page, "web_grace_mode")).toBe(3);
 });
 
-test("phone twin sticks: left moves, right aims, releasing the aim throws while moving", async ({
-  browser,
-}) => {
-  const phone = await browser.newContext({
-    viewport: { width: 390, height: 844 },
+type Box = { x: number; y: number; width: number; height: number };
+
+function boxesOverlap(a: Box, b: Box) {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+async function phonePage(
+  browser: import("@playwright/test").Browser,
+  viewport: { width: number; height: number },
+) {
+  const context = await browser.newContext({
+    viewport,
     deviceScaleFactor: 3,
     isMobile: true,
     hasTouch: true,
   });
-  const page = await phone.newPage();
+  const page = await context.newPage();
   await page.goto("/");
   await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
     timeout: 30_000,
   });
+  return { context, page };
+}
+
+async function touchSession(page: Page, context: import("@playwright/test").BrowserContext) {
+  const cdp = await context.newCDPSession(page);
+  return (type: string, points: { x: number; y: number; id: number }[]) =>
+    cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+}
+
+// Both sticks visible, inside the map, clear of each other and of the
+// top-of-map furniture (Grace status, timer chip, Inventory/Pause), and
+// not eating the map: height is asserted as a share of the map height.
+async function expectStickLayout(page: Page, maxMapFraction: number) {
   await page.evaluate(() => (window as any).Module?._web_test_bottle_ready?.());
   const move = await page.locator(".stick:not(.aim-stick)").boundingBox();
   const aim = await page.locator(".aim-stick").boundingBox();
+  const map = await page.locator(".pane-map").boundingBox();
+  const status = await page.locator(".grace-status").boundingBox();
+  const timer = await page.locator(".timer-chip").boundingBox();
+  const actions = await page.locator(".map-actions").boundingBox();
   expect(move).not.toBeNull();
   expect(aim).not.toBeNull();
-  expect((move?.x ?? 0)).toBeLessThan(aim?.x ?? 0); // move left, aim right
-  const mc = { x: (move?.x ?? 0) + (move?.width ?? 0) / 2, y: (move?.y ?? 0) + (move?.height ?? 0) / 2 };
-  const ac = { x: (aim?.x ?? 0) + (aim?.width ?? 0) / 2, y: (aim?.y ?? 0) + (aim?.height ?? 0) / 2 };
-  const cdp = await phone.newCDPSession(page);
-  const touch = (type: string, points: { x: number; y: number; id: number }[]) =>
-    cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+  expect(map).not.toBeNull();
+  const m = move as Box;
+  const a = aim as Box;
+  const mp = map as Box;
+  expect(m.x).toBeLessThan(a.x); // move left, aim right
+  expect(boxesOverlap(m, a)).toBe(false);
+  for (const stick of [m, a]) {
+    expect(stick.height).toBeGreaterThanOrEqual(80); // still a usable touch target
+    expect(stick.height / mp.height).toBeLessThanOrEqual(maxMapFraction);
+    expect(stick.x).toBeGreaterThanOrEqual(mp.x - 1);
+    expect(stick.y).toBeGreaterThanOrEqual(mp.y - 1);
+    expect(stick.x + stick.width).toBeLessThanOrEqual(mp.x + mp.width + 1);
+    expect(stick.y + stick.height).toBeLessThanOrEqual(mp.y + mp.height + 1);
+    for (const top of [status, timer, actions]) {
+      expect(top).not.toBeNull();
+      expect(boxesOverlap(stick, top as Box)).toBe(false);
+    }
+  }
+  return { move: m, aim: a, map: mp };
+}
+
+async function twinStickThrow(page: Page, context: import("@playwright/test").BrowserContext) {
+  const { move, aim } = await expectStickLayout(page, 0.35);
+  const mc = { x: move.x + move.width / 2, y: move.y + move.height / 2 };
+  const ac = { x: aim.x + aim.width / 2, y: aim.y + aim.height / 2 };
+  const touch = await touchSession(page, context);
+  const push = Math.round(move.width * 0.38);
   await touch("touchStart", [
     { ...mc, id: 1 },
     { ...ac, id: 2 },
   ]);
   await touch("touchMove", [
-    { x: mc.x + 40, y: mc.y, id: 1 },
-    { x: ac.x + 38, y: ac.y, id: 2 },
+    { x: mc.x + push, y: mc.y, id: 1 },
+    { x: ac.x + push, y: ac.y, id: 2 },
   ]);
   await page.waitForTimeout(600);
   expect(await page.evaluate(() => (window as any).Module?._web_grace_mode?.())).toBe(1);
   expect(await page.evaluate(() => (window as any).Module?._web_test_aiming?.())).toBe(1);
   // release only the aim stick: she throws, still moving on the left stick
-  await touch("touchEnd", [{ x: ac.x + 38, y: ac.y, id: 2 }]);
+  await touch("touchEnd", [{ x: ac.x + push, y: ac.y, id: 2 }]);
   await expect
     .poll(() => page.evaluate(() => (window as any).Module?._web_impact_age_ms?.() ?? -1))
     .toBeGreaterThanOrEqual(0);
-  await touch("touchEnd", [{ x: mc.x + 40, y: mc.y, id: 1 }]);
-  await phone.close();
+  await touch("touchEnd", [{ x: mc.x + push, y: mc.y, id: 1 }]);
+}
+
+test("phone twin sticks: left moves, right aims, releasing the aim throws while moving", async ({
+  browser,
+}) => {
+  const { context, page } = await phonePage(browser, { width: 390, height: 844 });
+  // portrait keeps the full-size stick: 128px, a small share of the tall map
+  const { move } = await expectStickLayout(page, 0.2);
+  expect(move.height).toBe(132); // 128px content + 2px border each side
+  await twinStickThrow(page, context);
+  await context.close();
+});
+
+test("phone twin sticks in landscape: shrunk sticks still move, aim and throw", async ({
+  browser,
+}) => {
+  const { context, page } = await phonePage(browser, { width: 844, height: 390 });
+  // landscape: the stick shrinks off the short dimension instead of
+  // covering ~40% of the map height
+  const { move } = await expectStickLayout(page, 0.32);
+  expect(move.height).toBeLessThan(132);
+  expect(move.height).toBeGreaterThanOrEqual(84);
+  await twinStickThrow(page, context);
+  await context.close();
+});
+
+test("phone sticks on a short landscape screen (360px high) stay proportionate", async ({
+  browser,
+}) => {
+  const { context, page } = await phonePage(browser, { width: 780, height: 360 });
+  const { move } = await expectStickLayout(page, 0.32);
+  expect(move.height).toBeGreaterThanOrEqual(84);
+  await context.close();
+});
+
+test("phone stick centre tap: left tap does not interact, right tap with jitter does", async ({
+  browser,
+}) => {
+  const { context, page } = await phonePage(browser, { width: 390, height: 844 });
+  // stand just west of the Green Herb at (95, 8)
+  await page.evaluate(() => (window as any).Module?._web_test_grace_at?.(94, 8));
+  await page.waitForTimeout(250);
+  const touch = await touchSession(page, context);
+  const centreOf = async (selector: string) => {
+    const box = await page.locator(selector).boundingBox();
+    expect(box).not.toBeNull();
+    return { x: (box?.x ?? 0) + (box?.width ?? 0) / 2, y: (box?.y ?? 0) + (box?.height ?? 0) / 2 };
+  };
+  const before = await page.evaluate(() => (window as any).Module?._items_collected?.() ?? 0);
+  const px0 = await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0);
+  // LEFT stick centre tap (with a few px of jitter): no interact any more
+  const left = await centreOf(".stick:not(.aim-stick)");
+  await touch("touchStart", [{ ...left, id: 1 }]);
+  await touch("touchMove", [{ x: left.x + 4, y: left.y - 2, id: 1 }]);
+  await touch("touchEnd", [{ x: left.x + 4, y: left.y - 2, id: 1 }]);
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => (window as any).Module?._items_collected?.() ?? 0)).toBe(before);
+  // RIGHT stick centre tap with jitter: interact fires, no movement emitted
+  const right = await centreOf(".aim-stick");
+  await touch("touchStart", [{ ...right, id: 1 }]);
+  await touch("touchMove", [{ x: right.x + 3, y: right.y - 2, id: 1 }]);
+  await touch("touchMove", [{ x: right.x + 5, y: right.y + 2, id: 1 }]);
+  await touch("touchEnd", [{ x: right.x + 5, y: right.y + 2, id: 1 }]);
+  await expect
+    .poll(() => page.evaluate(() => (window as any).Module?._items_collected?.() ?? 0))
+    .toBe(before + 1); // the tap fired interact and picked the herb up
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0)).toBeCloseTo(px0, 1);
+  expect(await page.evaluate(() => (window as any).Module?._web_grace_mode?.())).toBe(3);
+  await context.close();
+});
+
+test("phone stick: drift in the dead zone does not move her, a small push beyond it walks", async ({
+  browser,
+}) => {
+  const { context, page } = await phonePage(browser, { width: 390, height: 844 });
+  const stick = await page.locator(".stick:not(.aim-stick)").boundingBox();
+  expect(stick).not.toBeNull();
+  const c = {
+    x: (stick?.x ?? 0) + (stick?.width ?? 0) / 2,
+    y: (stick?.y ?? 0) + (stick?.height ?? 0) / 2,
+  };
+  const px0 = await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0);
+  const touch = await touchSession(page, context);
+  await touch("touchStart", [{ ...c, id: 1 }]);
+  await touch("touchMove", [{ x: c.x + 6, y: c.y, id: 1 }]); // inside the ~10px dead zone
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => (window as any).Module?._web_grace_mode?.())).toBe(3);
+  expect(await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0)).toBeCloseTo(px0, 1);
+  // a deliberate small push just past the dead zone (still in the walk band)
+  await touch("touchMove", [{ x: c.x + 18, y: c.y, id: 1 }]);
+  await expect
+    .poll(() => page.evaluate(() => (window as any).Module?._web_grace_mode?.()))
+    .toBe(1); // Walking
+  await touch("touchEnd", [{ x: c.x + 18, y: c.y, id: 1 }]);
+  await context.close();
+});
+
+test("phone aim stick: centre jitter and a dead-zone release cancel instead of throwing", async ({
+  browser,
+}) => {
+  const { context, page } = await phonePage(browser, { width: 390, height: 844 });
+  await page.evaluate(() => (window as any).Module?._web_test_bottle_ready?.());
+  const aim = await page.locator(".aim-stick").boundingBox();
+  expect(aim).not.toBeNull();
+  const c = { x: (aim?.x ?? 0) + (aim?.width ?? 0) / 2, y: (aim?.y ?? 0) + (aim?.height ?? 0) / 2 };
+  const touch = await touchSession(page, context);
+  // centre touch with jitter only: never aims, release throws nothing
+  await touch("touchStart", [{ ...c, id: 1 }]);
+  await touch("touchMove", [{ x: c.x + 4, y: c.y + 3, id: 1 }]);
+  await touch("touchEnd", [{ x: c.x + 4, y: c.y + 3, id: 1 }]);
+  await page.waitForTimeout(200);
+  expect(await page.evaluate(() => (window as any).Module?._web_test_aiming?.())).toBe(0);
+  expect(await page.evaluate(() => (window as any).Module?._web_impact_age_ms?.() ?? -1)).toBe(-1);
+  // push out to aim, pull back into the dead zone, then release: cancels
+  await touch("touchStart", [{ ...c, id: 1 }]);
+  await touch("touchMove", [{ x: c.x + 32, y: c.y, id: 1 }]);
+  await expect
+    .poll(() => page.evaluate(() => (window as any).Module?._web_test_aiming?.()))
+    .toBe(1);
+  await touch("touchMove", [{ x: c.x + 2, y: c.y, id: 1 }]);
+  await touch("touchEnd", [{ x: c.x + 2, y: c.y, id: 1 }]);
+  await page.waitForTimeout(200);
+  expect(await page.evaluate(() => (window as any).Module?._web_test_aiming?.())).toBe(0);
+  expect(await page.evaluate(() => (window as any).Module?._web_impact_age_ms?.() ?? -1)).toBe(-1);
+  await context.close();
+});
+
+test("phone right stick is always shown: greyed with no bottle, no aim or throw from it", async ({
+  browser,
+}) => {
+  const { context, page } = await phonePage(browser, { width: 390, height: 844 });
+  const aimStick = page.locator(".aim-stick");
+  await expect(aimStick).toBeVisible();
+  await expect(aimStick).toHaveAttribute("data-inactive", "true");
+  const box = await aimStick.boundingBox();
+  expect(box).not.toBeNull();
+  const c = { x: (box?.x ?? 0) + (box?.width ?? 0) / 2, y: (box?.y ?? 0) + (box?.height ?? 0) / 2 };
+  const touch = await touchSession(page, context);
+  await touch("touchStart", [{ ...c, id: 1 }]);
+  await touch("touchMove", [{ x: c.x + 34, y: c.y, id: 1 }]);
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => (window as any).Module?._web_test_aiming?.())).toBe(0);
+  await touch("touchEnd", [{ x: c.x + 34, y: c.y, id: 1 }]);
+  await page.waitForTimeout(200);
+  expect(await page.evaluate(() => (window as any).Module?._web_impact_age_ms?.() ?? -1)).toBe(-1);
+  // and once a bottle is active the same stick is live, not greyed
+  await page.evaluate(() => (window as any).Module?._web_test_bottle_ready?.());
+  await expect(aimStick).not.toHaveAttribute("data-inactive", "true");
+  await context.close();
+});
+
+test("phone right stick: tap interacts, hold opens Quick Equip without interacting", async ({
+  browser,
+}) => {
+  const { context, page } = await phonePage(browser, { width: 390, height: 844 });
+  await page.evaluate(() => (window as any).Module?._web_test_grace_at?.(94, 8)); // herb to the east
+  await page.evaluate(() => (window as any).Module?._web_test_give?.(7)); // a Lighter slot exists
+  await page.waitForTimeout(250);
+  const box = await page.locator(".aim-stick").boundingBox();
+  expect(box).not.toBeNull();
+  const c = { x: (box?.x ?? 0) + (box?.width ?? 0) / 2, y: (box?.y ?? 0) + (box?.height ?? 0) / 2 };
+  const touch = await touchSession(page, context);
+  const items = () => page.evaluate(() => (window as any).Module?._items_collected?.() ?? 0);
+  const quick = () => page.evaluate(() => (window as any).Module?._web_quick_open?.() ?? 0);
+  const before = await items();
+  // a quick tap does not open the menu (it interacts: covered by the tap test)
+  await touch("touchStart", [{ ...c, id: 1 }]);
+  await touch("touchEnd", [{ ...c, id: 1 }]);
+  await page.waitForTimeout(200);
+  expect(await quick()).toBe(0);
+  expect(await items()).toBe(before + 1); // that tap was the interact
+  // a hold (>=450ms) opens Quick Equip and must NOT also interact
+  await touch("touchStart", [{ ...c, id: 1 }]);
+  await expect.poll(quick, { timeout: 3000 }).toBe(1);
+  await touch("touchEnd", [{ ...c, id: 1 }]);
+  await page.waitForTimeout(200);
+  expect(await items()).toBe(before + 1); // no second interact from the hold/release
+  expect(await quick()).toBe(1); // menu stays open after the opening hold
+  // a centre tap while open cancels/closes it, again without interacting
+  await touch("touchStart", [{ ...c, id: 1 }]);
+  await touch("touchEnd", [{ ...c, id: 1 }]);
+  await expect.poll(quick).toBe(0);
+  expect(await items()).toBe(before + 1);
+  await context.close();
+});
+
+test("phone Quick Equip radial: hold, point the right stick north, release equips the Lighter", async ({
+  browser,
+}) => {
+  const { context, page } = await phonePage(browser, { width: 390, height: 844 });
+  await page.evaluate(() => (window as any).Module?._web_test_bottle_ready?.());
+  await page.evaluate(() => (window as any).Module?._web_test_give?.(7));
+  const box = await page.locator(".aim-stick").boundingBox();
+  expect(box).not.toBeNull();
+  const c = { x: (box?.x ?? 0) + (box?.width ?? 0) / 2, y: (box?.y ?? 0) + (box?.height ?? 0) / 2 };
+  const touch = await touchSession(page, context);
+  await touch("touchStart", [{ ...c, id: 1 }]);
+  await expect
+    .poll(() => page.evaluate(() => (window as any).Module?._web_quick_open?.() ?? 0), { timeout: 3000 })
+    .toBe(1);
+  // same touch, now point north: the Lighter slot highlights, no aiming
+  await touch("touchMove", [{ x: c.x, y: c.y - 36, id: 1 }]);
+  const lighter = page
+    .getByRole("group", { name: "Quick Equip" })
+    .getByRole("button", { name: "Lighter" });
+  await expect(lighter).toHaveAttribute("data-highlighted", "true");
+  expect(await page.evaluate(() => (window as any).Module?._web_test_aiming?.())).toBe(0);
+  // release confirms the pointed slot: Lighter toggles on, nothing throws
+  await touch("touchEnd", [{ x: c.x, y: c.y - 36, id: 1 }]);
+  await expect
+    .poll(() => page.evaluate(() => (window as any).Module?._lighter_value?.() ?? 0))
+    .toBe(1);
+  expect(await page.evaluate(() => (window as any).Module?._web_impact_age_ms?.() ?? -1)).toBe(-1);
+  expect(await page.evaluate(() => (window as any).Module?._web_bottle_active?.() ?? 0)).toBe(1);
+  await context.close();
+});
+
+test("desktop Z opens Quick Equip and the mouse direction selects radially", async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => window.Module?._web_test_give?.(7));
+  await page.keyboard.press("z");
+  await expect
+    .poll(() => page.evaluate(() => (window as any).Module?._web_quick_open?.() ?? 0))
+    .toBe(1);
+  const lighter = page
+    .getByRole("group", { name: "Quick Equip" })
+    .getByRole("button", { name: "Lighter" });
+  await expect(lighter).toBeVisible();
+  // point the mouse at the north slot: it highlights before any click
+  const slotBox = await lighter.boundingBox();
+  expect(slotBox).not.toBeNull();
+  await page.mouse.move(
+    (slotBox?.x ?? 0) + (slotBox?.width ?? 0) / 2,
+    (slotBox?.y ?? 0) + (slotBox?.height ?? 0) / 2,
+  );
+  await expect(lighter).toHaveAttribute("data-highlighted", "true");
+  await lighter.click();
+  expect(await page.evaluate(() => (window as any).Module?._lighter_value?.() ?? 0)).toBe(1);
+  // Z again closes it
+  await page.keyboard.press("z");
+  await expect
+    .poll(() => page.evaluate(() => (window as any).Module?._web_quick_open?.() ?? 0))
+    .toBe(0);
 });
 
 test("items lit by a switch light stay visible after it is switched off", async ({ page }) => {
