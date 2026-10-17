@@ -79,7 +79,8 @@ test("the side panes and pause menu are present", async ({ page }) => {
   await expect(page.getByRole("button", { name: "FILES" })).toBeVisible();
 
   await page.getByRole("button", { name: "Pause", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Restart" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Restart level" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Restart from last save" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Load Game" })).toBeVisible();
 });
 
@@ -682,4 +683,31 @@ test("items lit by a switch light stay visible after it is switched off", async 
   await page.waitForTimeout(200);
   expect(await wasm(page, "web_light_at", 88, 63)).toBe(0);
   expect(await wasm(page, "web_item_visible_at", 88, 63)).toBe(1);
+});
+
+test("a hit in Danger kills Grace and stops the timer", async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => window.Module?._web_test_hurt?.());
+  await page.waitForTimeout(100);
+  await page.evaluate(() => window.Module?._web_test_hurt?.());
+  await page.waitForTimeout(100);
+  await page.evaluate(() => window.Module?._web_test_hurt?.());
+  await expect(page.getByText("Grace died")).toBeVisible();
+  const t0 = await wasm(page, "run_elapsed_ms");
+  await page.waitForTimeout(600);
+  expect(await wasm(page, "run_elapsed_ms")).toBe(t0);
+  expect(await wasm(page, "web_grace_dead")).toBe(1);
+});
+
+test("the fuse chain: gate stays shut without the fuse, opens with it, goal past it", async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => window.Module?._web_test_grace_at?.(8, 69));
+  await page.waitForTimeout(200);
+  expect(await wasm(page, "web_test_interact", 7, 69)).toBe(1);
+  expect(await wasm(page, "web_goal_met")).toBe(0);
+  await page.evaluate(() => window.Module?._web_test_give?.(6));
+  expect(await wasm(page, "web_test_interact", 7, 69)).toBe(1);
+  expect(await wasm(page, "web_goal_met")).toBe(1);
+  await page.evaluate(() => window.Module?._web_test_grace_at?.(5, 74));
+  await expect.poll(() => wasm(page, "web_level_complete")).toBe(1);
 });

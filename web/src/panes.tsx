@@ -19,6 +19,10 @@ import {
   saveGame,
   saveTimeMs,
   saveUsed,
+  pendingSafe,
+  pendingCodeDoor,
+  trySafeCode,
+  tryDoorCode,
   type ItemAppearance,
 } from "./wasmBridge";
 import { useElapsed, useGameState } from "./GameState";
@@ -36,7 +40,7 @@ let goalRunSaved = false;
 
 export function RunPanel() {
   const elapsed = useElapsed();
-  const { goalMet } = useGameState();
+  const { levelComplete } = useGameState();
   const [status, setStatus] = useState("");
   const count = itemCount();
   if (count > 0 && (ITEM_TEXT.length !== count || ITEM_ACTIONS.length !== count)) {
@@ -45,9 +49,9 @@ export function RunPanel() {
     );
   }
 
-  // A run saves itself the moment the goal (the fuse box) is activated.
+  // A run saves itself when she walks past the powered gate to the goal.
   useEffect(() => {
-    if (!goalMet) {
+    if (!levelComplete) {
       goalRunSaved = false;
       return;
     }
@@ -75,7 +79,7 @@ export function RunPanel() {
         setStatus("Save failed");
       }
     })();
-  }, [goalMet]);
+  }, [levelComplete]);
 
   return (
     <div className="run-panel">
@@ -549,10 +553,11 @@ export function Crafting() {
     <div className="pane-content">
       <h2>CRAFTING</h2>
       <ul className="recipe-list">
-        {recipes.map((recipe, index) => {
+        {recipes.map((recipe) => {
+          const index = recipe.index;
           const ready = recipeReady(index);
           return (
-            <li key={index}>
+            <li key={recipe.index}>
               <button
                 type="button"
                 className="recipe"
@@ -615,6 +620,7 @@ export function PauseMenu({
   onClose: () => void;
   onLoad: () => void;
 }) {
+  const { lastSaveSlot } = useGameState();
   if (!open) {
     return null;
   }
@@ -624,12 +630,23 @@ export function PauseMenu({
         <button
           type="button"
           className="pause-item pause-selected"
+          disabled={lastSaveSlot < 0}
+          onClick={() => {
+            loadGame(lastSaveSlot);
+            onClose();
+          }}
+        >
+          Restart from last save
+        </button>
+        <button
+          type="button"
+          className="pause-item"
           onClick={() => {
             gameReset();
             onClose();
           }}
         >
-          Restart
+          Restart level
         </button>
         <button type="button" className="pause-item" onClick={onLoad}>
           Load Game
@@ -708,4 +725,63 @@ function SaveLoadSlots({ onClose }: { onClose: () => void }) {
       </div>
     </div>
   );
+}
+
+// Touch-friendly code entry for safes and combination-lock doors (next level).
+export function CodeKeypad() {
+  const [target, setTarget] = useState<"safe" | "door" | null>(null);
+  const [digits, setDigits] = useState("");
+  const [msg, setMsg] = useState("");
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (pendingSafe() >= 0) setTarget("safe");
+      else if (pendingCodeDoor() >= 0) setTarget("door");
+    }, 150);
+    return () => clearInterval(id);
+  }, []);
+  if (!target) return null;
+  const submit = () => {
+    const ok = target === "safe" ? trySafeCode(Number(digits)) : tryDoorCode(Number(digits));
+    if (ok) { setTarget(null); setDigits(""); setMsg(""); }
+    else { setMsg("Wrong code"); setDigits(""); }
+  };
+  return (
+    <div className="pause-overlay">
+      <div className="keypad" role="dialog" aria-label="Enter code">
+        <div className="keypad-title">{target === "safe" ? "Safe" : "Combination lock"}</div>
+        <div className="keypad-display">{digits || "----"}</div>
+        <div className="keypad-grid">
+          {[1,2,3,4,5,6,7,8,9,0].map((d) => (
+            <button key={d} type="button" className="keypad-key" onClick={() => setDigits((v) => (v + d).slice(0, 8))}>{d}</button>
+          ))}
+          <button type="button" className="keypad-key" onClick={() => setDigits("")}>Clear</button>
+          <button type="button" className="keypad-key" onClick={submit}>Open</button>
+        </div>
+        {msg && <div className="keypad-msg">{msg}</div>}
+        <button type="button" className="pause-item" onClick={() => setTarget(null)}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+export function GameOver({ onLoad }: { onLoad: () => void }) {
+  const { dead, lastSaveSlot } = useGameState();
+  if (!dead) return null;
+  return (
+    <div className="pause-overlay game-over">
+      <div className="pause-menu">
+        <div className="save-title">Grace died</div>
+        <button type="button" className="pause-item pause-selected" disabled={lastSaveSlot < 0}
+          onClick={() => loadGame(lastSaveSlot)}>Restart from last save</button>
+        <button type="button" className="pause-item" onClick={onLoad}>Load</button>
+        <button type="button" className="pause-item" onClick={() => gameReset()}>Restart level</button>
+      </div>
+    </div>
+  );
+}
+
+export function LevelComplete() {
+  const { levelComplete } = useGameState();
+  if (!levelComplete) return null;
+  return <div className="level-complete" role="status">Level complete</div>;
 }
