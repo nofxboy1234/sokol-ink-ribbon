@@ -992,12 +992,14 @@ button.recipe[aria-disabled="true"] {
 
 @media (pointer: coarse) {
   .stick {
+    --stick-size: 128px;
     display: block;
     position: absolute;
-    left: 18px;
-    bottom: 18px;
-    width: 128px;
-    height: 128px;
+    /* Keep clear of notches / home indicators; 0 where there are none. */
+    left: calc(18px + env(safe-area-inset-left, 0px));
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    width: var(--stick-size);
+    height: var(--stick-size);
     border: 2px solid var(--ink);
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.35);
@@ -1011,8 +1013,9 @@ button.recipe[aria-disabled="true"] {
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 52px;
-    height: 52px;
+    /* 52px at the full 128px stick size; scales with a shrunk stick. */
+    width: calc(var(--stick-size) * 52 / 128);
+    height: calc(var(--stick-size) * 52 / 128);
     border: 2px solid var(--ink);
     border-radius: 50%;
     background: var(--paper);
@@ -1032,6 +1035,19 @@ button.recipe[aria-disabled="true"] {
 @media (pointer: coarse) {
   .aim-stick {
     left: auto;
-    right: 18px;
+    right: calc(18px + env(safe-area-inset-right, 0px));
+  }
+}
+
+/* Short screens (landscape phones): a fixed 128px stick plus its offset
+   would cover ~40% of the map height, so size it by the small viewport
+   dimension instead. 25vmin is ~98px at 390px tall and ~90px at 360px,
+   clamped so the touch target never drops below 84px or outgrows the
+   full-size stick. Tall/portrait screens keep the 128px default above.
+   Stick.tsx derives knob travel from the rendered size, so the walk/run
+   bands and aim length keep mapping to the same fractions. */
+@media (pointer: coarse) and (max-height: 500px) {
+  .stick {
+    --stick-size: clamp(84px, 25vmin, 106px);
   }
 }

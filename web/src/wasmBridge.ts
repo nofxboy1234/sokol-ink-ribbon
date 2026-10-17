@@ -338,6 +338,15 @@ export function aimInput(x: number, y: number): void {
   module()?._web_aim_input?.(x, y);
 }
 
+// The aim stick is held but inside its dead zone. C tells this apart from
+// a release by magnitude alone: exactly (0,0) on release throws/cancels,
+// while a non-zero vector under its 0.12 gate just marks the stick back
+// inside the dead zone. So the dead signal is a token sub-gate vector;
+// it sets no aim direction or length (C ignores sub-gate vectors).
+export function aimDeadZone(): void {
+  module()?._web_aim_input?.(0.01, 0);
+}
+
 export function aimToggle(): boolean {
   return (module()?._web_aim_toggle?.() ?? 0) !== 0;
 }
