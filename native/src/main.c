@@ -72,7 +72,6 @@ typedef enum {
 #define DOUBLE_CLICK_SECONDS 0.33f
 #define DOUBLE_CLICK_SLOP_PX 24.0f
 // Touch has no right click: holding a finger on Grace this long opens Quick Equip.
-#define LONG_PRESS_SECONDS 0.5f
 // How long Grace flashes after a hit.
 #define GRACE_FLASH_SECONDS 1.0f
 // Then she breathes fast (stressed) until this long after the hit.
@@ -99,8 +98,6 @@ static struct {
     bool pending_run;
     bool resume_wait;       // paused mid-wait: a double click goes back to waiting
     int pending_x, pending_y;
-    double touch_start_at;
-    bool long_fired;
     double grace_flash_until;
     double grace_stress_until;  // fast, stressed breathing after a hit
     double grace_hurt_until;    // Hurt ends (then Waiting)
@@ -678,37 +675,15 @@ static bool aim_confirm(void) {
 static const obj_t* hover_interactable(void);
 static void update_hover(void);
 
-// Is the screen point on Grace's dot? Touch gets a bigger target.
-static bool near_grace(float sx, float sy) {
-    float gx, gy;
-    camera_cell_to_screen(player_x(), player_y(), &gx, &gy);
-    float r = camera_cell_px() * 0.75f;
-    float min_r = (app.touch_pointer ? 28.0f : 14.0f) * sapp_dpi_scale();
-    if (r < min_r) {
-        r = min_r;
-    }
-    float dx = sx - gx, dy = sy - gy;
-    return dx * dx + dy * dy <= r * r;
-}
+// Grace's dot is not an input: clicking, right-clicking, tapping or
+// long-pressing her does nothing. Quick Equip opens only via the Z key
+// or a long hold on the right stick's centre (both go through
+// quick_toggle); interact is X or a right-stick centre tap. Map clicks
+// elsewhere still use doors, items and climbs.
 
-// A tap meant for Grace: on her own cell, or close to her dot on a cell
-// with nothing to use. The generous dot radius (28 px on touch) reaches
-// into the neighbouring cells, so an item or door there wins: tapping a
-// herb next to her picks it up instead of toggling her menu.
-static bool on_grace(float sx, float sy) {
-    int px, py, cx, cy;
-    player_cell(&px, &py);
-    camera_screen_to_cell(sx, sy, &cx, &cy);
-    if (cx == px && cy == py) {
-        return true;
-    }
-    update_hover();
-    return hover_interactable() == NULL && near_grace(sx, sy);
-}
-
-// Quick Equip opens/closes: right click (or a long press) on her dot,
-// the Z key, or a long hold on the right stick's centre (via
-// web_quick_toggle). While she stands still only; moving or hurt: no equip.
+// Quick Equip opens/closes only via the Z key or a long hold on the
+// right stick's centre (web_quick_toggle). While she stands still only;
+// moving or hurt: no equip.
 static bool quick_toggle(void) {
     if (app.grace == GRACE_HURT || player_is_moving() || player_climbing()) {
         return false;
@@ -716,13 +691,6 @@ static bool quick_toggle(void) {
     app.quick_open = !app.quick_open;
     bump_revision();
     return true;
-}
-
-static void handle_quick_equip(void) {
-    if (!on_grace(app.mouse_x, app.mouse_y)) {
-        return;
-    }
-    quick_toggle();
 }
 
 static void handle_click(void) {
@@ -733,21 +701,15 @@ static void handle_click(void) {
         aim_confirm();  // desktop: the click throws (a grey reticle refuses)
         return;
     }
-    if (on_grace(app.mouse_x, app.mouse_y)) {
-        // Clicking Grace stops her where she stands (she goes to Waiting).
-        player_stop();
-        app.run_latch = false;
-        app.quick_open = false;
-        if (app.grace == GRACE_WALKING || app.grace == GRACE_RUNNING || app.grace == GRACE_PAUSED) {
-            set_grace(GRACE_WAITING);
-        }
-        bump_revision();
-        return;
-    }
     if (player_is_moving()) {
-        return;  // map taps do not steer her; only Grace herself stops her
+        return;  // map taps do not steer or stop her
     }
-    // Map taps are for the world now: doors, pickups, switches, climb prompts.
+    int px, py;
+    player_cell(&px, &py);
+    if (app.hover_x == px && app.hover_y == py) {
+        return;  // a click on her own cell is a click on Grace: nothing
+    }
+    // Map taps are for the world: doors, pickups, switches, climb prompts.
     if (app.hover_x >= 0 && app.hover_y >= 0 &&
         (doors_interact(app.hover_x, app.hover_y) || interact_at(app.hover_x, app.hover_y))) {
         bump_revision();
@@ -991,13 +953,6 @@ static void frame(void) {
         lighter_toggle();  // no lighter, no light
         bump_revision();
     }
-    if (app.touch_active && !app.touch_moved && !app.long_fired &&
-        app.clock - app.touch_start_at >= LONG_PRESS_SECONDS) {
-        app.long_fired = true;
-        app.mouse_x = app.touch_start_x;
-        app.mouse_y = app.touch_start_y;
-        handle_quick_equip();
-    }
     if (player_climbing()) {
         player_update(dt);  // the 0.35 s climb runs even while she is Paused
         camera_follow(player_x(), player_y());
@@ -1172,17 +1127,15 @@ static void event(const sapp_event* e) {
             app.mouse_y = e->mouse_y;
             if (e->mouse_button == SAPP_MOUSEBUTTON_LEFT) {
                 click_at();
-            } else if (e->mouse_button == SAPP_MOUSEBUTTON_RIGHT) {
-                handle_quick_equip();  // right click does nothing else on the map
             }
+            // Right click does nothing: Grace's dot takes no input, and
+            // Quick Equip is Z (desktop) or the right-stick hold (touch).
             return;
         case SAPP_EVENTTYPE_TOUCHES_BEGAN:
             app.touch_pointer = true;
             if (e->num_touches == 1) {
                 app.touch_active = true;
                 app.touch_moved = false;
-                app.long_fired = false;
-                app.touch_start_at = app.clock;
                 app.touch_start_x = app.mouse_x = e->touches[0].pos_x;
                 app.touch_start_y = app.mouse_y = e->touches[0].pos_y;
             } else {
@@ -1208,7 +1161,7 @@ static void event(const sapp_event* e) {
                     held++;
                 }
             }
-            if (held == 0 && app.touch_active && !app.touch_moved && !app.long_fired) {
+            if (held == 0 && app.touch_active && !app.touch_moved) {
                 click_at();
             }
             if (held == 0) {
