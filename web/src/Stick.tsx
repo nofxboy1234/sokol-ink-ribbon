@@ -10,7 +10,12 @@ import {
   setRadialDirection,
   stickInput,
 } from "./wasmBridge";
-import { dispatchMenuAccept, dispatchMenuStep, menuCapturing } from "./menuNav";
+import {
+  dispatchMenuAccept,
+  dispatchMenuShortcut,
+  dispatchMenuStep,
+  menuCapturing,
+} from "./menuNav";
 
 // Twin sticks (touch only, see app.css). LEFT stick moves Grace: the first
 // half of its throw walks, further runs -- the C side turns the vector
@@ -183,10 +188,29 @@ export function Stick() {
       stickInput(0, 0);
     }
   };
+  // Menu shortcuts on this stick's centre (which otherwise does
+  // nothing): HOLDING it toggles the Pause menu -- the mirror of
+  // holding the right stick's centre for Quick Equip -- and a
+  // DOUBLE-TAP toggles the Inventory. Both stay inside the dead zone,
+  // so they can never move Grace, aim, interact or equip.
+  const lastTapAt = useRef<number | null>(null);
+  const onMoveTap = () => {
+    const now = performance.now();
+    if (lastTapAt.current !== null && now - lastTapAt.current < 400) {
+      lastTapAt.current = null;
+      dispatchMenuShortcut("inventory");
+    } else {
+      lastTapAt.current = now;
+    }
+  };
+  const onMoveHold = () => {
+    dispatchMenuShortcut("pause");
+  };
   const { baseRef, knob, onDown, onMove, onUp } = useStickVector(
     onMoveVector,
-    undefined,
+    onMoveTap,
     onMoveDeadZone,
+    onMoveHold,
   );
   return (
     <div
@@ -194,7 +218,7 @@ export function Stick() {
       className="stick"
       data-active={knob.active || undefined}
       role="application"
-      aria-label="Move stick."
+      aria-label="Move stick. Hold centre for the Pause menu, double-tap centre for the Inventory."
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={onUp}

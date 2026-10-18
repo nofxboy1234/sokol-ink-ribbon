@@ -779,7 +779,7 @@ test("phone stick: drift up to the dead zone does not move her, a push beyond it
   const touch = await touchSession(page, context);
   await touch("touchStart", [{ ...c, id: 1 }]);
   await touch("touchMove", [{ x: c.x + 16, y: c.y, id: 1 }]); // inside the ~18px dead zone
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(250); // under the 450ms hold-centre Pause gesture
   expect(await page.evaluate(() => (window as any).Module?._web_grace_mode?.())).toBe(3);
   expect(await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0)).toBeCloseTo(px0, 1);
   // a deliberate push just past the dead zone (still in the walk band)
@@ -1135,5 +1135,74 @@ test("menu nav on a phone: stick flick steps the Pause menu, right-centre tap ac
   await touch("touchStart", [{ ...right, id: 1 }]);
   await touch("touchEnd", [{ ...right, id: 1 }]);
   await expect(page.locator(".save-menu")).toBeVisible();
+  await context.close();
+});
+
+test("menu shortcuts: P and Esc toggle Pause, I toggles Inventory, no mouse needed", async ({
+  page,
+}) => {
+  await boot(page);
+  const px0 = await wasm(page, "player_px");
+  await page.keyboard.press("p");
+  await expect(page.locator(".pause-menu")).toBeVisible();
+  await page.keyboard.press("p");
+  await expect(page.locator(".pause-menu")).toHaveCount(0);
+  // Esc with nothing open opens Pause (existing toggle), Esc again closes
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".pause-menu")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".pause-menu")).toHaveCount(0);
+  // I opens and closes the Inventory; P does nothing over it
+  await page.keyboard.press("i");
+  const overlay = page.getByRole("dialog", { name: "Inventory" });
+  await expect(overlay).toBeVisible();
+  await page.keyboard.press("p");
+  await expect(overlay).toBeVisible();
+  await expect(page.locator(".pause-menu")).toHaveCount(0);
+  await page.keyboard.press("i");
+  await expect(overlay).toHaveCount(0);
+  expect(await wasm(page, "player_px")).toBeCloseTo(px0, 1);
+});
+
+test("menu shortcuts on a phone: hold left centre toggles Pause, double-tap toggles Inventory", async ({
+  browser,
+}) => {
+  const { context, page } = await phonePage(browser, { width: 390, height: 844 });
+  const px0 = await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0);
+  const touch = await touchSession(page, context);
+  const leftBox = await page.locator(".stick:not(.aim-stick)").boundingBox();
+  const left = {
+    x: (leftBox?.x ?? 0) + (leftBox?.width ?? 0) / 2,
+    y: (leftBox?.y ?? 0) + (leftBox?.height ?? 0) / 2,
+  };
+  // a single centre tap opens nothing
+  await touch("touchStart", [{ ...left, id: 1 }]);
+  await touch("touchEnd", [{ ...left, id: 1 }]);
+  await page.waitForTimeout(150);
+  await expect(page.locator(".pause-menu")).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Inventory" })).toHaveCount(0);
+  // hold the centre: Pause opens, Grace never moved
+  await touch("touchStart", [{ ...left, id: 1 }]);
+  await expect(page.locator(".pause-menu")).toBeVisible();
+  await touch("touchEnd", [{ ...left, id: 1 }]);
+  expect(await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0)).toBeCloseTo(px0, 1);
+  // hold again: Pause closes (the stick is reachable behind the menu)
+  await touch("touchStart", [{ ...left, id: 1 }]);
+  await expect(page.locator(".pause-menu")).toHaveCount(0);
+  await touch("touchEnd", [{ ...left, id: 1 }]);
+  // double-tap the centre: Inventory opens, and again closes
+  const doubleTap = async () => {
+    await touch("touchStart", [{ ...left, id: 1 }]);
+    await touch("touchEnd", [{ ...left, id: 1 }]);
+    await page.waitForTimeout(80);
+    await touch("touchStart", [{ ...left, id: 1 }]);
+    await touch("touchEnd", [{ ...left, id: 1 }]);
+  };
+  await doubleTap();
+  await expect(page.getByRole("dialog", { name: "Inventory" })).toBeVisible();
+  await page.waitForTimeout(500); // outlast any pending double-tap pairing
+  await doubleTap();
+  await expect(page.getByRole("dialog", { name: "Inventory" })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0)).toBeCloseTo(px0, 1);
   await context.close();
 });

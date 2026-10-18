@@ -1095,3 +1095,8 @@ button.recipe[aria-disabled="true"] {
     --stick-size: clamp(84px, 25vmin, 106px);
   }
 }
+
+.shortcut-hint {
+  opacity: 0.55;
+  font-size: 11px;
+}

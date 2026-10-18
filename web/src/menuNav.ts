@@ -32,6 +32,19 @@ export function dispatchMenuAccept(): void {
   window.dispatchEvent(new CustomEvent("menu-accept"));
 }
 
+// Opening menus without a pointer: the app shell listens for these and
+// runs the same toggles as the P / I keys. The move stick dispatches
+// them (hold its centre = pause, double-tap its centre = inventory).
+export type MenuShortcut = "pause" | "inventory";
+export function dispatchMenuShortcut(shortcut: MenuShortcut): void {
+  window.dispatchEvent(new CustomEvent<MenuShortcut>("menu-shortcut", { detail: shortcut }));
+}
+export function onMenuShortcut(handler: (shortcut: MenuShortcut) => void): () => void {
+  const listener = (event: Event) => handler((event as CustomEvent<MenuShortcut>).detail);
+  window.addEventListener("menu-shortcut", listener);
+  return () => window.removeEventListener("menu-shortcut", listener);
+}
+
 const STEP_EVENT = "menu-step";
 const ACCEPT_EVENT = "menu-accept";
 
