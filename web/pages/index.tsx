@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@void/react";
 import "../src/app.css";
 import { AuthPanel } from "../src/AuthPanel";
@@ -8,6 +8,7 @@ import { MapCanvas } from "../src/MapCanvas";
 import { AimStick, Stick } from "../src/Stick";
 import { CodeKeypad, Crafting, Files, GameOver, Inventory, LevelComplete, PauseMenu, RunPanel, SaveLoadMenu } from "../src/panes";
 import { setPaused as setGamePaused, takeSaveMenu } from "../src/wasmBridge";
+import { onMenuShortcut, useMenuNav } from "../src/menuNav";
 import { useGameState } from "../src/GameState";
 
 type Tab = "items" | "crafting" | "files";
@@ -29,14 +30,16 @@ function DeadMenuCloser({ onDead }: { onDead: () => void }) {
 // tabs. Opening it freezes the world (see setGamePaused below).
 function InventoryOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("items");
+  const navRef = useRef<HTMLDivElement>(null);
+  useMenuNav(navRef, open);
   if (!open) {
     return null;
   }
   return (
     <div className="pause-overlay" onClick={onClose}>
-      <div className="inventory-panel" role="dialog" aria-label="Inventory" onClick={(event) => event.stopPropagation()}>
+      <div ref={navRef} className="inventory-panel" role="dialog" aria-label="Inventory" onClick={(event) => event.stopPropagation()}>
         <header className="inventory-header">
-          <Link className="records-link" href="/records">
+          <Link className="records-link" data-menu-item href="/records">
             Records
           </Link>
           <AuthPanel />
@@ -50,6 +53,7 @@ function InventoryOverlay({ open, onClose }: { open: boolean; onClose: () => voi
               key={entry.id}
               type="button"
               className="tab"
+              data-menu-item
               data-active={tab === entry.id}
               onClick={() => setTab(entry.id)}
             >
@@ -70,25 +74,75 @@ export default function HomePage() {
   const [saveMenu, setSaveMenu] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
 
+  // Opening menus without a pointer: P toggles Pause, I toggles the
+  // Inventory (on a phone: hold the move stick's centre for Pause,
+  // double-tap it for Inventory -- see Stick.tsx, dispatched through
+  // the same toggles). Esc closes the topmost menu, else toggles
+  // Pause. Save/Load sits on top of these: while it is open only Esc
+  // (and its own navigation) applies. Typing in auth fields is not a
+  // shortcut. No conflicts: WASD move, E runs, Q aims, X interacts,
+  // Z equips, arrows/Enter navigate inside menus.
+  const togglePause = () => {
+    if (saveMenu || inventoryOpen) {
+      return;
+    }
+    setPaused((value) => !value);
+  };
+  const toggleInventory = () => {
+    if (saveMenu) {
+      return;
+    }
+    if (inventoryOpen) {
+      setInventoryOpen(false);
+      return;
+    }
+    setPaused(false); // switch, never stack, so menu capture stays single
+    setInventoryOpen(true);
+  };
+
+  useEffect(() => onMenuShortcut((shortcut) => {
+    if (shortcut === "pause") {
+      togglePause();
+    } else {
+      toggleInventory();
+    }
+  }));
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")
+      ) {
         return;
       }
-      // Escape closes the topmost menu first, then toggles the pause menu.
+      if (event.key === "Escape") {
+        // Escape closes the topmost menu first, then toggles the pause menu.
+        if (saveMenu) {
+          setSaveMenu(false);
+          return;
+        }
+        if (inventoryOpen) {
+          setInventoryOpen(false);
+          return;
+        }
+        setPaused((value) => !value);
+        return;
+      }
       if (saveMenu) {
-        setSaveMenu(false);
         return;
       }
-      if (inventoryOpen) {
-        setInventoryOpen(false);
-        return;
+      const key = event.key.toLowerCase();
+      if (key === "p") {
+        togglePause();
+      } else if (key === "i") {
+        toggleInventory();
       }
-      setPaused((value) => !value);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [saveMenu, inventoryOpen]);
+  });
 
   // A typewriter click in the canvas opens the save/load menu.
   useEffect(() => {
@@ -119,10 +173,10 @@ export default function HomePage() {
             </div>
             <div className="map-actions">
               <button type="button" className="pause-button" onClick={() => setInventoryOpen(true)}>
-                Inventory
+                Inventory <span aria-hidden="true" className="shortcut-hint">(I)</span>
               </button>
               <button type="button" className="pause-button" onClick={() => setPaused(true)}>
-                Pause
+                Pause <span aria-hidden="true" className="shortcut-hint">(P)</span>
               </button>
             </div>
           </section>

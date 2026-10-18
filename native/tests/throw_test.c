@@ -829,6 +829,49 @@ int main(int argc, char** argv) {
     }
 
     {
+        // Door-frame regression: south of the west end of the unlocked
+        // door at (37,38), hugging the wall line, her radius square
+        // straddles the wall/door edge. Every axis used to be vetoed by
+        // that already-overlapped edge; she must always be able to move
+        // away (south), slide along the frame (east), and bump-open.
+        player_set_position(36.85f, 38.25f);
+        player_set_velocity(0.0f, 3.0f);  // away from the wall, south
+        for (int i = 0; i < 10; i++) player_update(0.05f);
+        CHECK(player_y() > 38.6f, "door side: moving away from a door frame works (y %.2f)", (double)player_y());
+        player_set_velocity(0.0f, 0.0f);
+
+        player_set_position(36.85f, 38.25f);
+        player_set_velocity(3.0f, 0.0f);  // slide east along the frame, under the door
+        for (int i = 0; i < 20; i++) player_update(0.05f);
+        CHECK(player_x() > 37.6f, "door side: sliding along a door frame works (x %.2f)", (double)player_x());
+        player_set_velocity(0.0f, 0.0f);
+
+        // bump-to-open still works for the unlocked door at (37,38)
+        const obj_t* door = NULL;
+        for (int i = 0; i < level.obj_count; i++) {
+            if (level.objs[i].kind == OBJ_DOOR && level.objs[i].x == 37 && level.objs[i].y == 38) door = &level.objs[i];
+        }
+        CHECK(door && door->state == DOOR_UNLOCKED && !door->open, "the bump-open test door starts shut and unlocked");
+        player_set_cell(37, 38);
+        doors_update(0.016f);
+        CHECK(door && door->open, "bump-open: stepping up to an unlocked door opens it");
+
+        // a locked door still blocks crossing (door at (16,38), span 3)
+        player_set_position(16.5f, 38.5f);
+        player_set_velocity(0.0f, -3.0f);
+        for (int i = 0; i < 20; i++) player_update(0.05f);
+        int lx, ly; player_cell(&lx, &ly);
+        CHECK(ly == 38, "locked door still blocks crossing (cell %d,%d)", lx, ly);
+        player_set_velocity(0.0f, 0.0f);
+        // ...but hugging its west frame end, she can still move away
+        player_set_position(15.85f, 38.25f);
+        player_set_velocity(3.0f, 0.0f);
+        for (int i = 0; i < 10; i++) player_update(0.05f);
+        CHECK(player_x() > 16.2f, "locked door side: moving away along the frame works (x %.2f)", (double)player_x());
+        player_set_velocity(0.0f, 0.0f);
+    }
+
+    {
         // Hitscan geometry: clear shot, wall block, enemy behind a wall,
         // floor smash noise, moving throw, and the Run guard.
         inventory_init();

@@ -12,6 +12,7 @@ typedef enum {
 
 void player_init(int x, int y);
 void player_set_cell(int x, int y);
+void player_set_position(float x, float y);
 void player_move_to(int x, int y, player_move_t mode);
 // Realtime steering (WASD / analogue stick): a velocity in cells per second,
 // already scaled for walk/run by the caller. Zero stops her. Collides against

@@ -299,7 +299,7 @@ test("Z opens Quick Equip (right-clicking Grace does not) and an active bottle c
   expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
 });
 
-test("a tap on an item next to Grace picks it up; tapping her does nothing", async ({
+test("clicking an item, the X marker or Grace does nothing; X key still picks the item up", async ({
   page,
 }) => {
   await page.goto("/");
@@ -319,20 +319,20 @@ test("a tap on an item next to Grace picks it up; tapping her does nothing", asy
     cell: window.Module?._web_cell_css_px?.() ?? 0,
   }));
   const before = await page.evaluate(() => window.Module?._items_collected?.() ?? 0);
-  // just inside the herb's cell
+  // clicking just inside the herb's cell (where its X prompt shows): nothing
   await page.mouse.click(box.x + at.x + at.cell * 0.5 + 3, box.y + at.y);
+  await page.waitForTimeout(250);
+  expect(await page.evaluate(() => window.Module?._items_collected?.() ?? 0)).toBe(before);
+  // clicking Grace herself: also nothing
+  await page.mouse.click(box.x + at.x, box.y + at.y);
+  await page.waitForTimeout(250);
+  expect(await page.evaluate(() => window.Module?._items_collected?.() ?? 0)).toBe(before);
+  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
+  // the X key is the interact path, and it works
+  await page.keyboard.press("x");
   await expect
     .poll(() => page.evaluate(() => window.Module?._items_collected?.() ?? 0))
     .toBe(before + 1);
-  // tapping Grace herself does nothing at all
-  await page.mouse.click(box.x + at.x, box.y + at.y);
-  await page.waitForTimeout(250);
-  expect(await page.evaluate(() => window.Module?._items_collected?.() ?? 0)).toBe(before + 1);
-  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
-  // the X key is the same interact trigger: face east back at her cell is a
-  // no-op, but the mode stays Waiting and nothing breaks
-  await page.keyboard.press("x");
-  expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
 });
 
 test("she starts Waiting in a live world, and steering west/east works from spawn", async ({
@@ -474,16 +474,15 @@ test("the Lighter sits North in Quick Equip, starts off and toggles", async ({ p
 });
 
 test("items in the dark can't be picked up until lit", async ({ page }) => {
-  const box = await boot(page);
+  await boot(page);
   // the herb at (79,49) has no light near it
   await wasm(page, "web_test_grace_at", 78, 49);
   await page.waitForTimeout(200);
   expect(await wasm(page, "web_light_at", 79, 49)).toBe(0);
-  const cell = await wasm(page, "web_cell_css_px");
+  // interact is the X key now (map clicks on the item do nothing)
   const tap = async () => {
-    const x = await wasm(page, "web_grace_screen_x");
-    const y = await wasm(page, "web_grace_screen_y");
-    await page.mouse.click(box.x + x + cell, box.y + y);
+    await page.keyboard.press("x");
+    await page.waitForTimeout(120);
   };
   const before = await wasm(page, "items_collected");
   await tap();
@@ -780,7 +779,7 @@ test("phone stick: drift up to the dead zone does not move her, a push beyond it
   const touch = await touchSession(page, context);
   await touch("touchStart", [{ ...c, id: 1 }]);
   await touch("touchMove", [{ x: c.x + 16, y: c.y, id: 1 }]); // inside the ~18px dead zone
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(250); // under the 450ms hold-centre Pause gesture
   expect(await page.evaluate(() => (window as any).Module?._web_grace_mode?.())).toBe(3);
   expect(await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0)).toBeCloseTo(px0, 1);
   // a deliberate push just past the dead zone (still in the walk band)
@@ -1021,4 +1020,189 @@ test("climbing: X climbs on after the delay, and X climbs off again", async ({ p
   // climb off with X again (facing decides the landing cell)
   await page.keyboard.press("x");
   await expect.poll(() => wasm(page, "web_on_top"), { timeout: 3000 }).toBe(0);
+});
+
+test("menu nav: arrows move the green selection in the Pause menu and Enter accepts", async ({
+  page,
+}) => {
+  await boot(page);
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  const items = page.locator(".pause-item");
+  await expect(items.first()).toHaveAttribute("data-menu-selected", "true");
+  const px0 = await wasm(page, "player_px");
+  await page.keyboard.press("ArrowDown");
+  await expect(items.nth(1)).toHaveAttribute("data-menu-selected", "true");
+  await expect(items.first()).not.toHaveAttribute("data-menu-selected", "true");
+  // Grace does not move while the menu is navigated
+  await page.keyboard.press("d");
+  await page.waitForTimeout(250);
+  await page.keyboard.up("d");
+  expect(await wasm(page, "player_px")).toBeCloseTo(px0, 1);
+  // walk the selection down to Resume and accept it: the menu closes
+  const count = await items.count();
+  for (let i = 1; i < count - 1; i++) {
+    await page.keyboard.press("ArrowDown");
+  }
+  await expect(items.last()).toHaveAttribute("data-menu-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".pause-menu")).toHaveCount(0);
+});
+
+test("menu nav: arrows reach Load Game and the save/load menu, Close accepts", async ({ page }) => {
+  await boot(page);
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  const load = page.getByRole("button", { name: "Load Game", exact: true });
+  // step down until Load Game is selected, then accept
+  for (let i = 0; i < 4; i++) {
+    if ((await load.getAttribute("data-menu-selected")) === "true") break;
+    await page.keyboard.press("ArrowDown");
+  }
+  await expect(load).toHaveAttribute("data-menu-selected", "true");
+  await page.keyboard.press("Enter");
+  const saveMenu = page.locator(".save-menu");
+  await expect(saveMenu).toBeVisible();
+  const close = saveMenu.getByRole("button", { name: "Close" });
+  // with no ribbon and no saves, Close is the only live item
+  await expect(close).toHaveAttribute("data-menu-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect(saveMenu).toHaveCount(0);
+});
+
+test("menu nav: arrows and Enter work in the Inventory overlay (tabs)", async ({ page }) => {
+  await boot(page);
+  await page.getByRole("button", { name: "Inventory", exact: true }).click();
+  const overlay = page.getByRole("dialog", { name: "Inventory" });
+  await expect(overlay.locator("[data-menu-selected='true']")).toHaveCount(1);
+  // move until a tab is selected, accept it, and it becomes the active tab
+  let chosen = "";
+  for (let i = 0; i < 8 && !chosen; i++) {
+    const selected = overlay.locator(".tab[data-menu-selected='true']");
+    if ((await selected.count()) > 0) {
+      chosen = (await selected.textContent()) ?? "";
+    } else {
+      await page.keyboard.press("ArrowDown");
+    }
+  }
+  expect(chosen).not.toBe("");
+  await page.keyboard.press("Enter");
+  await expect(overlay.locator(".tab[data-active='true']")).toHaveText(chosen.trim());
+});
+
+test("menu nav: the Game Over menu is arrow-navigable and Enter restarts", async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => window.Module?._web_test_hurt?.());
+  await page.waitForTimeout(100);
+  await page.evaluate(() => window.Module?._web_test_hurt?.());
+  await page.waitForTimeout(100);
+  await page.evaluate(() => window.Module?._web_test_hurt?.());
+  await expect(page.getByText("Grace died")).toBeVisible();
+  const items = page.locator(".game-over .pause-item");
+  await expect(items.first()).toHaveAttribute("data-menu-selected", "true");
+  const restart = page.getByRole("button", { name: "Restart level" });
+  for (let i = 0; i < 4; i++) {
+    if ((await restart.getAttribute("data-menu-selected")) === "true") break;
+    await page.keyboard.press("ArrowDown");
+  }
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Grace died")).toHaveCount(0);
+  expect(await wasm(page, "web_grace_dead")).toBe(0);
+});
+
+test("menu nav on a phone: stick flick steps the Pause menu, right-centre tap accepts", async ({
+  browser,
+}) => {
+  const { context, page } = await phonePage(browser, { width: 390, height: 844 });
+  const px0 = await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0);
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  const items = page.locator(".pause-item");
+  await expect(items.first()).toHaveAttribute("data-menu-selected", "true");
+  const touch = await touchSession(page, context);
+  const centreOf = async (selector: string) => {
+    const box = await page.locator(selector).boundingBox();
+    return { x: (box?.x ?? 0) + (box?.width ?? 0) / 2, y: (box?.y ?? 0) + (box?.height ?? 0) / 2 };
+  };
+  // flick the move stick down: one step, selection moves once
+  const left = await centreOf(".stick:not(.aim-stick)");
+  await touch("touchStart", [{ ...left, id: 1 }]);
+  await touch("touchMove", [{ x: left.x, y: left.y + 30, id: 1 }]);
+  await touch("touchMove", [{ x: left.x, y: left.y + 3, id: 1 }]);
+  await touch("touchEnd", [{ x: left.x, y: left.y + 3, id: 1 }]);
+  await expect(items.nth(1)).toHaveAttribute("data-menu-selected", "true");
+  // Grace never moved behind the menu
+  expect(await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0)).toBeCloseTo(px0, 1);
+  // right-stick centre tap accepts (that item is Load Game)
+  const right = await centreOf(".aim-stick");
+  await touch("touchStart", [{ ...right, id: 1 }]);
+  await touch("touchEnd", [{ ...right, id: 1 }]);
+  await expect(page.locator(".save-menu")).toBeVisible();
+  await context.close();
+});
+
+test("menu shortcuts: P and Esc toggle Pause, I toggles Inventory, no mouse needed", async ({
+  page,
+}) => {
+  await boot(page);
+  const px0 = await wasm(page, "player_px");
+  await page.keyboard.press("p");
+  await expect(page.locator(".pause-menu")).toBeVisible();
+  await page.keyboard.press("p");
+  await expect(page.locator(".pause-menu")).toHaveCount(0);
+  // Esc with nothing open opens Pause (existing toggle), Esc again closes
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".pause-menu")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".pause-menu")).toHaveCount(0);
+  // I opens and closes the Inventory; P does nothing over it
+  await page.keyboard.press("i");
+  const overlay = page.getByRole("dialog", { name: "Inventory" });
+  await expect(overlay).toBeVisible();
+  await page.keyboard.press("p");
+  await expect(overlay).toBeVisible();
+  await expect(page.locator(".pause-menu")).toHaveCount(0);
+  await page.keyboard.press("i");
+  await expect(overlay).toHaveCount(0);
+  expect(await wasm(page, "player_px")).toBeCloseTo(px0, 1);
+});
+
+test("menu shortcuts on a phone: hold left centre toggles Pause, double-tap toggles Inventory", async ({
+  browser,
+}) => {
+  const { context, page } = await phonePage(browser, { width: 390, height: 844 });
+  const px0 = await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0);
+  const touch = await touchSession(page, context);
+  const leftBox = await page.locator(".stick:not(.aim-stick)").boundingBox();
+  const left = {
+    x: (leftBox?.x ?? 0) + (leftBox?.width ?? 0) / 2,
+    y: (leftBox?.y ?? 0) + (leftBox?.height ?? 0) / 2,
+  };
+  // a single centre tap opens nothing
+  await touch("touchStart", [{ ...left, id: 1 }]);
+  await touch("touchEnd", [{ ...left, id: 1 }]);
+  await page.waitForTimeout(150);
+  await expect(page.locator(".pause-menu")).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Inventory" })).toHaveCount(0);
+  // hold the centre: Pause opens, Grace never moved
+  await touch("touchStart", [{ ...left, id: 1 }]);
+  await expect(page.locator(".pause-menu")).toBeVisible();
+  await touch("touchEnd", [{ ...left, id: 1 }]);
+  expect(await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0)).toBeCloseTo(px0, 1);
+  // hold again: Pause closes (the stick is reachable behind the menu)
+  await touch("touchStart", [{ ...left, id: 1 }]);
+  await expect(page.locator(".pause-menu")).toHaveCount(0);
+  await touch("touchEnd", [{ ...left, id: 1 }]);
+  // double-tap the centre: Inventory opens, and again closes
+  const doubleTap = async () => {
+    await touch("touchStart", [{ ...left, id: 1 }]);
+    await touch("touchEnd", [{ ...left, id: 1 }]);
+    await page.waitForTimeout(80);
+    await touch("touchStart", [{ ...left, id: 1 }]);
+    await touch("touchEnd", [{ ...left, id: 1 }]);
+  };
+  await doubleTap();
+  await expect(page.getByRole("dialog", { name: "Inventory" })).toBeVisible();
+  await page.waitForTimeout(500); // outlast any pending double-tap pairing
+  await doubleTap();
+  await expect(page.getByRole("dialog", { name: "Inventory" })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0)).toBeCloseTo(px0, 1);
+  await context.close();
 });

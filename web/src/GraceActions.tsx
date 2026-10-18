@@ -243,6 +243,31 @@ export function GraceActions() {
   const paused = grace.mode === GraceMode.Paused;
   const equipping = grace.live && grace.quickOpen;
 
+  // Desktop arrows cycle the radial slots while Quick Equip is open
+  // (the same highlight the mouse / right stick drive); Enter accepts.
+  useEffect(() => {
+    if (!equipping) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key.startsWith("Arrow")) {
+        event.preventDefault();
+        const delta = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
+        setHighlight((prev) =>
+          prev < 0 ? (delta > 0 ? 0 : 3) : (prev + delta + 4) % 4,
+        );
+      } else if ((event.key === "Enter" || event.key === " ") && highlight >= 0) {
+        event.preventDefault();
+        const slot = quickSlotsRef.current[highlight];
+        if (slot && !slot.disabled && slot.onClick) {
+          slot.onClick();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [equipping, highlight]);
+
   // An item right next to her sits with equal gaps on both sides: her dot
   // edge, gap, item, gap, the circle's edge (see menuRadius).
   const radius = menuRadius(grace.cell, pane.size);
@@ -283,6 +308,8 @@ export function GraceActions() {
     return { label: `${name} slot empty`, icon: null, disabled: true };
   });
 
+  const quickSlotsRef = useRef(quickSlots);
+  quickSlotsRef.current = quickSlots;
   const slots = equipping ? quickSlots : [];
   if (dead || graceDead()) return null;  // game over: no circles underneath
   const status = STATUS[grace.mode] ?? STATUS[3];

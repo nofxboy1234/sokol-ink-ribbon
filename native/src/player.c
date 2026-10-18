@@ -68,9 +68,19 @@ static bool steer_pos_passable(float nx, float ny) {
     const float r = 0.30f;
     int cx0 = (int)floorf(nx - r), cx1 = (int)floorf(nx + r);
     int cy0 = (int)floorf(ny - r), cy1 = (int)floorf(ny + r);
+    // The cells her square already overlaps at the current position must
+    // not veto the move: hugging a door frame, her square straddles the
+    // wall line, and the old all-cells check then blocked sliding along
+    // it or moving away -- she could be stuck fast on the side of a
+    // door. Only cells the candidate square newly overlaps can block it.
+    int px0 = (int)floorf(p.x - r), px1 = (int)floorf(p.x + r);
+    int py0 = (int)floorf(p.y - r), py1 = (int)floorf(p.y + r);
     int curx = (int)floorf(p.x), cury = (int)floorf(p.y);
     for (int cy = cy0; cy <= cy1; cy++) {
         for (int cx = cx0; cx <= cx1; cx++) {
+            if (cx >= px0 && cx <= px1 && cy >= py0 && cy <= py1) {
+                continue;  // already overlapped: not this move's to cross
+            }
             if (!steer_cell_passable(cx, cy)) {
                 return false;
             }
@@ -129,6 +139,15 @@ void player_init(int x, int y) {
 
 void player_set_cell(int x, int y) {
     player_init(x, y);
+}
+
+// Place her at an exact sub-cell position (tests, save/load settling).
+void player_set_position(float x, float y) {
+    p.x = x;
+    p.y = y;
+    p.last_cell_x = (int)floorf(x);
+    p.last_cell_y = (int)floorf(y);
+    p.on_top = on_top_at(p.last_cell_x, p.last_cell_y);
 }
 
 const path_t* player_path(void) {
