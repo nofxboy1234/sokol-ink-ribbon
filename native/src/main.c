@@ -701,19 +701,12 @@ static void handle_click(void) {
         aim_confirm();  // desktop: the click throws (a grey reticle refuses)
         return;
     }
-    if (player_is_moving()) {
-        return;  // map taps do not steer or stop her
-    }
-    int px, py;
-    player_cell(&px, &py);
-    if (app.hover_x == px && app.hover_y == py) {
-        return;  // a click on her own cell is a click on Grace: nothing
-    }
-    // Map taps are for the world: doors, pickups, switches, climb prompts.
-    if (app.hover_x >= 0 && app.hover_y >= 0 &&
-        (doors_interact(app.hover_x, app.hover_y) || interact_at(app.hover_x, app.hover_y))) {
-        bump_revision();
-    }
+    // Everything else a map click used to do is gone: Grace's dot takes
+    // no input (see above), and neither do the X discovery/interact
+    // prompts -- clicking or tapping the X marker, the item, a door or a
+    // climb prompt cell does nothing. Interact is only the X key or a
+    // right-stick centre tap (interact_trigger). A map click that is not
+    // an aim-throw therefore does nothing at all.
 }
 
 // A hit worsens Grace's health one step. A hit while in Danger sends her back

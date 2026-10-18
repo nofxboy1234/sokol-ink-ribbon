@@ -26,6 +26,7 @@ import {
   type ItemAppearance,
 } from "./wasmBridge";
 import { useElapsed, useGameState } from "./GameState";
+import { useMenuNav } from "./menuNav";
 
 export function formatMs(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -349,6 +350,7 @@ export function Inventory() {
               key={index}
               type="button"
               className="inventory-slot"
+              data-menu-item
               data-filled={item >= 0}
               data-selected={selected === index}
               data-moving={movingFrom === index}
@@ -421,7 +423,7 @@ export function Inventory() {
       {menu && menuActions.length > 0 && (
         <div ref={menuRef} className="item-menu" style={{ left: menu.x, top: menu.y }}>
           {menuActions.map((action) => (
-            <button key={action} type="button" onClick={() => runAction(action)}>
+            <button key={action} type="button" data-menu-item onClick={() => runAction(action)}>
               {action}
             </button>
           ))}
@@ -621,16 +623,18 @@ export function PauseMenu({
   onLoad: () => void;
 }) {
   const { lastSaveSlot } = useGameState();
+  const navRef = useRef<HTMLDivElement>(null);
+  useMenuNav(navRef, open);
   if (!open) {
     return null;
   }
   return (
     <div className="pause-overlay" onClick={onClose}>
-      <div className="pause-menu" onClick={(event) => event.stopPropagation()}>
+      <div ref={navRef} className="pause-menu" onClick={(event) => event.stopPropagation()}>
         {lastSaveSlot >= 0 && (
           <button
             type="button"
-            className="pause-item"
+            className="pause-item" data-menu-item
             onClick={() => {
               loadGame(lastSaveSlot);
               onClose();
@@ -641,7 +645,7 @@ export function PauseMenu({
         )}
         <button
           type="button"
-          className="pause-item"
+          className="pause-item" data-menu-item
           onClick={() => {
             gameReset();
             onClose();
@@ -649,10 +653,10 @@ export function PauseMenu({
         >
           Restart level
         </button>
-        <button type="button" className="pause-item" onClick={onLoad}>
+        <button type="button" className="pause-item" data-menu-item onClick={onLoad}>
           Load Game
         </button>
-        <button type="button" className="pause-item" onClick={onClose}>
+        <button type="button" className="pause-item" data-menu-item onClick={onClose}>
           Resume
         </button>
       </div>
@@ -677,6 +681,8 @@ const INK_RIBBON = 3;
 
 function SaveLoadSlots({ onClose }: { onClose: () => void }) {
   const { inventory } = useGameState();
+  const navRef = useRef<HTMLDivElement>(null);
+  useMenuNav(navRef, true);
   const canSave = inventory.includes(INK_RIBBON);
   const slots = useMemo<SaveSlotInfo[]>(
     () =>
@@ -689,7 +695,7 @@ function SaveLoadSlots({ onClose }: { onClose: () => void }) {
   );
   return (
     <div className="pause-overlay" onClick={onClose}>
-      <div className="save-menu" onClick={(event) => event.stopPropagation()}>
+      <div ref={navRef} className="save-menu" onClick={(event) => event.stopPropagation()}>
         <div className="save-title">Save / Load</div>
         {slots.map((slot) => (
           <div key={slot.index} className="save-row">
@@ -697,7 +703,7 @@ function SaveLoadSlots({ onClose }: { onClose: () => void }) {
             <span className="save-data">{slot.used ? formatMs(slot.time) : "NO DATA"}</span>
             <button
               type="button"
-              className="pause-item save-btn"
+              className="pause-item save-btn" data-menu-item
               disabled={!canSave}
               title={canSave ? "Uses one ink ribbon" : "Needs an ink ribbon"}
               onClick={() => {
@@ -709,7 +715,7 @@ function SaveLoadSlots({ onClose }: { onClose: () => void }) {
             </button>
             <button
               type="button"
-              className="pause-item save-btn"
+              className="pause-item save-btn" data-menu-item
               disabled={!slot.used}
               onClick={() => {
                 loadGame(slot.index);
@@ -720,7 +726,7 @@ function SaveLoadSlots({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         ))}
-        <button type="button" className="pause-item" onClick={onClose}>
+        <button type="button" className="pause-item" data-menu-item onClick={onClose}>
           Close
         </button>
       </div>
@@ -731,9 +737,11 @@ function SaveLoadSlots({ onClose }: { onClose: () => void }) {
 // Touch-friendly code entry for safes and combination-lock doors (next level).
 export function CodeKeypad() {
   const { dead } = useGameState();
+  const navRef = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState<"safe" | "door" | null>(null);
   const [digits, setDigits] = useState("");
   const [msg, setMsg] = useState("");
+  useMenuNav(navRef, !!target && !dead, () => setTarget(null));
   useEffect(() => {
     const id = setInterval(() => {
       if (pendingSafe() >= 0) setTarget("safe");
@@ -749,18 +757,18 @@ export function CodeKeypad() {
   };
   return (
     <div className="pause-overlay">
-      <div className="keypad" role="dialog" aria-label="Enter code">
+      <div ref={navRef} className="keypad" role="dialog" aria-label="Enter code">
         <div className="keypad-title">{target === "safe" ? "Safe" : "Combination lock"}</div>
         <div className="keypad-display">{digits || "----"}</div>
         <div className="keypad-grid">
           {[1,2,3,4,5,6,7,8,9,0].map((d) => (
-            <button key={d} type="button" className="keypad-key" onClick={() => setDigits((v) => (v + d).slice(0, 8))}>{d}</button>
+            <button key={d} type="button" className="keypad-key" data-menu-item onClick={() => setDigits((v) => (v + d).slice(0, 8))}>{d}</button>
           ))}
-          <button type="button" className="keypad-key" onClick={() => setDigits("")}>Clear</button>
-          <button type="button" className="keypad-key" onClick={submit}>Open</button>
+          <button type="button" className="keypad-key" data-menu-item onClick={() => setDigits("")}>Clear</button>
+          <button type="button" className="keypad-key" data-menu-item onClick={submit}>Open</button>
         </div>
         {msg && <div className="keypad-msg">{msg}</div>}
-        <button type="button" className="pause-item" onClick={() => setTarget(null)}>Cancel</button>
+        <button type="button" className="pause-item" data-menu-item onClick={() => setTarget(null)}>Cancel</button>
       </div>
     </div>
   );
@@ -768,18 +776,20 @@ export function CodeKeypad() {
 
 export function GameOver({ onLoad }: { onLoad: () => void }) {
   const { dead, lastSaveSlot } = useGameState();
+  const navRef = useRef<HTMLDivElement>(null);
   const [away, setAway] = useState(false);
+  useMenuNav(navRef, dead && !away);
   useEffect(() => { if (!dead) setAway(false); }, [dead]);
   if (!dead || away) return null;
   return (
     <div className="pause-overlay game-over">
-      <div className="pause-menu">
+      <div ref={navRef} className="pause-menu">
         <div className="save-title">Grace died</div>
         {lastSaveSlot >= 0 && (
-          <button type="button" className="pause-item" onClick={() => loadGame(lastSaveSlot)}>Restart from last save</button>
+          <button type="button" className="pause-item" data-menu-item onClick={() => loadGame(lastSaveSlot)}>Restart from last save</button>
         )}
-        <button type="button" className="pause-item" onClick={() => { setAway(true); onLoad(); }}>Load</button>
-        <button type="button" className="pause-item" onClick={() => gameReset()}>Restart level</button>
+        <button type="button" className="pause-item" data-menu-item onClick={() => { setAway(true); onLoad(); }}>Load</button>
+        <button type="button" className="pause-item" data-menu-item onClick={() => gameReset()}>Restart level</button>
       </div>
     </div>
   );
@@ -787,21 +797,23 @@ export function GameOver({ onLoad }: { onLoad: () => void }) {
 
 export function LevelComplete({ onLoad }: { onLoad: () => void }) {
   const { levelComplete, lastSaveSlot } = useGameState();
+  const navRef = useRef<HTMLDivElement>(null);
   const elapsed = useElapsed();
   const [away, setAway] = useState(false);
+  useMenuNav(navRef, levelComplete && !away);
   useEffect(() => { if (!levelComplete) setAway(false); }, [levelComplete]);
   if (!levelComplete || away) return null;
   return (
     <div className="level-complete" role="status">
-      <div className="pause-menu">
+      <div ref={navRef} className="pause-menu">
         <div className="save-title">Level complete</div>
         <div className="level-time">Time: {formatMs(elapsed)}</div>
         {lastSaveSlot >= 0 && (
-          <button type="button" className="pause-item" onClick={() => loadGame(lastSaveSlot)}>Restart from last save</button>
+          <button type="button" className="pause-item" data-menu-item onClick={() => loadGame(lastSaveSlot)}>Restart from last save</button>
         )}
-        <button type="button" className="pause-item" onClick={() => { setAway(true); onLoad(); }}>Load a save</button>
-        <button type="button" className="pause-item" onClick={() => gameReset()}>Restart level</button>
-        <button type="button" className="pause-item" onClick={() => setAway(true)}>Close</button>
+        <button type="button" className="pause-item" data-menu-item onClick={() => { setAway(true); onLoad(); }}>Load a save</button>
+        <button type="button" className="pause-item" data-menu-item onClick={() => gameReset()}>Restart level</button>
+        <button type="button" className="pause-item" data-menu-item onClick={() => setAway(true)}>Close</button>
       </div>
     </div>
   );

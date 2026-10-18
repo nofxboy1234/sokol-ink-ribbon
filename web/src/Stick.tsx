@@ -10,6 +10,7 @@ import {
   setRadialDirection,
   stickInput,
 } from "./wasmBridge";
+import { dispatchMenuAccept, dispatchMenuStep, menuCapturing } from "./menuNav";
 
 // Twin sticks (touch only, see app.css). LEFT stick moves Grace: the first
 // half of its throw walks, further runs -- the C side turns the vector
@@ -153,9 +154,39 @@ function useStickVector(
 
 export function Stick() {
   // Move stick only: its centre tap is NOT interact any more (that moved
-  // to the right stick). Dead zone here is a true zero vector.
-  const { baseRef, knob, onDown, onMove, onUp } = useStickVector(stickInput, undefined, () =>
-    stickInput(0, 0),
+  // to the right stick). Dead zone here is a true zero vector. While a
+  // menu is open the stick is captured by it: a flick (out past the dead
+  // zone and back) steps the menu selection once, and no movement ever
+  // reaches Grace behind the menu.
+  const flickArmed = useRef(true);
+  const onMoveVector = (x: number, y: number) => {
+    if (!menuCapturing()) {
+      stickInput(x, y);
+      return;
+    }
+    if (x === 0 && y === 0) {
+      return;
+    }
+    if (!flickArmed.current) {
+      return;
+    }
+    flickArmed.current = false;
+    if (Math.abs(x) > Math.abs(y)) {
+      dispatchMenuStep({ dx: Math.sign(x), dy: 0 });
+    } else {
+      dispatchMenuStep({ dx: 0, dy: Math.sign(y) });
+    }
+  };
+  const onMoveDeadZone = () => {
+    flickArmed.current = true;
+    if (!menuCapturing()) {
+      stickInput(0, 0);
+    }
+  };
+  const { baseRef, knob, onDown, onMove, onUp } = useStickVector(
+    onMoveVector,
+    undefined,
+    onMoveDeadZone,
   );
   return (
     <div
@@ -215,6 +246,9 @@ export function AimStick() {
   // empty slot keeps the menu open); releasing back in the dead zone
   // after pointing cancels and closes; a plain centre tap closes too.
   const onAimVector = (x: number, y: number) => {
+    if (menuCapturing()) {
+      return; // a menu owns the sticks: no aiming behind it
+    }
     if (!quickOpenRef.current) {
       aimInput(x, y);
       return;
@@ -240,6 +274,9 @@ export function AimStick() {
   };
 
   const onAimDeadZone = () => {
+    if (menuCapturing()) {
+      return;
+    }
     if (quickOpenRef.current) {
       equipDir.current = { x: 0, y: 0 };
       setRadialDirection(0, 0);
@@ -249,6 +286,10 @@ export function AimStick() {
   };
 
   const onAimTap = () => {
+    if (menuCapturing()) {
+      dispatchMenuAccept(); // right-stick centre tap accepts in a menu
+      return;
+    }
     if (quickOpenRef.current) {
       closeEquip(); // a centre tap while the menu is open cancels it
       return;
@@ -257,6 +298,9 @@ export function AimStick() {
   };
 
   const onAimHold = () => {
+    if (menuCapturing()) {
+      return; // no Quick Equip from inside another menu
+    }
     if (quickOpenRef.current) {
       return;
     }

@@ -942,6 +942,34 @@ button.recipe[aria-disabled="true"] {
 .level-time { text-align: center; padding: 6px; }
 .level-complete .pause-menu { background: var(--paper); color: var(--ink); font-size: 1rem; }
 
+/* Menu navigation selection (arrows / stick flicks,see menuNav.ts): the
+   green selected state, visible without a mouse. */
+[data-menu-selected="true"] {
+  background: var(--green) !important;
+  color: var(--ink) !important;
+}
+
+.inventory-slot[data-menu-selected="true"] {
+  outline: 3px solid var(--ink);
+  outline-offset: -3px;
+}
+
+/* Overlays let touches through outside their panel so the analogue
+   sticks stay reachable (and visible) while a menu is open -- the
+   sticks are how menus are navigated on a phone. The panel itself
+   still takes its own touches/clicks. */
+.pause-overlay,
+.level-complete {
+  pointer-events: none;
+}
+
+.pause-menu,
+.save-menu,
+.inventory-panel,
+.keypad {
+  pointer-events: auto;
+}
+
 /* Realtime layout: buttons over the map, timer chip, inventory overlay, stick. */
 .map-actions {
   position: absolute;

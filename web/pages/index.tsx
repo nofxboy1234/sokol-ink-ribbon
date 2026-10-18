@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@void/react";
 import "../src/app.css";
 import { AuthPanel } from "../src/AuthPanel";
@@ -8,6 +8,7 @@ import { MapCanvas } from "../src/MapCanvas";
 import { AimStick, Stick } from "../src/Stick";
 import { CodeKeypad, Crafting, Files, GameOver, Inventory, LevelComplete, PauseMenu, RunPanel, SaveLoadMenu } from "../src/panes";
 import { setPaused as setGamePaused, takeSaveMenu } from "../src/wasmBridge";
+import { useMenuNav } from "../src/menuNav";
 import { useGameState } from "../src/GameState";
 
 type Tab = "items" | "crafting" | "files";
@@ -29,14 +30,16 @@ function DeadMenuCloser({ onDead }: { onDead: () => void }) {
 // tabs. Opening it freezes the world (see setGamePaused below).
 function InventoryOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("items");
+  const navRef = useRef<HTMLDivElement>(null);
+  useMenuNav(navRef, open);
   if (!open) {
     return null;
   }
   return (
     <div className="pause-overlay" onClick={onClose}>
-      <div className="inventory-panel" role="dialog" aria-label="Inventory" onClick={(event) => event.stopPropagation()}>
+      <div ref={navRef} className="inventory-panel" role="dialog" aria-label="Inventory" onClick={(event) => event.stopPropagation()}>
         <header className="inventory-header">
-          <Link className="records-link" href="/records">
+          <Link className="records-link" data-menu-item href="/records">
             Records
           </Link>
           <AuthPanel />
@@ -50,6 +53,7 @@ function InventoryOverlay({ open, onClose }: { open: boolean; onClose: () => voi
               key={entry.id}
               type="button"
               className="tab"
+              data-menu-item
               data-active={tab === entry.id}
               onClick={() => setTab(entry.id)}
             >
