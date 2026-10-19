@@ -104,7 +104,38 @@ static bool file_found(int obj_index) {
     return false;
 }
 
+static bool edge_movement_blocked(int ax, int ay, int bx, int by) {
+    return doors_on_edge(ax, ay, bx, by) ? doors_block_edge(ax, ay, bx, by)
+                                         : grid_blocked(ax, ay, bx, by);
+}
+
+bool interact_cell_reachable(int x, int y) {
+    int px, py;
+    player_cell(&px, &py);
+    int dx = x - px, dy = y - py;
+    if (dx == 0 && dy == 0) {
+        return true;
+    }
+    if (dx < -1 || dx > 1 || dy < -1 || dy > 1) {
+        return false;
+    }
+    if (dx == 0 || dy == 0) {
+        return !edge_movement_blocked(px, py, x, y);
+    }
+    // Diagonal: either corner route (via the x-neighbour or the
+    // y-neighbour) fully edge-clear is enough -- the same rule sight
+    // uses -- but a wall or blocking door on both routes seals it off.
+    bool via_x = !edge_movement_blocked(px, py, px + dx, py) &&
+                 !edge_movement_blocked(px + dx, py, x, y);
+    bool via_y = !edge_movement_blocked(px, py, px, py + dy) &&
+                 !edge_movement_blocked(px, py + dy, x, y);
+    return via_x || via_y;
+}
+
 bool interact_at(int x, int y) {
+    if (!interact_cell_reachable(x, y)) {
+        return false;  // through a wall or a shut blocking door: nothing
+    }
     if (interact_climb_at(x, y)) {
         return true;
     }

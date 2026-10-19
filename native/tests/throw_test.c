@@ -930,6 +930,52 @@ int main(int argc, char** argv) {
                   "hitscan: Run stance refuses and keeps the bottle");
         }
     }
+
+    // Through-wall pickup regression: interact_at refuses a cell whose
+    // shared edge is walled/closed-doored, even at Chebyshev distance 1.
+    {
+        static const int dirs[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
+        const level_t* lv = grid_level();
+        bool verified = false;
+        for (int i = 0; i < lv->obj_count && !verified; i++) {
+            const obj_t* o = &lv->objs[i];
+            if (o->kind != OBJ_ITEM) continue;
+            int bx = -1, by = -1, ox = -1, oy = -1;
+            for (int d = 0; d < 4; d++) {
+                int cx = o->x + dirs[d][0], cy = o->y + dirs[d][1];
+                if (!grid_is_floor(cx, cy) || doors_on_edge(o->x, o->y, cx, cy)) continue;
+                if (grid_blocked(o->x, o->y, cx, cy)) { bx = cx; by = cy; }
+                else { ox = cx; oy = cy; }
+            }
+            if (bx < 0 || ox < 0) continue;
+            static unsigned char seen_arr[LEVEL_MAX_OBJECTS]; memset(seen_arr, 0, sizeof(seen_arr)); seen_arr[i] = 1;
+            // from the walled side: unreachable and NOT picked up
+            interact_init(); items_import(NULL, 0); items_import_seen(seen_arr, LEVEL_MAX_OBJECTS); inventory_init();
+            player_set_cell(bx, by);
+            if (interact_cell_reachable(o->x, o->y)) continue;  // not actually walled
+            interact_at(o->x, o->y);
+            CHECK(!items_taken(i), "through-wall: item across a wall is NOT picked up");
+            // from the open side: reachable and pickup works
+            interact_init(); items_import(NULL, 0); items_import_seen(seen_arr, LEVEL_MAX_OBJECTS); inventory_init();
+            player_set_cell(ox, oy);
+            CHECK(interact_cell_reachable(o->x, o->y), "through-wall: item cell reachable on the open side");
+            interact_at(o->x, o->y);
+            if (items_taken(i)) {
+                CHECK(items_taken(i), "through-wall: item on the open side IS picked up");
+                verified = true;
+            }
+        }
+        CHECK(verified, "through-wall: verified a walled/open item pair end to end");
+        // through a closed (locked) door edge: unreachable; through an
+        // unlocked door edge: reachable. Door cells (16,38) locked, (38,38) unlocked.
+        player_set_cell(16, 37);
+        CHECK(!interact_cell_reachable(16, 38), "through-door: locked door cell is unreachable");
+        player_set_cell(38, 37);
+        CHECK(interact_cell_reachable(38, 38), "through-door: unlocked door cell is reachable");
+        player_set_cell(89, 4);
+        CHECK(interact_cell_reachable(89, 4), "through-wall: own cell is reachable");
+        CHECK(!interact_cell_reachable(80, 4), "through-wall: distant cell is unreachable");
+    }
     printf(failures ? "%d FAILED\n" : "ALL PASS\n", failures);
     return failures ? 1 : 0;
 }

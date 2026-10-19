@@ -31,7 +31,10 @@ function DeadMenuCloser({ onDead }: { onDead: () => void }) {
 function InventoryOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("items");
   const navRef = useRef<HTMLDivElement>(null);
-  useMenuNav(navRef, open);
+  // Space/Enter on an inventory cell opens its context menu (Inventory
+  // registers the handler); accepts elsewhere keep the default click.
+  const acceptRef = useRef<((el: HTMLElement) => boolean) | null>(null);
+  useMenuNav(navRef, open, undefined, (el) => acceptRef.current?.(el) ?? false);
   if (!open) {
     return null;
   }
@@ -61,7 +64,7 @@ function InventoryOverlay({ open, onClose }: { open: boolean; onClose: () => voi
             </button>
           ))}
         </nav>
-        {tab === "items" && <Inventory />}
+        {tab === "items" && <Inventory acceptRef={acceptRef} />}
         {tab === "crafting" && <Crafting />}
         {tab === "files" && <Files />}
       </div>
@@ -80,7 +83,7 @@ export default function HomePage() {
   // the same toggles). Esc closes the topmost menu, else toggles
   // Pause. Save/Load sits on top of these: while it is open only Esc
   // (and its own navigation) applies. Typing in auth fields is not a
-  // shortcut. No conflicts: WASD move, E runs, Q aims, X interacts,
+  // shortcut. No conflicts: WASD move, E runs, Q aims, Space interacts,
   // Z equips, arrows/Enter navigate inside menus.
   const togglePause = () => {
     if (saveMenu || inventoryOpen) {

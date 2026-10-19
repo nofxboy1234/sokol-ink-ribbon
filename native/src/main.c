@@ -534,8 +534,8 @@ static bool grace_do(grace_action_t action) {
     return false;
 }
 
-// The unified interact trigger (X key on desktop, a tap on the stick's
-// centre on mobile): use whatever she faces, then her own cell, then the
+// The unified interact trigger (Space key on desktop, a tap on the right
+// stick's centre on mobile): use whatever she faces, then her own cell, then the
 // cells around her -- pickups, switches, doors, and the climb prompt alike.
 static bool input_held(void) {
     return app.key_w || app.key_a || app.key_s || app.key_d ||
@@ -1093,7 +1093,10 @@ static void event(const sapp_event* e) {
                         aim_enter();
                     }
                     break;
-                case SAPP_KEYCODE_X:
+                case SAPP_KEYCODE_SPACE:
+                    // Space is the interact/confirm key (X is unbound now).
+                    // While a React menu is open app.paused already guards
+                    // this; the menu's own Space-accept never reaches here.
                     if (down && !e->key_repeat) {
                         interact_trigger();
                     }
