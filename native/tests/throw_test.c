@@ -502,7 +502,9 @@ int main(int argc, char** argv) {
             static const int nb[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
             for (int d = 0; d < 4; d++) {
                 int nx = herb0->x + nb[d][0], ny = herb0->y + nb[d][1];
-                if (grid_is_floor(nx, ny)) {
+                // a floor neighbour only counts with clear sight: the
+                // retraced level walls the first neighbour off
+                if (grid_is_floor(nx, ny) && sight_clear(nx, ny, herb0->x, herb0->y)) {
                     player_set_cell(nx, ny);
                     break;
                 }
@@ -568,6 +570,34 @@ int main(int argc, char** argv) {
         lo->state = ls;
     }
 
+    // --- pass 2: perimeter containment and reveal-section coverage.
+    // Every floor cell's edge to a non-floor cell must be walled (no
+    // walking into the void), and every floor cell must sit inside a
+    // reveal section so the map loads sensibly as Grace moves.
+    {
+        static const int d4[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        int leaks = 0, uncovered = 0, floor_cells = 0;
+        for (int y = 0; y < level.rows; y++) {
+            for (int x = 0; x < level.cols; x++) {
+                if (!grid_is_floor(x, y)) continue;
+                floor_cells++;
+                for (int d = 0; d < 4; d++) {
+                    int nx = x + d4[d][0], ny = y + d4[d][1];
+                    if (!grid_is_floor(nx, ny) && !grid_blocked(x, y, nx, ny)) leaks++;
+                }
+                bool covered = false;
+                for (int s = 0; s < level.section_count && !covered; s++) {
+                    const section_t* sc = &level.sections[s];
+                    covered = x >= sc->x && x < sc->x + sc->w && y >= sc->y && y < sc->y + sc->h;
+                }
+                if (!covered) uncovered++;
+            }
+        }
+        CHECK(leaks == 0, "perimeter: no floor cell leaks into the void (%d leaks)", leaks);
+        CHECK(uncovered == 0, "sections: every floor cell is in a reveal section (%d uncovered)", uncovered);
+        CHECK(floor_cells > 4000, "floor is fully flooded from the start (%d cells)", floor_cells);
+    }
+
     // --- audit: fuse chain, cherub door, climbing, recipes, cabinet, safes
     {
         // the fuse sits in an openable cabinet linked to the screwdriver
@@ -628,7 +658,7 @@ int main(int argc, char** argv) {
 
         // climbing: prompt, stop, 0.35 s delay, on; then off the same way
         obj_t* table = NULL;
-        for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_OBSTACLE && o->w>=3) { table=o; break; } }
+        for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_OBSTACLE && o->w>=3 && grid_is_floor(o->x - 1, o->y)) { table=o; break; } }
         table->climbable = 0;
         CHECK(obstacles_block_cell(table->x, table->y), "plain obstacle blocks its cells");
         table->climbable = 1;
@@ -912,7 +942,8 @@ int main(int argc, char** argv) {
             obj_t* o = (obj_t*)&grid_level()->objs[i];
             if (o->kind != OBJ_DOOR) continue;
             if (!door && o->horizontal && o->state == DOOR_UNLOCKED && o->span == 1 &&
-                grid_is_floor(o->x, o->y) && grid_is_floor(o->x - 1, o->y) && grid_is_floor(o->x, o->y - 1)) door = o;
+                grid_is_floor(o->x, o->y) && grid_is_floor(o->x - 1, o->y) && grid_is_floor(o->x, o->y - 1) &&
+                grid_is_floor(o->x - 1, o->y + 1) && grid_is_floor(o->x, o->y + 1)) door = o;
             if (o->link_id > 0) ldoor = o;  // the cherub door: locked, span 1
         }
         CHECK(door && ldoor, "door-frame checks found their doors");
