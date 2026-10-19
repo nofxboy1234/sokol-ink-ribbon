@@ -102,6 +102,22 @@ int main(int argc, char** argv) {
     }
     grid_init(&level);
     grid_reveal_rect(0, 0, level.cols, level.rows);
+    {  // editor codec round-trip: the editor saves through level_to_json
+        static char buf[1 << 20];
+        int n = level_to_json(&level, buf, (int)sizeof(buf));
+        level_t again;
+        bool ok = n > 0 && level_from_json(&again, buf);
+        bool same = ok && again.cols == level.cols && again.rows == level.rows &&
+                    again.wall_count == level.wall_count && again.section_count == level.section_count &&
+                    again.obj_count == level.obj_count;
+        for (int i = 0; same && i < level.obj_count; i++) {
+            const obj_t* a = &level.objs[i];
+            const obj_t* b = &again.objs[i];
+            same = a->kind == b->kind && a->x == b->x && a->y == b->y && a->id == b->id &&
+                   a->link_id == b->link_id && a->item_type == b->item_type;
+        }
+        CHECK(same, "editor codec: serialize -> parse round-trip keeps the level (%d bytes)", n);
+    }
     player_init(level.start_x, level.start_y);
     inventory_init();
     items_init();
@@ -474,23 +490,35 @@ int main(int argc, char** argv) {
     // the Lighter's finds stay on the map
     {
         int hi = -1;
+        light_update();
         for (int i = 0; i < level.obj_count; i++) {
-            if (level.objs[i].kind == OBJ_ITEM && level.objs[i].x == 79 && level.objs[i].y == 49) {
+            if (level.objs[i].kind == OBJ_ITEM && level.objs[i].item_type == ITEM_HERB && !light_item_visible(i)) {
                 hi = i;
+                break;
             }
         }
-        player_set_cell(78, 49);
+        const obj_t* herb0 = &level.objs[hi];
+        {  // stand on a floor neighbour of the herb
+            static const int nb[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            for (int d = 0; d < 4; d++) {
+                int nx = herb0->x + nb[d][0], ny = herb0->y + nb[d][1];
+                if (grid_is_floor(nx, ny)) {
+                    player_set_cell(nx, ny);
+                    break;
+                }
+            }
+        }
         inventory_init();
         if (lighter_on()) {
             lighter_toggle();
         }
         light_update();
-        CHECK(hi >= 0 && !light_item_visible(hi), "the herb at (79,49) starts in the dark");
+        CHECK(hi >= 0 && !light_item_visible(hi), "the herb at (%d,%d) starts in the dark", herb0->x, herb0->y);
         inventory_add(ITEM_LIGHTER);
         lighter_toggle();
         CHECK(light_item_visible(hi) && items_seen(hi), "the Lighter shows it");
         lighter_toggle();
-        CHECK(!light_cell_lit(79, 49) && light_item_visible(hi), "and with the Lighter off it stays visible");
+        CHECK(!light_cell_lit(herb0->x, herb0->y) && light_item_visible(hi), "and with the Lighter off it stays visible");
         savegame_save(2, 0.0);
         items_import_seen(NULL, 0);
         double ms2 = 0.0;
@@ -508,7 +536,7 @@ int main(int argc, char** argv) {
         obj_t* lo = (obj_t*)&grid_level()->objs[li];
         obj_t* ho = (obj_t*)&grid_level()->objs[hi];
         int hx = ho->x, hy = ho->y, ls = lo->state;
-        player_set_cell(500 % level.cols, 0);
+        player_set_cell(level.start_x, level.start_y);
         lo->state = 1;
         light_update();
         for (int dy = -1; dy <= 1 && ho->x == hx; dy++) {
@@ -542,53 +570,65 @@ int main(int argc, char** argv) {
 
     // --- audit: fuse chain, cherub door, climbing, recipes, cabinet, safes
     {
-        // fuse is in openable 29 (link -> screwdriver object): no screwdriver, no fuse
+        // the fuse sits in an openable cabinet linked to the screwdriver
+        // object: no screwdriver, no fuse. Objects are found by role,
+        // not by id or old-map coordinates.
         inventory_init(); interact_init(); items_import(NULL, 0);
-        // reset openables/doors from a fresh level copy state is complex; use live objects
-        obj_t* box = NULL; obj_t* fusebox = NULL; obj_t* gate = NULL;
-        int fuse_i = -1, cherub_i = -1, screw_i = -1;
+        obj_t* box = NULL; obj_t* fusebox = NULL; obj_t* gate = NULL; obj_t* goal = NULL;
+        int fuse_i = -1;
         for (int i = 0; i < level.obj_count; i++) {
             obj_t* o = (obj_t*)&grid_level()->objs[i];
-            if (o->kind == OBJ_OBSTACLE && o->openable && o->x == 0 && o->y == 20) box = o;  // by place, not id (ids shift with level edits)
+            if (o->kind == OBJ_OBSTACLE && o->openable) box = o;
             if (o->kind == OBJ_FUSEBOX) fusebox = o;
-            if (o->kind == OBJ_DOOR && strcmp(o->name, "gate") == 0) gate = o;
+            if (o->kind == OBJ_DOOR && strcmp(o->name, "gate") == 0 && !gate) gate = o;
+            if (o->kind == OBJ_GOAL) goal = o;
             if (o->kind == OBJ_ITEM && o->item_type == ITEM_FUSE) fuse_i = i;
-            if (o->kind == OBJ_ITEM && o->item_type == ITEM_CHERUB_KEY) cherub_i = i;
-            if (o->kind == OBJ_ITEM && o->item_type == ITEM_SCREWDRIVER) screw_i = i;
+        }
+        CHECK(box && fusebox && gate && goal && fuse_i >= 0, "fuse chain objects exist (cabinet, fusebox, gate, goal)");
+        // stand on a floor neighbour of the cabinet
+        static const int nb4[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (int d = 0; d < 4; d++) {
+            int nx = box->x + nb4[d][0], ny = box->y + nb4[d][1];
+            if (grid_is_floor(nx, ny)) { player_set_cell(nx, ny); break; }
         }
         box->open = 0; gate->state = DOOR_LOCKED;
-        player_set_cell(2, 21);
-        interact_at(1, 21);
-        CHECK(!items_taken(fuse_i), "no screwdriver: the fuse stays in its box");
+        interact_at(box->x, box->y);
+        CHECK(!items_taken(fuse_i) && box->open == 0, "no screwdriver: the fuse stays in its box");
         inventory_add(ITEM_SCREWDRIVER);
-        interact_at(1, 20);  // open the box
+        interact_at(box->x, box->y);  // open the box
         CHECK(box->open == 1, "with the screwdriver the box opens");
-        interact_at(1, 21);
+        interact_at(box->x, box->y);
         CHECK(items_taken(fuse_i) && inventory_has(ITEM_FUSE), "then she can take the fuse");
-        // fusebox without fuse does nothing; with fuse powers gate
-        inventory_init(); player_set_cell(8, 69);
-        interact_at(7, 69);
+        // fusebox without fuse does nothing; with fuse powers the gates
+        inventory_init();
+        for (int d = 0; d < 4; d++) {
+            int nx = fusebox->x + nb4[d][0], ny = fusebox->y + nb4[d][1];
+            if (grid_is_floor(nx, ny)) { player_set_cell(nx, ny); break; }
+        }
+        interact_at(fusebox->x, fusebox->y);
         CHECK(!goal_met() && gate->state == DOOR_LOCKED, "no fuse: no power, gate stays shut");
         inventory_add(ITEM_FUSE);
-        interact_at(7, 69);
+        interact_at(fusebox->x, fusebox->y);
         CHECK(goal_met() && gate->state == DOOR_BROKEN && !inventory_has(ITEM_FUSE), "fuse inserted: gate powered open");
-        player_set_cell(5, 74);
+        player_set_cell(goal->x, goal->y);
         CHECK(interact_check_complete() && level_complete(), "walking past the gate to the goal ends the level");
 
-        // cherub door (door 1, link -> cherub key object): only that key opens it
+        // cherub door (the door whose link names the cherub key object):
+        // only that key opens it
         obj_t* cdoor = NULL;
-        for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_DOOR && o->id==1) cdoor=o; }
+        for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_DOOR && o->link_id>0) cdoor=o; }
         cdoor->state = DOOR_LOCKED; cdoor->open = 0;
         inventory_init(); inventory_add(ITEM_SCREWDRIVER); inventory_add(ITEM_COIN);
-        player_set_cell(17, 37);
-        doors_interact(17, 38);
+        player_set_cell(cdoor->x, cdoor->y - 1);  // north side of the horizontal door
+        doors_interact(cdoor->x, cdoor->y);
         CHECK(cdoor->state == DOOR_LOCKED, "cherub door: screwdriver/coin do not open it");
         inventory_add(ITEM_CHERUB_KEY);
-        doors_interact(17, 38);
+        doors_interact(cdoor->x, cdoor->y);
         CHECK(cdoor->state == DOOR_UNLOCKED, "cherub door: the cherub key opens it");
 
         // climbing: prompt, stop, 0.35 s delay, on; then off the same way
-        obj_t* table = (obj_t*)&grid_level()->objs[43];
+        obj_t* table = NULL;
+        for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_OBSTACLE && o->w>=3) { table=o; break; } }
         table->climbable = 0;
         CHECK(obstacles_block_cell(table->x, table->y), "plain obstacle blocks its cells");
         table->climbable = 1;
@@ -618,12 +658,43 @@ int main(int argc, char** argv) {
 
         // door smashing still works: conditions and the enemy doing it
         {
-            // find doors by where they stand (ids shift when the level is edited)
+            // bd: a door that alone seals a small pocket (flood the far
+            // side without crossing any door edge: it must stay small and
+            // not reach the near side), so the enemy has no way around;
+            // nd: the cherub door (never breakable)
             obj_t* bd = NULL; obj_t* nd = NULL;
             for (int i = 0; i < level.obj_count; i++) {
                 obj_t* o = (obj_t*)&grid_level()->objs[i];
-                if (o->kind == OBJ_DOOR && o->x == 69 && o->y == 49) bd = o;
-                if (o->kind == OBJ_DOOR && o->x == 16 && o->y == 38) nd = o;
+                if (o->kind == OBJ_DOOR && o->link_id > 0) nd = o;
+            }
+            for (int i = 0; i < level.obj_count && !bd; i++) {
+                obj_t* o = (obj_t*)&grid_level()->objs[i];
+                if (o->kind != OBJ_DOOR || o->link_id > 0 || o->state == DOOR_LOCKED) continue;
+                int fx = o->x, fy = o->y;  // far cell: south (h) / east (v)
+                int nx = o->horizontal ? o->x : o->x - 1, ny = o->horizontal ? o->y - 1 : o->y;
+                if (!grid_is_floor(fx, fy) || !grid_is_floor(nx, ny)) continue;
+                static unsigned char seen[256 * 256];
+                memset(seen, 0, sizeof(seen));
+                int stack[4096][2], sp = 0, count = 0;
+                stack[sp][0] = fx; stack[sp][1] = fy; sp++;
+                seen[fy * 256 + fx] = 1;
+                bool reached_near = false;
+                static const int d4[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+                while (sp > 0) {
+                    sp--;
+                    int cx = stack[sp][0], cy = stack[sp][1];
+                    count++;
+                    if (cx == nx && cy == ny) reached_near = true;
+                    for (int d = 0; d < 4; d++) {
+                        int tx = cx + d4[d][0], ty = cy + d4[d][1];
+                        if (tx < 0 || ty < 0 || tx >= level.cols || ty >= level.rows) continue;
+                        if (seen[ty * 256 + tx] || !grid_is_floor(tx, ty)) continue;
+                        if (grid_blocked(cx, cy, tx, ty) || doors_on_edge(cx, cy, tx, ty)) continue;
+                        seen[ty * 256 + tx] = 1;
+                        if (sp < 4096) { stack[sp][0] = tx; stack[sp][1] = ty; sp++; }
+                    }
+                }
+                if (!reached_near && count >= 4 && count < 1000) bd = o;
             }
             CHECK(bd && nd, "door-smash checks found their doors");
             bd->breakable = 1; bd->state = DOOR_LOCKED; bd->open = 0;
@@ -645,11 +716,12 @@ int main(int argc, char** argv) {
             CHECK(nd->state == DOOR_LOCKED, "a non-breakable door cannot be smashed");
             // the enemy itself: Grace lit on the far side, it crosses and smashes
             bd->state = DOOR_LOCKED; bd->open = 0; bd->breakable = 1;
-            fresh_enemy_at(70, 48);
+            if (bd->horizontal) fresh_enemy_at(bd->x, bd->y - 1);
+            else fresh_enemy_at(bd->x - 1, bd->y);
             enemy_set_grace_lit(true);
             bool smashed = false;
             for (int i = 0; i < 60 * 12 && !smashed; i++) {
-                enemy_update(1.0f / 60.0f, 70.5f, 50.5f, 0.0f);
+                enemy_update(1.0f / 60.0f, (float)bd->x + 0.5f, (float)bd->y + 0.5f, 0.0f);
                 smashed = bd->state == DOOR_BROKEN;
             }
             CHECK(smashed, "the enemy smashes through the breakable door to reach her");
@@ -677,7 +749,7 @@ int main(int argc, char** argv) {
 
         // safe + combination door codes
         obj_t* safe = NULL; obj_t* codelock = NULL;
-        for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_SAFE) safe=o; if (o->kind==OBJ_DOOR && o->id==39) codelock=o; }
+        for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_SAFE) safe=o; if (o->kind==OBJ_DOOR && !codelock) codelock=o; }
         if (!safe) { // none in level 1: borrow the goal marker for the check
             for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_GOAL) safe=o; }
             if (safe) safe->kind = OBJ_SAFE;
@@ -829,45 +901,54 @@ int main(int argc, char** argv) {
     }
 
     {
-        // Door-frame regression: south of the west end of the unlocked
-        // door at (37,38), hugging the wall line, her radius square
+        // Door-frame regression: south of the west end of an unlocked
+        // horizontal door, hugging the wall line, her radius square
         // straddles the wall/door edge. Every axis used to be vetoed by
         // that already-overlapped edge; she must always be able to move
         // away (south), slide along the frame (east), and bump-open.
-        player_set_position(36.85f, 38.25f);
+        // Doors are found by role, not by old-map coordinates.
+        obj_t* door = NULL; obj_t* ldoor = NULL;
+        for (int i = 0; i < level.obj_count; i++) {
+            obj_t* o = (obj_t*)&grid_level()->objs[i];
+            if (o->kind != OBJ_DOOR) continue;
+            if (!door && o->horizontal && o->state == DOOR_UNLOCKED && o->span == 1 &&
+                grid_is_floor(o->x, o->y) && grid_is_floor(o->x - 1, o->y) && grid_is_floor(o->x, o->y - 1)) door = o;
+            if (o->link_id > 0) ldoor = o;  // the cherub door: locked, span 1
+        }
+        CHECK(door && ldoor, "door-frame checks found their doors");
+        const int dx = door->x, dy = door->y;
+        player_set_position((float)dx - 0.15f, (float)dy + 0.25f);
         player_set_velocity(0.0f, 3.0f);  // away from the wall, south
         for (int i = 0; i < 10; i++) player_update(0.05f);
-        CHECK(player_y() > 38.6f, "door side: moving away from a door frame works (y %.2f)", (double)player_y());
+        CHECK(player_y() > (float)dy + 0.6f, "door side: moving away from a door frame works (y %.2f)", (double)player_y());
         player_set_velocity(0.0f, 0.0f);
 
-        player_set_position(36.85f, 38.25f);
+        player_set_position((float)dx - 0.15f, (float)dy + 0.25f);
         player_set_velocity(3.0f, 0.0f);  // slide east along the frame, under the door
         for (int i = 0; i < 20; i++) player_update(0.05f);
-        CHECK(player_x() > 37.6f, "door side: sliding along a door frame works (x %.2f)", (double)player_x());
+        CHECK(player_x() > (float)dx + 0.6f, "door side: sliding along a door frame works (x %.2f)", (double)player_x());
         player_set_velocity(0.0f, 0.0f);
 
-        // bump-to-open still works for the unlocked door at (37,38)
-        const obj_t* door = NULL;
-        for (int i = 0; i < level.obj_count; i++) {
-            if (level.objs[i].kind == OBJ_DOOR && level.objs[i].x == 37 && level.objs[i].y == 38) door = &level.objs[i];
-        }
-        CHECK(door && door->state == DOOR_UNLOCKED && !door->open, "the bump-open test door starts shut and unlocked");
-        player_set_cell(37, 38);
+        // bump-to-open still works for that unlocked door
+        door->open = 0;
+        CHECK(door->state == DOOR_UNLOCKED && !door->open, "the bump-open test door starts shut and unlocked");
+        player_set_cell(dx, dy);
         doors_update(0.016f);
-        CHECK(door && door->open, "bump-open: stepping up to an unlocked door opens it");
+        CHECK(door->open, "bump-open: stepping up to an unlocked door opens it");
 
-        // a locked door still blocks crossing (door at (16,38), span 3)
-        player_set_position(16.5f, 38.5f);
+        // a locked door still blocks crossing (the cherub door)
+        ldoor->state = DOOR_LOCKED; ldoor->open = 0;
+        player_set_position((float)ldoor->x + 0.5f, (float)ldoor->y + 0.5f);
         player_set_velocity(0.0f, -3.0f);
         for (int i = 0; i < 20; i++) player_update(0.05f);
         int lx, ly; player_cell(&lx, &ly);
-        CHECK(ly == 38, "locked door still blocks crossing (cell %d,%d)", lx, ly);
+        CHECK(ly == ldoor->y, "locked door still blocks crossing (cell %d,%d)", lx, ly);
         player_set_velocity(0.0f, 0.0f);
         // ...but hugging its west frame end, she can still move away
-        player_set_position(15.85f, 38.25f);
+        player_set_position((float)ldoor->x - 0.15f, (float)ldoor->y + 0.25f);
         player_set_velocity(3.0f, 0.0f);
         for (int i = 0; i < 10; i++) player_update(0.05f);
-        CHECK(player_x() > 16.2f, "locked door side: moving away along the frame works (x %.2f)", (double)player_x());
+        CHECK(player_x() > (float)ldoor->x + 0.2f, "locked door side: moving away along the frame works (x %.2f)", (double)player_x());
         player_set_velocity(0.0f, 0.0f);
     }
 
@@ -967,14 +1048,23 @@ int main(int argc, char** argv) {
         }
         CHECK(verified, "through-wall: verified a walled/open item pair end to end");
         // through a closed (locked) door edge: unreachable; through an
-        // unlocked door edge: reachable. Door cells (16,38) locked, (38,38) unlocked.
-        player_set_cell(16, 37);
-        CHECK(!interact_cell_reachable(16, 38), "through-door: locked door cell is unreachable");
-        player_set_cell(38, 37);
-        CHECK(interact_cell_reachable(38, 38), "through-door: unlocked door cell is reachable");
-        player_set_cell(89, 4);
-        CHECK(interact_cell_reachable(89, 4), "through-wall: own cell is reachable");
-        CHECK(!interact_cell_reachable(80, 4), "through-wall: distant cell is unreachable");
+        // unlocked door edge: reachable (the cherub door vs a plain door,
+        // each found by role; the target is the cell past the door slab)
+        obj_t* cdoor = NULL; obj_t* udoor = NULL;
+        for (int i = 0; i < level.obj_count; i++) {
+            obj_t* o = (obj_t*)&grid_level()->objs[i];
+            if (o->kind != OBJ_DOOR) continue;
+            if (o->link_id > 0) cdoor = o;
+            if (!udoor && o->horizontal && o->link_id == 0 && o->state == DOOR_UNLOCKED) udoor = o;
+        }
+        cdoor->state = DOOR_LOCKED; cdoor->open = 0;
+        player_set_cell(cdoor->x, cdoor->y - 1);
+        CHECK(!interact_cell_reachable(cdoor->x, cdoor->y), "through-door: locked door cell is unreachable");
+        player_set_cell(udoor->x, udoor->y - 1);
+        CHECK(interact_cell_reachable(udoor->x, udoor->y), "through-door: unlocked door cell is reachable");
+        player_set_cell(level.start_x, level.start_y);
+        CHECK(interact_cell_reachable(level.start_x, level.start_y), "through-wall: own cell is reachable");
+        CHECK(!interact_cell_reachable(level.start_x - 9, level.start_y), "through-wall: distant cell is unreachable");
     }
 
     // Free-angle locomotion: the enemy cuts diagonally to a visible
@@ -1019,34 +1109,36 @@ int main(int argc, char** argv) {
         }
         // an unlocked closed door on the way is pushed open, not stuck on
         {
+            // a plain vertical door with floor on both sides (Room 203's)
             obj_t* bd = NULL;
             for (int i = 0; i < level.obj_count; i++) {
                 obj_t* o = (obj_t*)&grid_level()->objs[i];
-                if (o->kind == OBJ_DOOR && o->x == 69 && o->y == 49) bd = o;
+                if (o->kind == OBJ_DOOR && !o->horizontal && o->link_id == 0 && strcmp(o->name, "door") == 0 &&
+                    grid_is_floor(o->x - 1, o->y) && grid_is_floor(o->x, o->y)) { bd = o; break; }
             }
             CHECK(bd != NULL, "free-move: found the test door");
             if (bd) {
                 bd->state = DOOR_UNLOCKED; bd->open = 0; bd->breakable = 0;
-                fresh_enemy_at(70, 48);
-                enemy_hear_noise(70, 50, 1000.0f);
+                fresh_enemy_at(bd->x - 1, bd->y);
+                enemy_hear_noise(bd->x, bd->y, 1000.0f);
                 bool crossed = false;
                 for (int i = 0; i < 60 * 12; i++) {
                     enemy_update(1.0f / 60.0f, 500.0f, 500.0f, 0.0f);
-                    if (hypotf(enemy_x() - 70.5f, enemy_y() - 50.5f) < 1.0f) crossed = true;
+                    if (hypotf(enemy_x() - ((float)bd->x + 0.5f), enemy_y() - ((float)bd->y + 0.5f)) < 1.0f) crossed = true;
                 }
                 CHECK(bd->open == 1, "free-move: the closed door was pushed open on the way through");
                 CHECK(crossed, "free-move: it crossed the doorway without sticking on the frame");
                 // and a locked breakable door on a diagonal approach is smashed
                 bd->state = DOOR_LOCKED; bd->open = 0; bd->breakable = 1;
-                if (grid_is_floor(72, 47)) {
-                    fresh_enemy_at(72, 47);
+                if (grid_is_floor(bd->x - 1, bd->y - 1)) {
+                    fresh_enemy_at(bd->x - 1, bd->y - 1);
                 } else {
-                    fresh_enemy_at(70, 48);
+                    fresh_enemy_at(bd->x - 1, bd->y);
                 }
                 enemy_set_grace_lit(true);
                 bool smashed = false;
                 for (int i = 0; i < 60 * 15 && !smashed; i++) {
-                    enemy_update(1.0f / 60.0f, 70.5f, 50.5f, 0.0f);
+                    enemy_update(1.0f / 60.0f, (float)bd->x + 0.5f, (float)bd->y + 0.5f, 0.0f);
                     smashed = bd->state == DOOR_BROKEN;
                 }
                 CHECK(smashed, "free-move: diagonal approach still winds up and smashes the breakable door");
