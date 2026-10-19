@@ -976,6 +976,84 @@ int main(int argc, char** argv) {
         CHECK(interact_cell_reachable(89, 4), "through-wall: own cell is reachable");
         CHECK(!interact_cell_reachable(80, 4), "through-wall: distant cell is unreachable");
     }
+
+    // Free-angle locomotion: the enemy cuts diagonally to a visible
+    // target, stays out of walls, crosses doors, and still smashes.
+    {
+        // find A and B = A+(3,2) (or mirrored) with a clear diagonal and
+        // a longer Manhattan route between them
+        int ax = -1, ay = 0, bx = 0, by = 0;
+        for (int y = 1; y + 3 < level.rows && ax < 0; y++) {
+            for (int x = 1; x + 4 < level.cols && ax < 0; x++) {
+                static const int off[4][2] = {{3,2},{3,-2},{-3,2},{2,3}};
+                for (int k = 0; k < 4; k++) {
+                    int tx = x + off[k][0], ty = y + off[k][1];
+                    if (tx < 1 || ty < 1 || tx >= level.cols || ty >= level.rows) continue;
+                    if (!grid_is_floor(x, y) || !grid_is_floor(tx, ty)) continue;
+                    if (!sight_clear_eyes(x, y, tx, ty)) continue;
+                    path_t pp;
+                    if (pathfind_within(x, y, tx, ty, 12, false, &pp) && pp.count >= 5) {
+                        ax = x; ay = y; bx = tx; by = ty;
+                        break;
+                    }
+                }
+            }
+        }
+        CHECK(ax >= 0, "free-move: found an open diagonal scenario at (%d,%d)", ax, ay);
+        if (ax >= 0) {
+            fresh_enemy_at(ax, ay);
+            CHECK(enemy_hear_noise(bx, by, 1000.0f), "free-move: it hears the far noise");
+            float sx0 = enemy_x(), sy0 = enemy_y();
+            bool diagonal = false, in_wall = false, arrived = false;
+            for (int i = 0; i < 60 * 10; i++) {
+                enemy_update(1.0f / 60.0f, 500.0f, 500.0f, 0.0f);
+                int ecx = (int)floorf(enemy_x()), ecy = (int)floorf(enemy_y());
+                if (!grid_is_floor(ecx, ecy) || obstacles_block_cell(ecx, ecy)) in_wall = true;
+                if (fabsf(enemy_x() - sx0) > 0.05f && fabsf(enemy_y() - sy0) > 0.05f) diagonal = true;
+                float d = hypotf(enemy_x() - ((float)bx + 0.5f), enemy_y() - ((float)by + 0.5f));
+                if (d < 0.1f) arrived = true;
+            }
+            CHECK(diagonal, "free-move: both axes move in the same leg (diagonal, not axis steps)");
+            CHECK(!in_wall, "free-move: never inside a wall or obstacle cell");
+            CHECK(arrived, "free-move: reaches the target centre");
+        }
+        // an unlocked closed door on the way is pushed open, not stuck on
+        {
+            obj_t* bd = NULL;
+            for (int i = 0; i < level.obj_count; i++) {
+                obj_t* o = (obj_t*)&grid_level()->objs[i];
+                if (o->kind == OBJ_DOOR && o->x == 69 && o->y == 49) bd = o;
+            }
+            CHECK(bd != NULL, "free-move: found the test door");
+            if (bd) {
+                bd->state = DOOR_UNLOCKED; bd->open = 0; bd->breakable = 0;
+                fresh_enemy_at(70, 48);
+                enemy_hear_noise(70, 50, 1000.0f);
+                bool crossed = false;
+                for (int i = 0; i < 60 * 12; i++) {
+                    enemy_update(1.0f / 60.0f, 500.0f, 500.0f, 0.0f);
+                    if (hypotf(enemy_x() - 70.5f, enemy_y() - 50.5f) < 1.0f) crossed = true;
+                }
+                CHECK(bd->open == 1, "free-move: the closed door was pushed open on the way through");
+                CHECK(crossed, "free-move: it crossed the doorway without sticking on the frame");
+                // and a locked breakable door on a diagonal approach is smashed
+                bd->state = DOOR_LOCKED; bd->open = 0; bd->breakable = 1;
+                if (grid_is_floor(72, 47)) {
+                    fresh_enemy_at(72, 47);
+                } else {
+                    fresh_enemy_at(70, 48);
+                }
+                enemy_set_grace_lit(true);
+                bool smashed = false;
+                for (int i = 0; i < 60 * 15 && !smashed; i++) {
+                    enemy_update(1.0f / 60.0f, 70.5f, 50.5f, 0.0f);
+                    smashed = bd->state == DOOR_BROKEN;
+                }
+                CHECK(smashed, "free-move: diagonal approach still winds up and smashes the breakable door");
+                bd->breakable = 0;
+            }
+        }
+    }
     printf(failures ? "%d FAILED\n" : "ALL PASS\n", failures);
     return failures ? 1 : 0;
 }

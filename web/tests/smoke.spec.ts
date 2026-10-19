@@ -1293,3 +1293,29 @@ test("inventory: Space opens the cell context menu, arrows + Space use the item,
   expect(await wasm(page, "health_value")).toBe(0); // the herb healed her back to Fine
   await expect(overlay.locator(".inventory-slot[data-filled='true']")).toHaveCount(0);
 });
+
+test("the enemy chases diagonally (both axes at once) and catches Grace", async ({ page }) => {
+  await boot(page);
+  // Grace waits at spawn (89.5, 4.5); put the enemy north-west of her
+  await wasm(page, "web_test_enemy_place", 8650, 250);
+  const x0 = await wasm(page, "web_enemy_px");
+  const y0 = await wasm(page, "web_enemy_py");
+  expect(x0).toBeCloseTo(86.5, 0);
+  expect(y0).toBeCloseTo(2.5, 0);
+  // axis-aligned movement would first change only one coordinate; a
+  // diagonal leg changes both before either has moved a full cell
+  await expect
+    .poll(
+      async () => {
+        const x = await wasm(page, "web_enemy_px");
+        const y = await wasm(page, "web_enemy_py");
+        return Math.abs(x - x0) > 0.08 && Math.abs(y - y0) > 0.08
+          ? Math.min(Math.abs(x - x0), Math.abs(y - y0))
+          : 0;
+      },
+      { timeout: 4000 },
+    )
+    .toBeGreaterThan(0.08);
+  // and the chase connects: she ends up Hurt
+  await expect.poll(() => wasm(page, "web_grace_mode"), { timeout: 15000 }).toBe(4);
+});
