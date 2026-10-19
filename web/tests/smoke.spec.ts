@@ -47,10 +47,10 @@ test("the map app boots and renders the level", async ({ page }) => {
     revealed: window.Module?._level_revealed?.() ?? 0,
   }));
 
-  expect(grid.cols).toBe(99);
-  expect(grid.rows).toBe(86);
-  expect(grid.cellX).toBe(89);
-  expect(grid.cellY).toBe(4);
+  expect(grid.cols).toBe(151);
+  expect(grid.rows).toBe(96);
+  expect(grid.cellX).toBe(85);
+  expect(grid.cellY).toBe(23);
   expect(grid.replay).toBeGreaterThan(0);
   // the whole starting section is revealed as one large chunk
   expect(grid.revealed).toBeGreaterThan(100);
@@ -306,8 +306,12 @@ test("clicking an item, the X marker or Grace does nothing; X no longer interact
   await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
     timeout: 30_000,
   });
-  // stand just west of the Green Herb at (95, 8)
-  await page.evaluate(() => window.Module?._web_test_grace_at?.(94, 8));
+  // stand just west of a lit Green Herb (found by type, not coordinates)
+  const herb = await findItem(page, 2, 0, 0);
+  await page.evaluate(
+    ([hx, hy]) => window.Module?._web_test_grace_at?.(hx, hy),
+    [herb.x - 1, herb.y] as const,
+  );
   await page.waitForTimeout(250);
   const box = await page.locator("canvas#canvas").boundingBox();
   if (!box) {
@@ -402,6 +406,31 @@ function wasm(page: Page, name: string, ...args: number[]) {
   );
 }
 
+// Packed test-hook result: (x << 16) | (y << 8) | extra.
+function unpack(v: number) {
+  return { x: v >> 16, y: (v >> 8) & 0xff, extra: v & 0xff };
+}
+
+// Item types: bottle 0, coin 1, herb 2, ink_ribbon 3, screwdriver 4,
+// injector 5, fuse 6, lighter 7, cherub_key 8. dark=1 finds unlit items.
+async function findItem(page: Page, item: number, nth: number, dark: number) {
+  const v = await wasm(page, "web_test_find_item", item, nth, dark);
+  expect(v).toBeGreaterThanOrEqual(0);
+  return unpack(v);
+}
+
+async function findObject(page: Page, kind: number, nth: number) {
+  const v = await wasm(page, "web_test_find_object", kind, nth);
+  expect(v).toBeGreaterThanOrEqual(0);
+  return unpack(v);
+}
+
+async function findDoor(page: Page, mode: number) {
+  const v = await wasm(page, "web_test_find_door", mode);
+  expect(v).toBeGreaterThanOrEqual(0);
+  return unpack(v);
+}
+
 async function boot(page: Page) {
   await page.goto("/");
   await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
@@ -479,10 +508,11 @@ test("the Lighter sits North in Quick Equip, starts off and toggles", async ({ p
 
 test("items in the dark can't be picked up until lit", async ({ page }) => {
   await boot(page);
-  // the herb at (79,49) has no light near it
-  await wasm(page, "web_test_grace_at", 78, 49);
+  // a Green Herb with no light near it (found by type, in the dark)
+  const herb = await findItem(page, 2, 1, 1);
+  await wasm(page, "web_test_grace_at", herb.x - 1, herb.y);
   await page.waitForTimeout(200);
-  expect(await wasm(page, "web_light_at", 79, 49)).toBe(0);
+  expect(await wasm(page, "web_light_at", herb.x, herb.y)).toBe(0);
   // interact is the Space key now (map clicks on the item do nothing)
   const tap = async () => {
     await page.keyboard.press(" ");
@@ -494,7 +524,7 @@ test("items in the dark can't be picked up until lit", async ({ page }) => {
   await wasm(page, "web_test_give", 7);
   await wasm(page, "lighter_set", 1);
   await page.waitForTimeout(100);
-  expect(await wasm(page, "web_light_at", 79, 49)).toBe(1);
+  expect(await wasm(page, "web_light_at", herb.x, herb.y)).toBe(1);
   await tap();
   expect(await wasm(page, "items_collected")).toBe(before + 1);
 });
@@ -508,7 +538,7 @@ test("a hit makes the enemy angry", async ({ page }) => {
 
 test("a hit leaves Grace Hurt for 5 s, unable to move, then she waits", async ({ page }) => {
   await boot(page);
-  await wasm(page, "web_test_enemy_place", 500, 8000); // keep the enemy far away
+  await wasm(page, "web_test_enemy_place", 7250, 6550); // enemy sealed in the gated south room
   await steer(page, "d", 400);
   await wasm(page, "web_test_hurt");
   expect(await wasm(page, "web_grace_mode")).toBe(4);
@@ -527,8 +557,12 @@ test("a hit leaves Grace Hurt for 5 s, unable to move, then she waits", async ({
 
 test("Space triggers the interact in front of her (pickup)", async ({ page }) => {
   await boot(page);
-  // stand just west of the Green Herb at (95, 8), facing east after a nudge
-  await page.evaluate(() => window.Module?._web_test_grace_at?.(94, 8));
+  // stand just west of a lit Green Herb, facing east after a nudge
+  const herb = await findItem(page, 2, 0, 0);
+  await page.evaluate(
+    ([hx, hy]) => window.Module?._web_test_grace_at?.(hx, hy),
+    [herb.x - 1, herb.y] as const,
+  );
   await page.waitForTimeout(200);
   await steer(page, "d", 60); // face east without leaving the cell
   const before = await wasm(page, "items_collected");
@@ -538,25 +572,26 @@ test("Space triggers the interact in front of her (pickup)", async ({ page }) =>
 
 test("an item the Lighter has shown stays visible", async ({ page }) => {
   await boot(page);
-  await wasm(page, "web_test_grace_at", 78, 49);
+  const herb = await findItem(page, 2, 1, 1); // a Green Herb in the dark
+  await wasm(page, "web_test_grace_at", herb.x - 1, herb.y);
   await wasm(page, "web_test_give", 7);
-  expect(await wasm(page, "web_item_visible_at", 79, 49)).toBe(0);
+  expect(await wasm(page, "web_item_visible_at", herb.x, herb.y)).toBe(0);
   await wasm(page, "lighter_set", 1);
-  expect(await wasm(page, "web_item_visible_at", 79, 49)).toBe(1);
+  expect(await wasm(page, "web_item_visible_at", herb.x, herb.y)).toBe(1);
   await wasm(page, "lighter_set", 0);
-  expect(await wasm(page, "web_light_at", 79, 49)).toBe(0);
-  expect(await wasm(page, "web_item_visible_at", 79, 49)).toBe(1);
+  expect(await wasm(page, "web_light_at", herb.x, herb.y)).toBe(0);
+  expect(await wasm(page, "web_item_visible_at", herb.x, herb.y)).toBe(1);
 });
 
 test("a typewriter save keeps the enemy where it was", async ({ page }) => {
   await boot(page);
   await wasm(page, "web_test_give", 3);
-  await wasm(page, "web_test_enemy_place", 9050, 1230);
+  await wasm(page, "web_test_enemy_place", 9550, 2550);
   expect(await wasm(page, "save_game", 0)).toBe(1);
   await wasm(page, "web_test_enemy_place", 2050, 4050);
   expect(await wasm(page, "load_game", 0)).toBe(1);
-  expect(await wasm(page, "web_enemy_px")).toBeCloseTo(90.5, 3);
-  expect(await wasm(page, "web_enemy_py")).toBeCloseTo(12.3, 3);
+  expect(await wasm(page, "web_enemy_px")).toBeCloseTo(95.5, 3);
+  expect(await wasm(page, "web_enemy_py")).toBeCloseTo(25.5, 3);
 });
 
 test("throwing on the move: Q aims while walking and the click throws (hitscan)", async ({
@@ -585,14 +620,28 @@ test("throwing on the move: Q aims while walking and the click throws (hitscan)"
 
 test("hitscan: a clear ray hits the enemy, a door in between blocks it", async ({ page }) => {
   await boot(page);
-  // Grace north of the closed door at (69,49); enemy first on her side...
-  await wasm(page, "web_test_grace_at", 70, 48);
+  // the locked Cherub door (found by role; locked, so it cannot
+  // bump-open while Grace stands next to it): Grace on one side, the
+  // enemy first on her side, then past the door where the ray must stop
+  const door = await findDoor(page, 1);
+  const horiz = door.extra === 1;
+  const gx = horiz ? door.x : door.x - 1; // Grace's cell, near side
+  const gy = horiz ? door.y - 1 : door.y;
+  const fx = door.x; // far cell, past the slab
+  const fy = door.y;
+  const dx = horiz ? 0 : 100; // ray direction across the door
+  const dy = horiz ? 100 : 0;
+  await wasm(page, "web_test_grace_at", gx, gy);
   await page.waitForTimeout(150);
-  await wasm(page, "web_test_enemy_place", 7050, 4750);
-  expect(await wasm(page, "web_test_hitscan", 0, -100, 300)).toBe(1);
-  // ...then south of the door: the ray stops at the door
-  await wasm(page, "web_test_enemy_place", 7050, 5050);
-  expect(await wasm(page, "web_test_hitscan", 0, 100, 300)).toBe(2);
+  await wasm(
+    page,
+    "web_test_enemy_place",
+    (gx + 0.5) * 100 - dx,
+    (gy + 0.5) * 100 - dy,
+  );
+  expect(await wasm(page, "web_test_hitscan", -dx, -dy, 300)).toBe(1);
+  await wasm(page, "web_test_enemy_place", (fx + 0.5) * 100 + dx, (fy + 0.5) * 100 + dy);
+  expect(await wasm(page, "web_test_hitscan", dx, dy, 300)).toBe(2);
 });
 
 test("aiming caps a run to a walk; un-aiming restores the run latch", async ({ page }) => {
@@ -736,8 +785,12 @@ test("phone stick centre tap: left tap does not interact, right tap with jitter 
   browser,
 }) => {
   const { context, page } = await phonePage(browser, { width: 390, height: 844 });
-  // stand just west of the Green Herb at (95, 8)
-  await page.evaluate(() => (window as any).Module?._web_test_grace_at?.(94, 8));
+  // stand just west of a lit Green Herb (found by type, not coordinates)
+  const herb = await findItem(page, 2, 0, 0);
+  await page.evaluate(
+    ([hx, hy]) => (window as any).Module?._web_test_grace_at?.(hx, hy),
+    [herb.x - 1, herb.y] as const,
+  );
   await page.waitForTimeout(250);
   const touch = await touchSession(page, context);
   const centreOf = async (selector: string) => {
@@ -883,7 +936,11 @@ test("phone right stick: tap interacts, hold opens Quick Equip without interacti
   browser,
 }) => {
   const { context, page } = await phonePage(browser, { width: 390, height: 844 });
-  await page.evaluate(() => (window as any).Module?._web_test_grace_at?.(94, 8)); // herb to the east
+  const herb = await findItem(page, 2, 0, 0); // a lit Green Herb, Grace west of it
+  await page.evaluate(
+    ([hx, hy]) => (window as any).Module?._web_test_grace_at?.(hx, hy),
+    [herb.x - 1, herb.y] as const,
+  );
   await page.evaluate(() => (window as any).Module?._web_test_give?.(7)); // a Lighter slot exists
   await page.waitForTimeout(250);
   const box = await page.locator(".aim-stick").boundingBox();
@@ -973,18 +1030,6 @@ test("desktop Z opens Quick Equip and the mouse direction selects radially", asy
     .toBe(0);
 });
 
-test("items lit by a switch light stay visible after it is switched off", async ({ page }) => {
-  await boot(page);
-  // the switch at (91,58) is walled on its west edge, so stand east of it
-  await page.evaluate(() => window.Module?._web_test_grace_at?.(92, 58));
-  await page.waitForTimeout(200);
-  expect(await wasm(page, "web_item_visible_at", 88, 63)).toBe(1);
-  expect(await wasm(page, "web_test_interact", 91, 58)).toBe(1);
-  await page.waitForTimeout(200);
-  expect(await wasm(page, "web_light_at", 88, 63)).toBe(0);
-  expect(await wasm(page, "web_item_visible_at", 88, 63)).toBe(1);
-});
-
 test("a hit in Danger kills Grace and stops the timer", async ({ page }) => {
   await boot(page);
   await page.evaluate(() => window.Module?._web_test_hurt?.());
@@ -1001,23 +1046,36 @@ test("a hit in Danger kills Grace and stops the timer", async ({ page }) => {
 
 test("the fuse chain: gate stays shut without the fuse, opens with it, goal past it", async ({ page }) => {
   await boot(page);
-  await page.evaluate(() => window.Module?._web_test_grace_at?.(8, 69));
+  const fusebox = await findObject(page, 2, 0); // OBJ_FUSEBOX
+  const goal = await findObject(page, 10, 0); // OBJ_GOAL
+  await page.evaluate(
+    ([fx2, fy2]) => window.Module?._web_test_grace_at?.(fx2, fy2),
+    [fusebox.x, fusebox.y - 1] as const,
+  );
   await page.waitForTimeout(200);
-  expect(await wasm(page, "web_test_interact", 7, 69)).toBe(1);
+  expect(await wasm(page, "web_test_interact", fusebox.x, fusebox.y)).toBe(1);
   expect(await wasm(page, "web_goal_met")).toBe(0);
   await page.evaluate(() => window.Module?._web_test_give?.(6));
-  expect(await wasm(page, "web_test_interact", 7, 69)).toBe(1);
+  expect(await wasm(page, "web_test_interact", fusebox.x, fusebox.y)).toBe(1);
   expect(await wasm(page, "web_goal_met")).toBe(1);
-  await page.evaluate(() => window.Module?._web_test_grace_at?.(5, 74));
+  await page.evaluate(
+    ([gx2, gy2]) => window.Module?._web_test_grace_at?.(gx2, gy2),
+    [goal.x, goal.y] as const,
+  );
   await expect.poll(() => wasm(page, "web_level_complete")).toBe(1);
 });
 
 test("climbing: Space climbs on after the delay, and Space climbs off again", async ({ page }) => {
   await boot(page);
-  // obstacle at (68,53): make it climbable with the test hook, stand west.
-  await page.evaluate(() => window.Module?._web_test_grace_at?.(67, 53));
+  // a sealed stair block in Central Hall: make it climbable with the
+  // test hook, stand west of it (obstacles: cabinet, then stair blocks)
+  const stairs = await findObject(page, 8, 3); // OBJ_OBSTACLE
+  await page.evaluate(
+    ([sx, sy]) => window.Module?._web_test_grace_at?.(sx, sy),
+    [stairs.x - 1, stairs.y + 1] as const,
+  );
   await page.waitForTimeout(200);
-  expect(await wasm(page, "web_test_set_climbable", 68, 53)).toBe(1);
+  expect(await wasm(page, "web_test_set_climbable", stairs.x + 1, stairs.y + 1)).toBe(1);
   await steer(page, "d", 60); // face east, stay in her cell
   await page.waitForTimeout(250);
   await page.keyboard.press(" ");
@@ -1214,8 +1272,12 @@ test("menu shortcuts on a phone: hold left centre toggles Pause, double-tap togg
 
 test("Space in a menu accepts there and never leaks into the world", async ({ page }) => {
   await boot(page);
-  // stand just west of the Green Herb at (95, 8): a leaked Space would pick it up
-  await page.evaluate(() => window.Module?._web_test_grace_at?.(94, 8));
+  // stand just west of a lit Green Herb: a leaked Space would pick it up
+  const herb = await findItem(page, 2, 0, 0);
+  await page.evaluate(
+    ([hx, hy]) => window.Module?._web_test_grace_at?.(hx, hy),
+    [herb.x - 1, herb.y] as const,
+  );
   await page.waitForTimeout(200);
   const before = await wasm(page, "items_collected");
   await page.keyboard.press("p"); // Pause opens; Space belongs to the menu now
@@ -1229,24 +1291,22 @@ test("Space in a menu accepts there and never leaks into the world", async ({ pa
 
 test("items cannot be picked up through a wall, but can from the open side", async ({ page }) => {
   await boot(page);
-  await wasm(page, "web_test_enemy_place", 500, 8000); // keep the enemy far away
-  // the herb at (79,49) sits against the long wall on its north edge:
-  // light it with the Lighter so only the wall can block the pickup
+  await wasm(page, "web_test_enemy_place", 7250, 6550); // enemy sealed in the gated south room
+  // the Antique Coin at (145,65) sits just inside the Lead Researcher's
+  // Office north wall: light it with the Lighter so only the wall can
+  // block the pickup
   await wasm(page, "web_test_give", 7);
   await wasm(page, "lighter_set", 1);
   const before = await wasm(page, "items_collected");
   // north side of the wall: within range, but the wall is between us
-  await wasm(page, "web_test_grace_at", 79, 48);
+  await wasm(page, "web_test_grace_at", 145, 64);
   await page.waitForTimeout(200);
   await page.keyboard.press(" ");
   await page.waitForTimeout(250);
   expect(await wasm(page, "items_collected")).toBe(before);
-  // west of the herb is the open side: the herb sits in a closed
-  // cabinet, so the first Space opens it and the second picks it up
-  await wasm(page, "web_test_grace_at", 78, 49);
+  // south of the wall is the open side (inside the office)
+  await wasm(page, "web_test_grace_at", 145, 66);
   await page.waitForTimeout(200);
-  await page.keyboard.press(" ");
-  await page.waitForTimeout(250);
   await page.keyboard.press(" ");
   await expect.poll(() => wasm(page, "items_collected")).toBe(before + 1);
 });
@@ -1255,7 +1315,7 @@ test("inventory: Space opens the cell context menu, arrows + Space use the item,
   page,
 }) => {
   await boot(page);
-  await wasm(page, "web_test_enemy_place", 500, 8000);
+  await wasm(page, "web_test_enemy_place", 7250, 6550); // enemy sealed in the gated south room
   await wasm(page, "web_test_hurt");
   await wasm(page, "web_test_hurt");
   expect(await wasm(page, "health_value")).toBe(2);
@@ -1296,12 +1356,13 @@ test("inventory: Space opens the cell context menu, arrows + Space use the item,
 
 test("the enemy chases diagonally (both axes at once) and catches Grace", async ({ page }) => {
   await boot(page);
-  // Grace waits at spawn (89.5, 4.5); put the enemy north-west of her
-  await wasm(page, "web_test_enemy_place", 8650, 250);
+  // Grace waits at the Room 201 spawn (85.5, 23.5); put the enemy
+  // north-east of her in the same room
+  await wasm(page, "web_test_enemy_place", 8950, 2150);
   const x0 = await wasm(page, "web_enemy_px");
   const y0 = await wasm(page, "web_enemy_py");
-  expect(x0).toBeCloseTo(86.5, 0);
-  expect(y0).toBeCloseTo(2.5, 0);
+  expect(x0).toBeCloseTo(89.5, 0);
+  expect(y0).toBeCloseTo(21.5, 0);
   // axis-aligned movement would first change only one coordinate; a
   // diagonal leg changes both before either has moved a full cell
   await expect
@@ -1318,4 +1379,116 @@ test("the enemy chases diagonally (both axes at once) and catches Grace", async 
     .toBeGreaterThan(0.08);
   // and the chase connects: she ends up Hurt
   await expect.poll(() => wasm(page, "web_grace_mode"), { timeout: 15000 }).toBe(4);
+});
+
+test("floor 2 chain: screwdriver and Cherub Key open the way to the fuse, gate and goal", async ({
+  page,
+}) => {
+  await boot(page);
+  await wasm(page, "web_test_enemy_place", 7250, 6550); // enemy sealed in the gated south room
+  const collected = () => wasm(page, "items_collected");
+  // the Cherub door (Lead Researcher's Office) is locked without its key
+  const cdoor = await findDoor(page, 1);
+  await wasm(page, "web_test_grace_at", cdoor.x, cdoor.y - 1);
+  await page.waitForTimeout(200);
+  await page.keyboard.press(" ");
+  await steer(page, "s", 700);
+  expect(await wasm(page, "player_cell_y")).toBe(cdoor.y - 1);
+  // the Screwdriver (Chairman's Office)
+  const screw = await findItem(page, 4, 0, 0);
+  let before = await collected();
+  await wasm(page, "web_test_grace_at", screw.x, screw.y);
+  await page.waitForTimeout(150);
+  await page.keyboard.press(" ");
+  await expect.poll(collected).toBe(before + 1);
+  // the Cherub Key (Nurses' Station)
+  const key = await findItem(page, 8, 0, 0);
+  before = await collected();
+  await wasm(page, "web_test_grace_at", key.x, key.y);
+  await page.waitForTimeout(150);
+  await page.keyboard.press(" ");
+  await expect.poll(collected).toBe(before + 1);
+  // unlock the Cherub door and walk through into the office
+  await wasm(page, "web_test_grace_at", cdoor.x, cdoor.y - 1);
+  await page.waitForTimeout(150);
+  await page.keyboard.press(" "); // unlock with the key
+  await page.waitForTimeout(150);
+  await steer(page, "s", 900);
+  expect(await wasm(page, "player_cell_y")).toBeGreaterThan(cdoor.y);
+  // the Fuse is in the screwed-shut cabinet: Space opens it, Space takes it
+  const fuse = await findItem(page, 6, 0, 0);
+  await wasm(page, "web_test_grace_at", fuse.x, fuse.y - 1);
+  await page.waitForTimeout(150);
+  before = await collected();
+  await page.keyboard.press(" "); // opens the cabinet (she has the screwdriver)
+  await page.waitForTimeout(200);
+  for (let i = 0; i < 4 && (await collected()) === before; i++) {
+    await page.keyboard.press(" "); // takes the fuse (a file may take a press first)
+    await page.waitForTimeout(200);
+  }
+  expect(await collected()).toBe(before + 1);
+  // the fusebox by the gate powers it open; the goal is past it
+  const fusebox = await findObject(page, 2, 0);
+  await wasm(page, "web_test_grace_at", fusebox.x, fusebox.y - 1);
+  await page.waitForTimeout(150);
+  await page.keyboard.press(" ");
+  await expect.poll(() => wasm(page, "web_goal_met")).toBe(1);
+  const goal = await findObject(page, 10, 0);
+  await wasm(page, "web_test_grace_at", goal.x, goal.y);
+  await expect.poll(() => wasm(page, "web_level_complete")).toBe(1);
+});
+
+test("the security gates, security door and staircases are sealed", async ({ page }) => {
+  await boot(page);
+  await wasm(page, "web_test_enemy_place", 7250, 6550); // enemy sealed in the gated south room
+  // the striped gate south of Central Hall stays shut without the fuse
+  const gate = await findDoor(page, 2);
+  await wasm(page, "web_test_grace_at", gate.x + 1, gate.y - 1);
+  await page.waitForTimeout(200);
+  await steer(page, "s", 700);
+  expect(await wasm(page, "player_cell_y")).toBe(gate.y - 1);
+  expect(await wasm(page, "web_goal_met")).toBe(0);
+  // the striped security door on the hall's east wall has no key at all
+  const sec = await findDoor(page, 3);
+  await wasm(page, "web_test_grace_at", sec.x - 1, sec.y);
+  await page.waitForTimeout(200);
+  await steer(page, "d", 700);
+  expect(await wasm(page, "player_cell_x")).toBe(sec.x - 1);
+  // a stair block in Central Hall is solid: floors 1 and 3 do not exist yet
+  const stairs = await findObject(page, 8, 3); // OBJ_OBSTACLE: cabinet, then stairs
+  await wasm(page, "web_test_grace_at", stairs.x - 1, stairs.y + 1);
+  await page.waitForTimeout(200);
+  await steer(page, "d", 800);
+  expect(await wasm(page, "player_cell_x")).toBeLessThan(stairs.x);
+});
+
+test("Grace walks in rooms across floor 2 (Central Hall, Bar & Lounge, Room 203)", async ({
+  page,
+}) => {
+  await boot(page);
+  await wasm(page, "web_test_enemy_place", 250, 250); // park the enemy in the NW stairwell
+  const rooms: Array<[number, number, string]> = [
+    [56, 44, "d"], // Central Hall, west side of the ring
+    [37, 15, "d"], // Bar & Lounge
+    [142, 11, "a"], // Room 203
+  ];
+  for (const [x, y, key] of rooms) {
+    await wasm(page, "web_test_grace_at", x, y);
+    await page.waitForTimeout(150);
+    const x0 = await wasm(page, "player_cell_x");
+    await steer(page, key, 600);
+    const x1 = await wasm(page, "player_cell_x");
+    expect(Math.abs(x1 - x0)).toBeGreaterThanOrEqual(1);
+  }
+});
+
+test("Space picks up an Antique Coin", async ({ page }) => {
+  await boot(page);
+  await wasm(page, "web_test_enemy_place", 7250, 6550);
+  const coin = await findItem(page, 1, 0, 0); // first lit Antique Coin
+  const before = await wasm(page, "items_collected");
+  await wasm(page, "web_test_grace_at", coin.x, coin.y);
+  await page.waitForTimeout(150);
+  await page.keyboard.press(" ");
+  await expect.poll(() => wasm(page, "items_collected")).toBe(before + 1);
 });

@@ -1499,6 +1499,70 @@ TEST_EXPORT void web_test_seed(unsigned int seed) {
     enemy_seed(seed * 2654435761u + 1u);
 }
 
+// Tests: locate level content by type/role instead of hardcoded cells.
+// Packed result: (x << 16) | (y << 8) | extra, or -1 when absent.
+// For items, dark=0 finds lit (visible) ones, dark=1 finds unlit ones;
+// nth is the 0-based index among the matches.
+TEST_EXPORT int web_test_find_item(int item, int nth, int dark) {
+    int seen = 0;
+    for (int i = 0; i < app.level.obj_count; i++) {
+        obj_t* o = &app.level.objs[i];
+        if (o->kind != OBJ_ITEM || o->item_type != item || items_taken(i)) {
+            continue;
+        }
+        if (dark ? light_item_visible(i) : !light_item_visible(i)) {
+            continue;
+        }
+        if (seen++ < nth) {
+            continue;
+        }
+        return (o->x << 16) | (o->y << 8);
+    }
+    return -1;
+}
+
+// Tests: the nth object of a kind (obj_kind_t). extra = its width.
+TEST_EXPORT int web_test_find_object(int kind, int nth) {
+    int seen = 0;
+    for (int i = 0; i < app.level.obj_count; i++) {
+        obj_t* o = &app.level.objs[i];
+        if ((int)o->kind != kind) {
+            continue;
+        }
+        if (seen++ < nth) {
+            continue;
+        }
+        return (o->x << 16) | (o->y << 8) | (o->w > 0 ? o->w : 1);
+    }
+    return -1;
+}
+
+// Tests: a door by role. 0 = first plain unlocked door, 1 = the
+// key-linked (cherub) door, 2 = the first "gate", 3 = the "security
+// door". extra = 1 when the door is horizontal.
+TEST_EXPORT int web_test_find_door(int mode) {
+    for (int i = 0; i < app.level.obj_count; i++) {
+        obj_t* o = &app.level.objs[i];
+        if (o->kind != OBJ_DOOR) {
+            continue;
+        }
+        bool ok = false;
+        if (mode == 0) {
+            ok = o->state == DOOR_UNLOCKED && o->link_id == 0 && strcmp(o->name, "door") == 0;
+        } else if (mode == 1) {
+            ok = o->link_id > 0;
+        } else if (mode == 2) {
+            ok = strcmp(o->name, "gate") == 0;
+        } else if (mode == 3) {
+            ok = strcmp(o->name, "security door") == 0;
+        }
+        if (ok) {
+            return (o->x << 16) | (o->y << 8) | (o->horizontal ? 1 : 0);
+        }
+    }
+    return -1;
+}
+
 TEST_EXPORT int web_test_give(int item) {
     if (item < 0 || item >= ITEM_COUNT || !inventory_add(item)) {
         return 0;
