@@ -9,6 +9,7 @@
 #include "enemy.h"
 #include "doors.h"
 #include "grid.h"
+#include "interact.h"
 #include "light.h"
 #include "pathfind.h"
 #include "sight.h"
@@ -64,7 +65,10 @@
 #define ENEMY_INVESTIGATE_SWEEP_STEPS 6
 
 #define ENEMY_LIGHT_BREAK_DIST 1.5f
-#define ENEMY_LIGHT_BREAK_PCT 50  // per step within reach: ~2 steps expected, wind-up kept
+// Per cell travelled within reach (was: per waypoint step; movement is
+// continuous now, so the roll is charged per 1.0 cells of travel --
+// the same rate: ~2 cells in reach expected before a smash).
+#define ENEMY_LIGHT_BREAK_PCT 50
 #define ENEMY_LIGHT_BREAK_MIN 1.0f
 #define ENEMY_LIGHT_BREAK_MAX 1.6f
 
@@ -90,6 +94,7 @@ static struct {
     bool grace_lit;  // she can be seen (lit); otherwise only heard or smelt
     int impact_x, impact_y;  // the bottle being investigated
     bool at_impact;          // reached it, now looking around
+    float light_travel;      // cells walked since the last lamp-smash roll
 } e;
 
 _Static_assert(sizeof(e) <= ENEMY_SAVE_BYTES, "enemy save size");
@@ -335,30 +340,176 @@ static void pass_light(void) {
     e.timer = rnd_range(ENEMY_LIGHT_BREAK_MIN, ENEMY_LIGHT_BREAK_MAX);
 }
 
-// Returns true once the path is used up.
-static bool walk(float dt) {
-    if (e.index < e.path.count) {
-        float tx = (float)e.path.x[e.index] + 0.5f;
-        float ty = (float)e.path.y[e.index] + 0.5f;
-        float dx = tx - e.x;
-        float dy = ty - e.y;
-        float dist = sqrtf(dx * dx + dy * dy);
-        float step = e.speed * dt;
-        if (dist <= step + ENEMY_EPSILON) {
-            e.x = tx;
-            e.y = ty;
-            e.index++;
-            if (e.index < e.path.count) {
-                cross_door(e.path.x[e.index - 1], e.path.y[e.index - 1], e.path.x[e.index], e.path.y[e.index]);
-                pass_light();
-            }
-            return e.index >= e.path.count;
-        }
-        e.x += dx / dist * step;
-        e.y += dy / dist * step;
+// Continuous locomotion, like Grace's steering: A* still plans the
+// grid route, but the enemy walks straight at the farthest waypoint it
+// can see (string-pulling with sight_clear_eyes), so legs run at any
+// angle instead of axis-aligned centre-to-centre hops. Movement is
+// axis-separated against a body square (the player.c rule: only cells
+// the square newly overlaps can veto), so it slides along walls and
+// door frames instead of sticking or clipping. Speed is the length of
+// the normalized step -- a diagonal is never faster than a straight leg.
+static bool enemy_cell_passable(int cx, int cy) {
+    if (!grid_is_floor(cx, cy) || obstacles_block_cell(cx, cy)) {
         return false;
     }
+    // routes never step onto or off a climbable top (the pathfind rule)
+    int ex, ey;
+    cell_of(&ex, &ey);
+    return cell_on_climbable(cx, cy) == cell_on_climbable(ex, ey);
+}
+
+static bool enemy_steer_passable(float nx, float ny) {
+    const float r = 0.30f;
+    int cx0 = (int)floorf(nx - r), cx1 = (int)floorf(nx + r);
+    int cy0 = (int)floorf(ny - r), cy1 = (int)floorf(ny + r);
+    int px0 = (int)floorf(e.x - r), px1 = (int)floorf(e.x + r);
+    int py0 = (int)floorf(e.y - r), py1 = (int)floorf(e.y + r);
+    int curx, cury;
+    cell_of(&curx, &cury);
+    for (int cy = cy0; cy <= cy1; cy++) {
+        for (int cx = cx0; cx <= cx1; cx++) {
+            if (cx >= px0 && cx <= px1 && cy >= py0 && cy <= py1) {
+                continue;  // already overlapped: not this move's to cross
+            }
+            if (!enemy_cell_passable(cx, cy)) {
+                return false;
+            }
+            if ((cx != curx || cy != cury) && (cx == curx || cy == cury)) {
+                if (doors_on_edge(curx, cury, cx, cy)
+                        ? doors_block_edge(curx, cury, cx, cy)
+                        : grid_blocked(curx, cury, cx, cy)) {
+                    return false;
+                }
+            }
+        }
+    }
     return true;
+}
+
+// The farthest waypoint worth aiming at: every waypoint up to it must
+// be visible from here, and the planned route must not cross a closed
+// door in between -- a door is still met (and smashed or pushed) cell
+// by cell, exactly as before.
+static int smoothed_aim(void) {
+    int cx, cy;
+    cell_of(&cx, &cy);
+    int aim = e.index;
+    for (int j = e.index + 1; j < e.path.count; j++) {
+        if (doors_closed_on_edge(e.path.x[j - 1], e.path.y[j - 1], e.path.x[j], e.path.y[j]) >= 0) {
+            break;
+        }
+        if (!sight_clear_eyes(cx, cy, e.path.x[j], e.path.y[j])) {
+            break;
+        }
+        aim = j;
+    }
+    return aim;
+}
+
+static bool waypoint_reached(int k, int aim, float aim_x, float aim_y) {
+    float wx = (float)e.path.x[k] + 0.5f;
+    float wy = (float)e.path.y[k] + 0.5f;
+    float dx = wx - e.x;
+    float dy = wy - e.y;
+    if (k == e.path.count - 1) {
+        // the last waypoint is a destination, not a corner to cut:
+        // only the settle in walk() (centre snap) completes it
+        return dx * dx + dy * dy <= ENEMY_EPSILON * ENEMY_EPSILON;
+    }
+    if (dx * dx + dy * dy <= 0.45f * 0.45f) {
+        return true;
+    }
+    int cx, cy;
+    cell_of(&cx, &cy);
+    if (cx == e.path.x[k] && cy == e.path.y[k]) {
+        return true;
+    }
+    if (k < aim) {
+        // a smoothed leg can pass a waypoint without entering its cell:
+        // it counts once it falls behind the line of travel
+        return dx * (aim_x - e.x) + dy * (aim_y - e.y) <= 0.0f;
+    }
+    return false;
+}
+
+// Returns true once the path is used up.
+static bool walk(float dt) {
+    if (e.index >= e.path.count) {
+        return true;
+    }
+    int aim = smoothed_aim();
+    float tx = (float)e.path.x[aim] + 0.5f;
+    float ty = (float)e.path.y[aim] + 0.5f;
+    float dx = tx - e.x;
+    float dy = ty - e.y;
+    float dist = sqrtf(dx * dx + dy * dy);
+    float step = e.speed * dt;
+    float ox = e.x;
+    float oy = e.y;
+    int ecx, ecy;
+    cell_of(&ecx, &ecy);
+    bool in_final_cell = ecx == e.path.x[aim] && ecy == e.path.y[aim];
+    if (aim == e.path.count - 1 && (dist <= step + ENEMY_EPSILON || in_final_cell)) {
+        e.x = tx;  // final waypoint: settle exactly on its centre
+        e.y = ty;
+    } else if (dist > 0.0f) {
+        float mx = dx / dist * (dist <= step ? dist : step);
+        float my = dy / dist * (dist <= step ? dist : step);
+        if (mx != 0.0f && enemy_steer_passable(e.x + mx, e.y)) {
+            e.x += mx;
+        }
+        if (my != 0.0f && enemy_steer_passable(e.x, e.y + my)) {
+            e.y += my;
+        }
+        if (e.x == ox && e.y == oy) {
+            // boxed in by the smoothed line: fall back to the next
+            // waypoint centre, the old centre-to-centre route
+            float wx = (float)e.path.x[e.index] + 0.5f;
+            float wy = (float)e.path.y[e.index] + 0.5f;
+            float vx = wx - e.x;
+            float vy = wy - e.y;
+            float vd = sqrtf(vx * vx + vy * vy);
+            if (vd > 0.0f) {
+                float fx = vx / vd * (vd <= step ? vd : step);
+                float fy = vy / vd * (vd <= step ? vd : step);
+                if (fx != 0.0f && enemy_steer_passable(e.x + fx, e.y)) {
+                    e.x += fx;
+                }
+                if (fy != 0.0f && enemy_steer_passable(e.x, e.y + fy)) {
+                    e.y += fy;
+                }
+            }
+        }
+    }
+    // lamp-smash rolls are charged per cell travelled (see the define)
+    float moved = sqrtf((e.x - ox) * (e.x - ox) + (e.y - oy) * (e.y - oy));
+    if (!(e.light_travel >= 0.0f && e.light_travel < 1.0f)) {
+        e.light_travel = 0.0f;  // a pre-change save blob can't be trusted here
+    }
+    e.light_travel += moved;
+    while (e.light_travel >= 1.0f) {
+        e.light_travel -= 1.0f;
+        pass_light();
+        if (e.state == ENEMY_BREAKING) {
+            return false;
+        }
+    }
+    // consume every waypoint this leg has reached, with the same
+    // per-step bookkeeping as the old centre-to-centre walk
+    while (e.index < e.path.count && waypoint_reached(e.index, aim, tx, ty)) {
+        int k = e.index;
+        e.index++;
+        if (e.index < e.path.count) {
+            if (e.state == ENEMY_BREAKING) {
+                break;
+            }
+            cross_door(e.path.x[k], e.path.y[k], e.path.x[e.index], e.path.y[e.index]);
+            if (e.state == ENEMY_BREAKING || e.path.count == 0) {
+                break;
+            }
+        }
+    }
+    return e.index >= e.path.count;
 }
 
 bool enemy_update(float dt, float gx, float gy, float noise) {
