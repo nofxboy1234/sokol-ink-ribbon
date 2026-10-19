@@ -233,6 +233,15 @@ bool doors_try_code(int code) {
     return true;
 }
 bool doors_interact(int x, int y) {
+    // A door is worked from beside its edge, so an edge that IS a door
+    // never makes its own cells unreachable (she can unlock it from
+    // either side); any other wall or blocking door in the way does.
+    int px, py;
+    player_cell(&px, &py);
+    bool own_door_edge = (x - px == 0 || y - py == 0) && doors_on_edge(px, py, x, y);
+    if (!own_door_edge && !interact_cell_reachable(x, y)) {
+        return false;
+    }
     level_t* lv = dr.level;
     for (int i = 0; i < lv->obj_count; i++) {
         obj_t* o = &lv->objs[i];

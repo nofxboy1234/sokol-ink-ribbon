@@ -179,7 +179,15 @@ function ChargePips({
   );
 }
 
-export function Inventory() {
+export function Inventory({
+  acceptRef,
+}: {
+  // Menu navigation (arrows / stick) accept hook owned by the overlay:
+  // Space/Enter (or a right-stick centre tap) on a cell opens its context
+  // menu here instead of merely selecting the cell. Pointer behaviour is
+  // unchanged: click selects, right-click / long-press opens the menu.
+  acceptRef?: { current: ((el: HTMLElement) => boolean) | null };
+} = {}) {
   const { inventory, health, bottleEquipped, bottleEmpty } = useGameState();
   const [selected, setSelected] = useState(-1);
   const [movingFrom, setMovingFrom] = useState(-1);
@@ -311,6 +319,33 @@ export function Inventory() {
     }
   };
 
+  useEffect(() => {
+    if (!acceptRef) {
+      return;
+    }
+    acceptRef.current = (el) => {
+      // While the context menu is open, or while a Move is waiting for a
+      // target cell, accept keeps its default meaning (click the element).
+      if (menu || movingFrom >= 0) {
+        return false;
+      }
+      const raw = el.getAttribute("data-slot-index");
+      if (raw === null) {
+        return false;
+      }
+      const index = Number(raw);
+      if ((inventory[index] ?? -1) < 0) {
+        return false; // empty cell: nothing to open, default select behaviour
+      }
+      const rect = el.getBoundingClientRect();
+      openMenu(index, rect.left, rect.bottom);
+      return true;
+    };
+    return () => {
+      acceptRef.current = null;
+    };
+  });
+
   const runAction = (action: ItemAction) => {
     if (!menu) {
       return;
@@ -351,6 +386,7 @@ export function Inventory() {
               type="button"
               className="inventory-slot"
               data-menu-item
+              data-slot-index={index}
               data-filled={item >= 0}
               data-selected={selected === index}
               data-moving={movingFrom === index}
@@ -421,7 +457,7 @@ export function Inventory() {
         <button type="button" className="move-catch" onClick={() => setMovingFrom(-1)} />
       )}
       {menu && menuActions.length > 0 && (
-        <div ref={menuRef} className="item-menu" style={{ left: menu.x, top: menu.y }}>
+        <div ref={menuRef} className="item-menu" data-menu-layer style={{ left: menu.x, top: menu.y }}>
           {menuActions.map((action) => (
             <button key={action} type="button" data-menu-item onClick={() => runAction(action)}>
               {action}

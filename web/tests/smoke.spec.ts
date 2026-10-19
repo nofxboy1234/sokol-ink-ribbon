@@ -299,7 +299,7 @@ test("Z opens Quick Equip (right-clicking Grace does not) and an active bottle c
   expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
 });
 
-test("clicking an item, the X marker or Grace does nothing; X key still picks the item up", async ({
+test("clicking an item, the X marker or Grace does nothing; X no longer interacts, Space picks the item up", async ({
   page,
 }) => {
   await page.goto("/");
@@ -328,8 +328,12 @@ test("clicking an item, the X marker or Grace does nothing; X key still picks th
   await page.waitForTimeout(250);
   expect(await page.evaluate(() => window.Module?._items_collected?.() ?? 0)).toBe(before);
   expect(await page.evaluate(() => window.Module?._web_grace_mode?.())).toBe(3);
-  // the X key is the interact path, and it works
+  // X is unbound now: it must not interact
   await page.keyboard.press("x");
+  await page.waitForTimeout(250);
+  expect(await page.evaluate(() => window.Module?._items_collected?.() ?? 0)).toBe(before);
+  // Space is the interact/confirm key, and it works
+  await page.keyboard.press(" ");
   await expect
     .poll(() => page.evaluate(() => window.Module?._items_collected?.() ?? 0))
     .toBe(before + 1);
@@ -479,9 +483,9 @@ test("items in the dark can't be picked up until lit", async ({ page }) => {
   await wasm(page, "web_test_grace_at", 78, 49);
   await page.waitForTimeout(200);
   expect(await wasm(page, "web_light_at", 79, 49)).toBe(0);
-  // interact is the X key now (map clicks on the item do nothing)
+  // interact is the Space key now (map clicks on the item do nothing)
   const tap = async () => {
-    await page.keyboard.press("x");
+    await page.keyboard.press(" ");
     await page.waitForTimeout(120);
   };
   const before = await wasm(page, "items_collected");
@@ -521,14 +525,14 @@ test("a hit leaves Grace Hurt for 5 s, unable to move, then she waits", async ({
   expect(await wasm(page, "web_grace_hurt_ms")).toBe(0);
 });
 
-test("the X key triggers the interact in front of her (pickup)", async ({ page }) => {
+test("Space triggers the interact in front of her (pickup)", async ({ page }) => {
   await boot(page);
   // stand just west of the Green Herb at (95, 8), facing east after a nudge
   await page.evaluate(() => window.Module?._web_test_grace_at?.(94, 8));
   await page.waitForTimeout(200);
   await steer(page, "d", 60); // face east without leaving the cell
   const before = await wasm(page, "items_collected");
-  await page.keyboard.press("x");
+  await page.keyboard.press(" ");
   await expect.poll(() => wasm(page, "items_collected")).toBe(before + 1);
 });
 
@@ -971,7 +975,8 @@ test("desktop Z opens Quick Equip and the mouse direction selects radially", asy
 
 test("items lit by a switch light stay visible after it is switched off", async ({ page }) => {
   await boot(page);
-  await page.evaluate(() => window.Module?._web_test_grace_at?.(90, 58));
+  // the switch at (91,58) is walled on its west edge, so stand east of it
+  await page.evaluate(() => window.Module?._web_test_grace_at?.(92, 58));
   await page.waitForTimeout(200);
   expect(await wasm(page, "web_item_visible_at", 88, 63)).toBe(1);
   expect(await wasm(page, "web_test_interact", 91, 58)).toBe(1);
@@ -1007,7 +1012,7 @@ test("the fuse chain: gate stays shut without the fuse, opens with it, goal past
   await expect.poll(() => wasm(page, "web_level_complete")).toBe(1);
 });
 
-test("climbing: X climbs on after the delay, and X climbs off again", async ({ page }) => {
+test("climbing: Space climbs on after the delay, and Space climbs off again", async ({ page }) => {
   await boot(page);
   // obstacle at (68,53): make it climbable with the test hook, stand west.
   await page.evaluate(() => window.Module?._web_test_grace_at?.(67, 53));
@@ -1015,10 +1020,10 @@ test("climbing: X climbs on after the delay, and X climbs off again", async ({ p
   expect(await wasm(page, "web_test_set_climbable", 68, 53)).toBe(1);
   await steer(page, "d", 60); // face east, stay in her cell
   await page.waitForTimeout(250);
-  await page.keyboard.press("x");
+  await page.keyboard.press(" ");
   await expect.poll(() => wasm(page, "web_on_top"), { timeout: 3000 }).toBe(1);
-  // climb off with X again (facing decides the landing cell)
-  await page.keyboard.press("x");
+  // climb off with Space again (facing decides the landing cell)
+  await page.keyboard.press(" ");
   await expect.poll(() => wasm(page, "web_on_top"), { timeout: 3000 }).toBe(0);
 });
 
@@ -1205,4 +1210,86 @@ test("menu shortcuts on a phone: hold left centre toggles Pause, double-tap togg
   await expect(page.getByRole("dialog", { name: "Inventory" })).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).Module?._player_px?.() ?? 0)).toBeCloseTo(px0, 1);
   await context.close();
+});
+
+test("Space in a menu accepts there and never leaks into the world", async ({ page }) => {
+  await boot(page);
+  // stand just west of the Green Herb at (95, 8): a leaked Space would pick it up
+  await page.evaluate(() => window.Module?._web_test_grace_at?.(94, 8));
+  await page.waitForTimeout(200);
+  const before = await wasm(page, "items_collected");
+  await page.keyboard.press("p"); // Pause opens; Space belongs to the menu now
+  await expect(page.locator(".pause-menu")).toBeVisible();
+  await page.keyboard.press(" ");
+  await page.waitForTimeout(250);
+  expect(await wasm(page, "items_collected")).toBe(before);
+  // the page did not scroll either
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+});
+
+test("items cannot be picked up through a wall, but can from the open side", async ({ page }) => {
+  await boot(page);
+  await wasm(page, "web_test_enemy_place", 500, 8000); // keep the enemy far away
+  // the herb at (79,49) sits against the long wall on its north edge:
+  // light it with the Lighter so only the wall can block the pickup
+  await wasm(page, "web_test_give", 7);
+  await wasm(page, "lighter_set", 1);
+  const before = await wasm(page, "items_collected");
+  // north side of the wall: within range, but the wall is between us
+  await wasm(page, "web_test_grace_at", 79, 48);
+  await page.waitForTimeout(200);
+  await page.keyboard.press(" ");
+  await page.waitForTimeout(250);
+  expect(await wasm(page, "items_collected")).toBe(before);
+  // west of the herb is the open side: the herb sits in a closed
+  // cabinet, so the first Space opens it and the second picks it up
+  await wasm(page, "web_test_grace_at", 78, 49);
+  await page.waitForTimeout(200);
+  await page.keyboard.press(" ");
+  await page.waitForTimeout(250);
+  await page.keyboard.press(" ");
+  await expect.poll(() => wasm(page, "items_collected")).toBe(before + 1);
+});
+
+test("inventory: Space opens the cell context menu, arrows + Space use the item, Esc steps back", async ({
+  page,
+}) => {
+  await boot(page);
+  await wasm(page, "web_test_enemy_place", 500, 8000);
+  await wasm(page, "web_test_hurt");
+  await wasm(page, "web_test_hurt");
+  expect(await wasm(page, "health_value")).toBe(2);
+  await wasm(page, "web_test_give", 5); // Green Herb in the first cell
+  await page.keyboard.press("i");
+  const overlay = page.getByRole("dialog", { name: "Inventory" });
+  await expect(overlay).toBeVisible();
+  // arrow down until a filled inventory cell carries the green selection
+  const herbCell = overlay.locator(".inventory-slot[data-filled='true']").first();
+  for (let i = 0; i < 12; i++) {
+    if ((await herbCell.getAttribute("data-menu-selected")) === "true") break;
+    await page.keyboard.press("ArrowDown");
+  }
+  await expect(herbCell).toHaveAttribute("data-menu-selected", "true");
+  // Space opens that item's context window (not a world interact)
+  await page.keyboard.press(" ");
+  const menu = overlay.locator(".item-menu");
+  await expect(menu).toBeVisible();
+  await expect(menu.locator("button").first()).toHaveAttribute("data-menu-selected", "true");
+  // Esc closes only the context window, back to the inventory
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(overlay).toBeVisible();
+  // reopen with Space, step to Use, accept with Space: the herb heals her
+  await page.keyboard.press(" ");
+  await expect(menu).toBeVisible();
+  const useButton = menu.getByRole("button", { name: "Use", exact: true });
+  for (let i = 0; i < 4; i++) {
+    if ((await useButton.getAttribute("data-menu-selected")) === "true") break;
+    await page.keyboard.press("ArrowDown");
+  }
+  await expect(useButton).toHaveAttribute("data-menu-selected", "true");
+  await page.keyboard.press(" ");
+  await expect(menu).toHaveCount(0);
+  expect(await wasm(page, "health_value")).toBe(0); // the herb healed her back to Fine
+  await expect(overlay.locator(".inventory-slot[data-filled='true']")).toHaveCount(0);
 });

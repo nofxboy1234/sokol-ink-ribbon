@@ -23,6 +23,24 @@ export function MapCanvas() {
     }
     host.appendChild(canvasEl);
 
+    // Space is the interact/confirm key: never let it scroll the page
+    // while the game has focus. Typing in a form field still types a
+    // space, and menus preventDefault Space themselves (menuNav).
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== " ") {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")
+      ) {
+        return;
+      }
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+
     // sokol measures the canvas CSS box at startup and on window resize, so
     // re-measure when the pane changes size. Observe the host, not the canvas:
     // sokol writes inline px sizes onto the canvas, which would feed back.
@@ -43,7 +61,10 @@ export function MapCanvas() {
       window.dispatchEvent(new Event("resize"));
     }
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("keydown", onKey);
+    };
   }, []);
 
   return <div ref={hostRef} className="map-canvas-host" />;

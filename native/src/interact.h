@@ -7,6 +7,13 @@ void interact_init(void);
 // safe). Returns true when something happened.
 bool interact_at(int x, int y);
 
+// True if Grace can actually reach the given cell to interact with it:
+// her own cell, or an adjacent cell whose connecting edge is not blocked
+// by a wall or a blocking (locked/unknown, shut) door -- diagonally, at
+// least one of the two corner routes must be clear. Chebyshev distance
+// alone let her pick items up through walls; this is the fix.
+bool interact_cell_reachable(int x, int y);
+
 bool obstacles_block_cell(int x, int y);
 
 // Chebyshev distance from Grace to an object (support-aware for items).

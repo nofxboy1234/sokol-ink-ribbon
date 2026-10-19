@@ -49,16 +49,24 @@ const STEP_EVENT = "menu-step";
 const ACCEPT_EVENT = "menu-accept";
 
 function menuItems(container: HTMLElement): HTMLElement[] {
-  return Array.from(container.querySelectorAll<HTMLElement>("[data-menu-item]")).filter(
+  // A nested layer (e.g. the inventory item context menu) captures
+  // navigation while it is open: only its own items are steppable, so
+  // arrows/Space there can never fall through to the cells behind it.
+  const layer = container.querySelector<HTMLElement>("[data-menu-layer]");
+  const scope = layer ?? container;
+  return Array.from(scope.querySelectorAll<HTMLElement>("[data-menu-item]")).filter(
     (el) => el.offsetParent !== null && !(el as HTMLButtonElement).disabled,
   );
 }
 
-function columnsOf(items: HTMLElement[]): number {
-  if (items.length === 0) {
+function columnsOf(items: HTMLElement[], anchor: HTMLElement | undefined): number {
+  // Row width measured at the current selection, so Down in the
+  // inventory grid steps a full row of cells (not one cell) while Down
+  // in a vertical list (or a lone header row) steps one item.
+  if (items.length === 0 || !anchor) {
     return 1;
   }
-  const top = items[0].offsetTop;
+  const top = anchor.offsetTop;
   return Math.max(
     1,
     items.filter((el) => el.offsetTop === top).length,
@@ -69,10 +77,18 @@ export function useMenuNav(
   containerRef: RefObject<HTMLElement | null>,
   active: boolean,
   onEscape?: () => void,
+  // Return true to claim an accept (e.g. Space on an inventory cell opens
+  // its context menu instead of clicking/selecting the cell).
+  onAccept?: (el: HTMLElement) => boolean,
 ): void {
   const selectedRef = useRef(0);
   const escapeRef = useRef(onEscape);
   escapeRef.current = onEscape;
+  const acceptRef = useRef(onAccept);
+  acceptRef.current = onAccept;
+  const paintedRef = useRef<HTMLElement | null>(null);
+  const layeredRef = useRef(false);
+  const returnIndexRef = useRef(0);
 
   useEffect(() => {
     if (!active) {
@@ -87,9 +103,29 @@ export function useMenuNav(
 
     const paint = () => {
       const items = menuItems(container);
+      const layered = container.querySelector("[data-menu-layer]") !== null;
+      if (layered && !layeredRef.current) {
+        // A layer (context menu) just opened: remember where to return
+        // and start at the layer's first item.
+        returnIndexRef.current = selectedRef.current;
+        selectedRef.current = 0;
+      } else if (!layered && layeredRef.current) {
+        // The layer closed: resume on the item that opened it.
+        selectedRef.current = returnIndexRef.current;
+      }
+      layeredRef.current = layered;
+      // The item set changed under us (slots filled, tabs swapped): if
+      // the painted selection is gone, restart at the first item.
+      if (paintedRef.current && !items.includes(paintedRef.current) && !layered) {
+        selectedRef.current = Math.min(returnIndexRef.current, Math.max(0, items.length - 1));
+        if (paintedRef.current && items[selectedRef.current] === paintedRef.current) {
+          selectedRef.current = 0;
+        }
+      }
       if (selectedRef.current >= items.length) {
         selectedRef.current = Math.max(0, items.length - 1);
       }
+      paintedRef.current = items[selectedRef.current] ?? null;
       items.forEach((el, i) => {
         if (i === selectedRef.current) {
           if (el.getAttribute("data-menu-selected") !== "true") {
@@ -112,7 +148,7 @@ export function useMenuNav(
       if (items.length === 0) {
         return;
       }
-      const cols = columnsOf(items);
+      const cols = columnsOf(items, items[selectedRef.current]);
       let delta = 0;
       if (dy !== 0) {
         delta = dy * cols;
@@ -129,7 +165,14 @@ export function useMenuNav(
 
     const accept = () => {
       const items = paint();
-      items[selectedRef.current]?.click();
+      const el = items[selectedRef.current];
+      if (!el) {
+        return;
+      }
+      if (acceptRef.current?.(el)) {
+        return;
+      }
+      el.click();
     };
 
     const onKey = (event: KeyboardEvent) => {

@@ -21,8 +21,8 @@ import {
 // half of its throw walks, further runs -- the C side turns the vector
 // into a speed. RIGHT stick is always shown: it aims the bottle throw
 // while a bottle is active (greyed, aim unavailable, otherwise), its
-// centre tap is the interact trigger (pick up / climb / use -- the X key
-// on desktop), and holding its centre opens Quick Equip, after which
+// centre tap is the interact trigger (pick up / climb / use -- the Space
+// key on desktop), and holding its centre opens Quick Equip, after which
 // pointing it at a radial slot and releasing equips that slot. She can
 // aim while moving; aiming caps her speed to a walk in C.
 // Stick travel as a fraction of the stick's rendered size: 52px at the
