@@ -26,8 +26,8 @@ floor 100 101 100 101
 
 # Courtyard -> Central Hall passage: the map draws a barred line with a red
 # marker across x89-91 at y175.3; the tracer now drops square marker blobs,
-# so place the barrier explicitly (red; the gap between the walls is 2 cells).
-door 90 175 h 2 state=locked name=barrier
+# so place the barrier explicitly (red, drawn 3 cells wide across the 3-cell passage x90-92).
+door 90 175 h 3 state=locked name=barrier
 
 # Door bars the tracer found no doorway for (skipped.json): the map draws a
 # wall line through each, so close the wall and put the 2-wide door in it.
@@ -60,3 +60,63 @@ vwall 123 231 239
 hwall 118 119 234
 floor 121 234 122 239
 vwall 120 234 239
+
+# --- pass 3, wall-by-wall against the map (measure.py *_walls.csv) ---
+# F2 Nurses' Station: a stray L-shaped stub at x149-150 y89-90; the map's
+# wall here is only the vertical line at x151.5 down to the y91 line.
+floor 149 89 150 90
+# F1 Dining Room west: the dark shaft x62-63 between two walls is capped
+# by the map's y156.5 line, one row above where the trace capped it.
+tile h 62 156 63 156
+# ...which puts the corridor door one row up, on its map bar (y153.8-155.3)
+erase 63 155
+floor 63 154 63 154
+door 63 154 v 2
+# F1 Medication Room east door: the map's little lobby between it and the
+# Guard Office runs y207.8-210.4 (rows 208-209) with its floor line in row
+# 210; the bar sits on the room's x72.5 wall at y208.5-210.
+erase 73 209
+floor 73 208 75 209
+tile v 72 210 72 211
+tile h 73 210 75 210
+void 73 211 75 211
+floor 71 208 71 208
+door 72 208 v 2
+# F1 south: the dark band y238.6-240.3 between the small rooms above
+# (x131-139.8) and the Rehabilitation Ward's top line is not floor on the
+# map (no hatch, same tone as outside). The trace left floor and a 3x2
+# wall blob there; make it void, closed by the x131 and x139.8 lines.
+void 132 239 139 239
+tile h 132 240 139 240
+tile v 131 239
+tile v 140 239
+# F2 NW stairwell (x27.5-34.5, y61.5-74.5): the trace read tread lines as
+# wall stubs. The map has one real wall inside, the double-line divider
+# between the two flights at x31.3-32.2, y63.5-71.5; the stub at x35-36
+# y69-70 is outside the building.
+floor 28 62 33 73
+tile v 27 62 27 73
+tile v 34 62 34 73
+tile v 31 64 31 70
+void 35 69 36 70
+# F1 Kitchen top (zoomed map): the corridor above is closed off by the
+# kitchen's top line y180.2 (x39.5-45.9); a dark void block x45.9-51.8,
+# y179.5-182 sits between them; a corridor arm x51.8-56.6 runs down to the
+# kitchen door bar at x53-54.6 on the y184.3 line. The trace had none of
+# this (the kitchen opened straight into the corridor) and no doorway for
+# that bar.
+tile h 40 180 45 180
+tile h 46 179 51 179
+void 46 180 50 181
+tile v 45 181 45 181
+tile h 45 182 51 182
+tile v 51 180 51 184
+floor 52 180 55 183
+tile v 56 182 56 184
+tile h 51 184 56 184
+floor 53 184 54 184
+door 53 184 h 2
+# the 2-cell strip between the Pantry and Kitchen walls (x37.6-39.5,
+# y180-191.5) is a dark shaft on the map, not a walkable dead end
+void 38 180 39 190
+tile h 38 191 39 191

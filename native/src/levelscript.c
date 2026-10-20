@@ -246,6 +246,25 @@ static int run_line(ctx_t* c, int argc, char** argv) {
         section_t* s = &lv->sections[lv->section_count++];
         *s = (section_t){ a[0] + ox, a[1] + oy, a[2], a[3], "" };
         join_name(argv, 5, argc, s->name);
+    } else if (strcmp(cmd, "cover") == 0) {
+        // grow the reveal section next to cell X Y so it covers the cell
+        // (walls moved onto their map line turn wall cells into floor)
+        if (argc != 3 || need_ints(c, argv, 1, 2, a)) return argc != 3 ? fail(c, "cover X Y") : -1;
+        int x = a[0] + ox, y = a[1] + oy;
+        static const int nb[5][2] = { { 0, 0 }, { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+        section_t* hit = NULL;
+        for (int k = 0; k < 5 && !hit; k++) {
+            for (int i = 0; i < lv->section_count && !hit; i++) {
+                section_t* s = &lv->sections[i];
+                int nx = x + nb[k][0], ny = y + nb[k][1];
+                if (nx >= s->x && nx < s->x + s->w && ny >= s->y && ny < s->y + s->h) hit = s;
+            }
+        }
+        if (!hit) return fail(c, "cover: no section next to %d %d", x, y);
+        if (x < hit->x) { hit->w += hit->x - x; hit->x = x; }
+        if (y < hit->y) { hit->h += hit->y - y; hit->y = y; }
+        if (x >= hit->x + hit->w) hit->w = x - hit->x + 1;
+        if (y >= hit->y + hit->h) hit->h = y - hit->y + 1;
     } else if (strcmp(cmd, "autowall") == 0) {
         autowall(lv);
     } else if (strcmp(cmd, "start") == 0) {
