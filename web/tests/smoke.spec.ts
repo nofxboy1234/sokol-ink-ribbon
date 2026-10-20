@@ -47,10 +47,10 @@ test("the map app boots and renders the level", async ({ page }) => {
     revealed: window.Module?._level_revealed?.() ?? 0,
   }));
 
-  expect(grid.cols).toBe(151);
-  expect(grid.rows).toBe(96);
-  expect(grid.cellX).toBe(85);
-  expect(grid.cellY).toBe(23);
+  expect(grid.cols).toBe(184);
+  expect(grid.rows).toBe(252);
+  expect(grid.cellX).toBe(109);
+  expect(grid.cellY).toBe(80);
   expect(grid.replay).toBeGreaterThan(0);
   // the whole starting section is revealed as one large chunk
   expect(grid.revealed).toBeGreaterThan(100);
@@ -419,6 +419,14 @@ async function findItem(page: Page, item: number, nth: number, dark: number) {
   return unpack(v);
 }
 
+// The nth item of a type, lit or not.
+async function findAnyItem(page: Page, item: number, nth: number) {
+  let v = await wasm(page, "web_test_find_item", item, nth, 0);
+  if (v < 0) v = await wasm(page, "web_test_find_item", item, nth, 1);
+  expect(v).toBeGreaterThanOrEqual(0);
+  return unpack(v);
+}
+
 async function findObject(page: Page, kind: number, nth: number) {
   const v = await wasm(page, "web_test_find_object", kind, nth);
   expect(v).toBeGreaterThanOrEqual(0);
@@ -429,6 +437,14 @@ async function findDoor(page: Page, mode: number) {
   const v = await wasm(page, "web_test_find_door", mode);
   expect(v).toBeGreaterThanOrEqual(0);
   return unpack(v);
+}
+
+// The cell before a door, the key that walks through it, and the axis
+// that shows whether she crossed (extra = 1 for a horizontal door).
+function approach(d: { x: number; y: number; extra: number }) {
+  return d.extra
+    ? { x: d.x, y: d.y - 1, key: "s", axis: "player_cell_y", before: d.y - 1, past: d.y }
+    : { x: d.x - 1, y: d.y, key: "d", axis: "player_cell_x", before: d.x - 1, past: d.x };
 }
 
 async function boot(page: Page) {
@@ -541,7 +557,7 @@ test("a hit makes the enemy angry", async ({ page }) => {
 
 test("a hit leaves Grace Hurt for 5 s, unable to move, then she waits", async ({ page }) => {
   await boot(page);
-  await wasm(page, "web_test_enemy_place", 7250, 6550); // enemy sealed in the gated south room
+  await wasm(page, "web_test_enemy_place", 11550, 4550); // enemy sealed in the unconnected F3 Attic
   await steer(page, "d", 400);
   await wasm(page, "web_test_hurt");
   expect(await wasm(page, "web_grace_mode")).toBe(4);
@@ -1070,16 +1086,16 @@ test("the fuse chain: gate stays shut without the fuse, opens with it, goal past
 
 test("climbing: Space climbs on after the delay, and Space climbs off again", async ({ page }) => {
   await boot(page);
-  // a sealed stair block: make it climbable with the test hook and
-  // stand west of it (obstacles: cabinet, then stair blocks; nth 2 is
-  // the West Stairwell block, with real floor on its west side)
+  // the parlor table (third obstacle: fuse locker, bar counter, table),
+  // with floor on its west side
   const stairs = await findObject(page, 8, 2); // OBJ_OBSTACLE
+  expect([stairs.x, stairs.y]).toEqual([69, 190]);
   await page.evaluate(
     ([sx, sy]) => window.Module?._web_test_grace_at?.(sx, sy),
-    [stairs.x - 1, stairs.y + 1] as const,
+    [stairs.x - 1, stairs.y] as const,
   );
   await page.waitForTimeout(200);
-  expect(await wasm(page, "web_test_set_climbable", stairs.x + 1, stairs.y + 1)).toBe(1);
+  expect(await wasm(page, "web_test_set_climbable", stairs.x + 1, stairs.y)).toBe(1);
   await steer(page, "d", 60); // face east, stay in her cell
   await page.waitForTimeout(250);
   await page.keyboard.press(" ");
@@ -1295,22 +1311,23 @@ test("Space in a menu accepts there and never leaks into the world", async ({ pa
 
 test("items cannot be picked up through a wall, but can from the open side", async ({ page }) => {
   await boot(page);
-  await wasm(page, "web_test_enemy_place", 7250, 6550); // enemy sealed in the gated south room
-  // the Antique Coin at (29,39) sits just inside the Records Room's
-  // north wall (pass 3 retrace; the pass-2 coin at (145,65) was behind
-  // a wall the stitched map never had): light it with the Lighter so
-  // only the wall can block the pickup
+  await wasm(page, "web_test_enemy_place", 11550, 4550); // enemy sealed in the unconnected F3 Attic
+  // the Antique Coin at (84,202) in the Guard Office sits against its
+  // east wall: light it with the Lighter so only the wall can block
+  // the pickup
   await wasm(page, "web_test_give", 7);
   await wasm(page, "lighter_set", 1);
+  let coin = { x: -1, y: -1, extra: 0 };
+  for (let n = 0; coin.x !== 84 || coin.y !== 202; n++) coin = await findAnyItem(page, 1, n);
   const before = await wasm(page, "items_collected");
-  // north side of the wall: within range, but the wall is between us
-  await wasm(page, "web_test_grace_at", 29, 38);
+  // east of the wall: the wall is between us
+  await wasm(page, "web_test_grace_at", coin.x + 2, coin.y);
   await page.waitForTimeout(200);
   await page.keyboard.press(" ");
   await page.waitForTimeout(250);
   expect(await wasm(page, "items_collected")).toBe(before);
-  // south of it is the open side (inside the room)
-  await wasm(page, "web_test_grace_at", 29, 40);
+  // west of it is the open side (inside the room)
+  await wasm(page, "web_test_grace_at", coin.x - 1, coin.y);
   await page.waitForTimeout(200);
   await page.keyboard.press(" ");
   await expect.poll(() => wasm(page, "items_collected")).toBe(before + 1);
@@ -1320,7 +1337,7 @@ test("inventory: Space opens the cell context menu, arrows + Space use the item,
   page,
 }) => {
   await boot(page);
-  await wasm(page, "web_test_enemy_place", 7250, 6550); // enemy sealed in the gated south room
+  await wasm(page, "web_test_enemy_place", 11550, 4550); // enemy sealed in the unconnected F3 Attic
   await wasm(page, "web_test_hurt");
   await wasm(page, "web_test_hurt");
   expect(await wasm(page, "health_value")).toBe(2);
@@ -1361,13 +1378,13 @@ test("inventory: Space opens the cell context menu, arrows + Space use the item,
 
 test("the enemy chases diagonally (both axes at once) and catches Grace", async ({ page }) => {
   await boot(page);
-  // Grace waits at the Room 201 spawn (85.5, 23.5); put the enemy
+  // Grace waits at the Room 201 spawn (109.5, 80.5); put the enemy
   // north-east of her in the same room
-  await wasm(page, "web_test_enemy_place", 8950, 2150);
+  await wasm(page, "web_test_enemy_place", 11250, 7750);
   const x0 = await wasm(page, "web_enemy_px");
   const y0 = await wasm(page, "web_enemy_py");
-  expect(x0).toBeCloseTo(89.5, 0);
-  expect(y0).toBeCloseTo(21.5, 0);
+  expect(x0).toBeCloseTo(112.5, 0);
+  expect(y0).toBeCloseTo(77.5, 0);
   // axis-aligned movement would first change only one coordinate; a
   // diagonal leg changes both before either has moved a full cell
   await expect
@@ -1386,43 +1403,47 @@ test("the enemy chases diagonally (both axes at once) and catches Grace", async 
   await expect.poll(() => wasm(page, "web_grace_mode"), { timeout: 15000 }).toBe(4);
 });
 
-test("floor 2 chain: screwdriver and Cherub Key open the way to the fuse, gate and goal", async ({
+test("key chain: screwdriver and Cherub Key open the way to the fuse, gate and goal", async ({
   page,
 }) => {
   await boot(page);
-  await wasm(page, "web_test_enemy_place", 7250, 6550); // enemy sealed in the gated south room
+  await wasm(page, "web_test_enemy_place", 11550, 4550); // enemy sealed in the unconnected F3 Attic
+  // the chain's items sit in unlit rooms: carry a lit Lighter
+  await wasm(page, "web_test_give", 7);
+  await wasm(page, "lighter_set", 1);
   const collected = () => wasm(page, "items_collected");
-  // the Cherub door (Lead Researcher's Office) is locked without its key
-  const cdoor = await findDoor(page, 1);
-  await wasm(page, "web_test_grace_at", cdoor.x, cdoor.y - 1);
+  // the Cherub door (Rehabilitation Ward) is locked without its key
+  const cdoor = approach(await findDoor(page, 1));
+  await wasm(page, "web_test_grace_at", cdoor.x, cdoor.y);
   await page.waitForTimeout(200);
   await page.keyboard.press(" ");
-  await steer(page, "s", 700);
-  expect(await wasm(page, "player_cell_y")).toBe(cdoor.y - 1);
+  await steer(page, cdoor.key, 700);
+  expect(await wasm(page, cdoor.axis)).toBe(cdoor.before);
   // the Screwdriver (Chairman's Office)
-  const screw = await findItem(page, 4, 0, 0);
+  const screw = await findAnyItem(page, 4, 0);
   let before = await collected();
   await wasm(page, "web_test_grace_at", screw.x, screw.y);
   await page.waitForTimeout(150);
   await page.keyboard.press(" ");
   await expect.poll(collected).toBe(before + 1);
   // the Cherub Key (Nurses' Station)
-  const key = await findItem(page, 8, 0, 0);
+  const key = await findAnyItem(page, 8, 0);
   before = await collected();
   await wasm(page, "web_test_grace_at", key.x, key.y);
   await page.waitForTimeout(150);
   await page.keyboard.press(" ");
   await expect.poll(collected).toBe(before + 1);
   // unlock the Cherub door and walk through into the office
-  await wasm(page, "web_test_grace_at", cdoor.x, cdoor.y - 1);
+  await wasm(page, "web_test_grace_at", cdoor.x, cdoor.y);
   await page.waitForTimeout(150);
   await page.keyboard.press(" "); // unlock with the key
   await page.waitForTimeout(150);
-  await steer(page, "s", 900);
-  expect(await wasm(page, "player_cell_y")).toBeGreaterThan(cdoor.y);
-  // the Fuse is in the screwed-shut cabinet: Space opens it, Space takes it
-  const fuse = await findItem(page, 6, 0, 0);
-  await wasm(page, "web_test_grace_at", fuse.x, fuse.y - 1);
+  await steer(page, cdoor.key, 900);
+  expect(await wasm(page, cdoor.axis)).toBeGreaterThan(cdoor.past);
+  // the Fuse is in the screwed-shut locker in Room 201: Space opens it,
+  // Space takes it (from the floor east of the locker)
+  const fuse = await findAnyItem(page, 6, 0);
+  await wasm(page, "web_test_grace_at", fuse.x + 1, fuse.y);
   await page.waitForTimeout(150);
   before = await collected();
   await page.keyboard.press(" "); // opens the cabinet (she has the screwdriver)
@@ -1445,39 +1466,44 @@ test("floor 2 chain: screwdriver and Cherub Key open the way to the fuse, gate a
 
 test("the security gates, security door and staircases are sealed", async ({ page }) => {
   await boot(page);
-  await wasm(page, "web_test_enemy_place", 7250, 6550); // enemy sealed in the gated south room
-  // the striped gate south of Central Hall stays shut without the fuse
-  const gate = await findDoor(page, 2);
-  await wasm(page, "web_test_grace_at", gate.x + 1, gate.y - 1);
+  await wasm(page, "web_test_enemy_place", 11550, 4550); // enemy sealed in the unconnected F3 Attic
+  // the striped gate in the Rehabilitation Ward stays shut without the fuse
+  const gd = await findDoor(page, 2);
+  const gate = approach({ ...gd, y: gd.extra ? gd.y : gd.y + 1 });
+  await wasm(page, "web_test_grace_at", gate.x, gate.y);
   await page.waitForTimeout(200);
-  await steer(page, "s", 700);
-  expect(await wasm(page, "player_cell_y")).toBe(gate.y - 1);
+  await steer(page, gate.key, 700);
+  expect(await wasm(page, gate.axis)).toBe(gate.before);
   expect(await wasm(page, "web_goal_met")).toBe(0);
-  // the striped security door into the hall's south strip is a plain
-  // unlocked door in the retrace (no key exists for it, and the hall
-  // ring's restored walls leave it as the only south-east entrance)
-  const sec = await findDoor(page, 3);
-  await wasm(page, "web_test_grace_at", sec.x - 1, sec.y);
+  // the striped security door (Isolation Ward) is a plain unlocked door
+  const sec = approach(await findDoor(page, 3));
+  await wasm(page, "web_test_grace_at", sec.x, sec.y);
   await page.waitForTimeout(200);
-  await steer(page, "d", 700);
-  expect(await wasm(page, "player_cell_x")).toBeGreaterThan(sec.x - 1);
-  // a stair block is solid: floors 1 and 3 do not exist yet
-  const stairs = await findObject(page, 8, 2); // OBJ_OBSTACLE: cabinet, then stairs
-  await wasm(page, "web_test_grace_at", stairs.x - 1, stairs.y + 1);
-  await page.waitForTimeout(200);
-  await steer(page, "d", 800);
-  expect(await wasm(page, "player_cell_x")).toBeLessThan(stairs.x);
+  await steer(page, sec.key, 700);
+  expect(await wasm(page, sec.axis)).toBeGreaterThan(sec.before);
+});
+
+test("stairs carry Grace between floors", async ({ page }) => {
+  await boot(page);
+  await wasm(page, "web_test_enemy_place", 11550, 4550);
+  // the first stairs object (F3 west) links to the F2 north-west stairs up
+  const top = await findObject(page, 13, 0); // OBJ_STAIRS
+  const down = await findObject(page, 13, 1);
+  expect([top.x, top.y, down.x, down.y]).toEqual([32, 5, 30, 62]);
+  await wasm(page, "web_test_grace_at", down.x, down.y);
+  await expect.poll(() => wasm(page, "player_cell_y"), { timeout: 3000 }).toBeLessThan(10);
+  expect(Math.abs((await wasm(page, "player_cell_x")) - (top.x + 1))).toBeLessThanOrEqual(1);
 });
 
 test("Grace walks in rooms across floor 2 (Central Hall, Bar & Lounge, Room 203)", async ({
   page,
 }) => {
   await boot(page);
-  await wasm(page, "web_test_enemy_place", 250, 250); // park the enemy in the NW stairwell
+  await wasm(page, "web_test_enemy_place", 11550, 4550); // park the enemy in the unconnected F3 Attic
   const rooms: Array<[number, number, string]> = [
-    [52, 44, "d"], // Central Hall, west side of the ring
-    [37, 15, "d"], // Bar & Lounge
-    [142, 11, "a"], // Room 203
+    [70, 100, "d"], // Gallery
+    [50, 70, "d"], // Bar & Lounge
+    [160, 68, "a"], // Room 203
   ];
   for (const [x, y, key] of rooms) {
     await wasm(page, "web_test_grace_at", x, y);
@@ -1491,40 +1517,39 @@ test("Grace walks in rooms across floor 2 (Central Hall, Bar & Lounge, Room 203)
 
 test("reveal loads section by section as Grace moves", async ({ page }) => {
   await boot(page);
-  await wasm(page, "web_test_enemy_place", 250, 250); // park the enemy in the NW stairwell
+  await wasm(page, "web_test_enemy_place", 11550, 4550); // park the enemy in the unconnected F3 Attic
   // the Bar & Lounge is floor but unrevealed from the Room 201 start
-  expect(await wasm(page, "web_cell_floor", 37, 15)).toBe(0);
+  expect(await wasm(page, "web_cell_floor", 50, 70)).toBe(0);
   const revealed0 = await page.evaluate(() => window.Module?._level_revealed?.() ?? 0);
   // walk her into the Bar: its section reveals as one sensible chunk
-  await wasm(page, "web_test_grace_at", 37, 15);
-  await expect.poll(() => wasm(page, "web_cell_floor", 37, 15)).toBe(1);
+  await wasm(page, "web_test_grace_at", 50, 70);
+  await expect.poll(() => wasm(page, "web_cell_floor", 50, 70)).toBe(1);
   const revealed1 = await page.evaluate(() => window.Module?._level_revealed?.() ?? 0);
   expect(revealed1).toBeGreaterThan(revealed0 + 50);
 });
 
 test("steering into walls and the hall void never leaves the floor", async ({ page }) => {
   await boot(page);
-  await wasm(page, "web_test_enemy_place", 250, 250); // park the enemy in the NW stairwell
+  await wasm(page, "web_test_enemy_place", 11550, 4550); // park the enemy in the unconnected F3 Attic
   // west out of Room 201: the restored west wall holds her in the room
   await steer(page, "a", 1800);
   const cx = await wasm(page, "player_cell_x");
   const cy = await wasm(page, "player_cell_y");
-  expect(cx).toBeGreaterThanOrEqual(81);
+  expect(cx).toBeGreaterThanOrEqual(104);
   expect(await wasm(page, "web_cell_floor", cx, cy)).toBe(1);
-  // east into the Central Hall's black centre from the ring walkway:
-  // the void is walled off, she stays on the ring
-  await wasm(page, "web_test_grace_at", 53, 44);
+  // east out of Room 203 into the void past the building's east wall
+  await wasm(page, "web_test_grace_at", 160, 68);
   await page.waitForTimeout(200);
   await steer(page, "d", 1800);
   const hx = await wasm(page, "player_cell_x");
   const hy = await wasm(page, "player_cell_y");
-  expect(hx).toBeLessThanOrEqual(54);
+  expect(hx).toBeLessThanOrEqual(164);
   expect(await wasm(page, "web_cell_floor", hx, hy)).toBe(1);
 });
 
 test("Space picks up an Antique Coin", async ({ page }) => {
   await boot(page);
-  await wasm(page, "web_test_enemy_place", 7250, 6550);
+  await wasm(page, "web_test_enemy_place", 11550, 4550);
   const coin = await findItem(page, 1, 0, 0); // first lit Antique Coin
   const before = await wasm(page, "items_collected");
   await wasm(page, "web_test_grace_at", coin.x, coin.y);
