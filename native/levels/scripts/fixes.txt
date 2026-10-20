@@ -1,0 +1,25 @@
+# Hand corrections the tracer gets wrong, checked against Polygon's map.
+# Runs after floor1-3.txt, before links.txt.
+
+# F2 Central Hall, west flight: the map draws it 3 cells wide (x 81-83),
+# the trace read its treads as walls and left a 1-cell passage.
+floor 81 96 83 105
+vwall 80 96 105
+vwall 84 97 105
+
+# F2 Conference Room: its east side is one wall line at x 134 on the map with
+# a 4-cell corridor beyond (x 135-138); the trace doubled the wall and
+# sealed the room. Thin the wall and open a door into the corridor.
+floor 135 109 135 119
+floor 134 117 134 118
+door 134 117 v 2
+
+# F1 Restroom: the west stall traced 1 cell wide; the map's two stalls are
+# the same width, so widen it to 2 and give it a normal 2-cell door.
+erase 39 168
+floor 38 168 38 170
+vwall 37 168 170
+door 38 168 h 2
+
+# F2 Central Hall, east flight: a tread traced as a wall across the flight.
+floor 100 101 100 101

@@ -3,8 +3,10 @@
   "floor 2: cyan door bar near cell 160,123",
   "floor 1: cyan door bar near cell 53,164",
   "floor 1: cyan door bar near cell 53,184",
+  "floor 1: cyan door bar near cell 39,193",
   "floor 1: cyan door bar near cell 42,200"
  ],
+ "double_wall_cells_thinned": 263,
  "markers": {
   "1": {
    "Ammo: 12.7x55mm (1)": 1,
@@ -138,7 +140,7 @@
   }
  },
  "wall_cells_opened_to_join_pockets": {
-  "1": 12,
+  "1": 14,
   "2": 11,
   "3": 6
  }

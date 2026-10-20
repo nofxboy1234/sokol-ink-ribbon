@@ -21,9 +21,18 @@ link F1_S_stairs F2_SE_stairs
 obj stairs 158 197 w=3 h=3 name=F1_E_stairs
 obj stairs 160 109 w=2 h=3 name=F2_Lead_stairs link=F1_E_stairs
 link F1_E_stairs F2_Lead_stairs
+# floor 2 Central Hall flights <-> floor 3 attic corridor. The map draws no
+# dashed line for these; the hall's two flights climb to dead-end landings
+# and the attic wing has no other way in, so they lead up there.
+obj stairs 78 52 w=2 h=2 name=F3_attic_W_stairs
+obj stairs 81 93 w=3 h=2 name=F2_hall_W_stairs link=F3_attic_W_stairs
+link F3_attic_W_stairs F2_hall_W_stairs
+obj stairs 93 53 w=2 h=2 name=F3_attic_E_stairs
+obj stairs 100 93 w=2 h=2 name=F2_hall_E_stairs link=F3_attic_E_stairs
+link F3_attic_E_stairs F2_hall_E_stairs
 
-# Grace wakes in Room 201 next to the Lighter and the Fuse.
-start 109 80
+# Grace wakes in Room 203, at its label on the map.
+start 159 68
 # Room 201's lamp reaches the Fuse locker and the Lighter.
 set 109 79 radius=7
 # The Nurses' Station lamp is the one the enemy can smash.

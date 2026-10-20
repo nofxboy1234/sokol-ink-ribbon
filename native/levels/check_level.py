@@ -115,6 +115,8 @@ for line in log:
 print(f"walkable cells reached: {len(seen)}")
 unreached = [o for o in objs if o["kind"] == "item" and o["id"] not in held]
 print(f"items reached {len(held)}, not reached {len(unreached)}")
+for o in unreached:
+    print(f"  not reached: {o['item']} at {o['x']},{o['y']}")
 if leak:
     print(f"LEAK: Grace can walk off the map at {leak}")
 print("GOAL REACHED" if reached else "GOAL NOT REACHED")
