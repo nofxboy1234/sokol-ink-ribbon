@@ -1296,20 +1296,21 @@ test("Space in a menu accepts there and never leaks into the world", async ({ pa
 test("items cannot be picked up through a wall, but can from the open side", async ({ page }) => {
   await boot(page);
   await wasm(page, "web_test_enemy_place", 7250, 6550); // enemy sealed in the gated south room
-  // the Antique Coin at (145,65) sits just inside the Lead Researcher's
-  // Office north wall: light it with the Lighter so only the wall can
-  // block the pickup
+  // the Antique Coin at (29,39) sits just inside the Records Room's
+  // north wall (pass 3 retrace; the pass-2 coin at (145,65) was behind
+  // a wall the stitched map never had): light it with the Lighter so
+  // only the wall can block the pickup
   await wasm(page, "web_test_give", 7);
   await wasm(page, "lighter_set", 1);
   const before = await wasm(page, "items_collected");
   // north side of the wall: within range, but the wall is between us
-  await wasm(page, "web_test_grace_at", 145, 64);
+  await wasm(page, "web_test_grace_at", 29, 38);
   await page.waitForTimeout(200);
   await page.keyboard.press(" ");
   await page.waitForTimeout(250);
   expect(await wasm(page, "items_collected")).toBe(before);
-  // south of the wall is the open side (inside the office)
-  await wasm(page, "web_test_grace_at", 145, 66);
+  // south of it is the open side (inside the room)
+  await wasm(page, "web_test_grace_at", 29, 40);
   await page.waitForTimeout(200);
   await page.keyboard.press(" ");
   await expect.poll(() => wasm(page, "items_collected")).toBe(before + 1);

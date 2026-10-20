@@ -121,15 +121,15 @@ static void cell_of(int* cx, int* cy) {
     *cy = (int)floorf(e.y);
 }
 
-// Plans from the waypoint it is already heading to, so a replan never snaps back.
+// Plans from the cell the enemy's body is in. (It used to plan from
+// the waypoint it was heading to, a leftover from centre-to-centre
+// hops: with free-angle smoothed legs that waypoint is often already
+// behind it, so every chase replan turned it back toward a cell it had
+// passed -- a visible reverse-and-snap. The first waypoint is its own
+// cell, consumed at once by walk(), which still runs cross_door.)
 static bool route_to(int tx, int ty, int max_cost) {
     int sx, sy;
-    if (e.index < e.path.count) {
-        sx = e.path.x[e.index];
-        sy = e.path.y[e.index];
-    } else {
-        cell_of(&sx, &sy);
-    }
+    cell_of(&sx, &sy);
     // Each plan rolls whether it is willing to smash through breakable doors.
     int chance = e.state == ENEMY_CHASE ? ENEMY_BREAK_CHASE : e.state == ENEMY_SEARCH ? ENEMY_BREAK_SEARCH : ENEMY_BREAK_PATROL;
     bool through = (int)(rnd() % 100u) < chance;
@@ -449,9 +449,17 @@ static bool walk(float dt) {
     int ecx, ecy;
     cell_of(&ecx, &ecy);
     bool in_final_cell = ecx == e.path.x[aim] && ecy == e.path.y[aim];
-    if (aim == e.path.count - 1 && (dist <= step + ENEMY_EPSILON || in_final_cell)) {
+    if (aim == e.path.count - 1 && dist <= step + ENEMY_EPSILON) {
         e.x = tx;  // final waypoint: settle exactly on its centre
         e.y = ty;
+    } else if (aim == e.path.count - 1 && in_final_cell) {
+        // inside the destination cell: glide to its centre at walking
+        // speed. (This used to teleport to the centre the moment the
+        // body entered the cell -- a jump of up to ~0.7 cells at the
+        // end of every leg.) Moving toward its own centre only shrinks
+        // the body square's overlap, so no wall check is needed.
+        e.x += dx / dist * step;
+        e.y += dy / dist * step;
     } else if (dist > 0.0f) {
         float mx = dx / dist * (dist <= step ? dist : step);
         float my = dy / dist * (dist <= step ? dist : step);

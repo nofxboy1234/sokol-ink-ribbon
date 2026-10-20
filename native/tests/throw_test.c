@@ -570,6 +570,51 @@ int main(int argc, char** argv) {
         lo->state = ls;
     }
 
+    // --- enemy motion is continuous: no frame may move it farther than
+    // its top speed allows (catches the old destination-cell teleport
+    // and replans that turned it back toward a passed waypoint).
+    {
+        fresh_enemy_at(level.start_x, level.start_y + 0);
+        float px = enemy_x(), py = enemy_y(), worst = 0.0f;
+        const float dt = 1.0f / 60.0f;
+        const float limit = 4.4f * 1.25f * dt + 0.002f;
+        int jumps = 0;
+        for (int i = 0; i < 6000; i++) {
+            // Grace drifts around the start room so it patrols, hears,
+            // chases and searches -- every leg end and replan included
+            float gx = (float)level.start_x + 0.5f + 3.0f * sinf((float)i * 0.01f);
+            float gy = (float)level.start_y + 0.5f;
+            enemy_update(dt, gx, gy, (i % 600) < 30 ? 1.0f : 0.0f);
+            float d = hypotf(enemy_x() - px, enemy_y() - py);
+            if (d > worst) worst = d;
+            if (d > limit) jumps++;
+            px = enemy_x(); py = enemy_y();
+        }
+        CHECK(jumps == 0, "enemy never snaps: worst frame step %.3f cells (limit %.3f), %d jumps", (double)worst, (double)limit, jumps);
+    }
+
+    // --- pass 3: every door is a real doorway along its whole slab
+    // (floor on both sides of each slab cell), and the retraced bar
+    // doors are as long as the map's door bars (2 cells, not squat
+    // 1-cell squares).
+    {
+        int bad = 0, doors = 0, long_doors = 0;
+        for (int i = 0; i < level.obj_count; i++) {
+            const obj_t* o = &grid_level()->objs[i];
+            if (o->kind != OBJ_DOOR) continue;
+            doors++;
+            int sp = o->span > 0 ? o->span : 1;
+            if (sp >= 2) long_doors++;
+            for (int k = 0; k < sp; k++) {
+                int ax = o->horizontal ? o->x + k : o->x - 1, ay = o->horizontal ? o->y - 1 : o->y + k;
+                int bx = o->horizontal ? o->x + k : o->x,     by = o->horizontal ? o->y : o->y + k;
+                if (!grid_is_floor(ax, ay) || !grid_is_floor(bx, by)) bad++;
+            }
+        }
+        CHECK(bad == 0, "doors: every slab cell has floor on both sides (%d bad of %d doors)", bad, doors);
+        CHECK(long_doors * 2 > doors, "doors: most doors span their map bar (%d of %d are 2+ cells)", long_doors, doors);
+    }
+
     // --- pass 2: perimeter containment and reveal-section coverage.
     // Every floor cell's edge to a non-floor cell must be walled (no
     // walking into the void), and every floor cell must sit inside a
@@ -941,7 +986,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < level.obj_count; i++) {
             obj_t* o = (obj_t*)&grid_level()->objs[i];
             if (o->kind != OBJ_DOOR) continue;
-            if (!door && o->horizontal && o->state == DOOR_UNLOCKED && o->span == 1 &&
+            if (!door && o->horizontal && o->state == DOOR_UNLOCKED && o->span <= 2 &&
                 grid_is_floor(o->x, o->y) && grid_is_floor(o->x - 1, o->y) && grid_is_floor(o->x, o->y - 1) &&
                 grid_is_floor(o->x - 1, o->y + 1) && grid_is_floor(o->x, o->y + 1)) door = o;
             if (o->link_id > 0) ldoor = o;  // the cherub door: locked, span 1
