@@ -638,7 +638,8 @@ def main():
         open(f"{out_dir}/floor{fl}.txt", "w").write("\n".join(lines) + "\n")
     json.dump(dict(markers=skipped, door_bars_without_a_doorway=unplaced,
                    double_wall_cells_thinned=thinned, wall_cells_aligned_to_map=aligned,
-                   wall_cells_opened_to_join_pockets={fl: len(v) for fl, v in repairs.items()}),
+                   wall_cells_opened_to_join_pockets={fl: len(v) for fl, v in repairs.items()},
+                   opened_cells={fl: v for fl, v in repairs.items()}),
               open(f"{out_dir}/skipped.json", "w"), indent=1, sort_keys=True)
     np.save(f"{out_dir}/tiles.npy", t)
 

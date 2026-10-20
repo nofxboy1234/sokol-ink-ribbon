@@ -17,6 +17,13 @@ floor 112 122 112 122
 floor 113 122 113 122
 floor 114 122 114 122
 floor 115 122 115 122
+# h wall 205 159-161 is +0.81 cells off its map line: move it one cell up
+void 159 205 159 205
+tile h 159 204
+void 160 205 160 205
+tile h 160 204
+void 161 205 161 205
+tile h 161 204
 # h wall 218 66-71 is -0.52 cells off its map line: thin the double wall to its line down
 floor 66 218 66 218
 floor 67 218 67 218
@@ -41,8 +48,6 @@ floor 146 164 146 164
 floor 146 165 146 165
 floor 146 166 146 166
 floor 146 167 146 167
-# skipped h 105 149-158 offset -0.52: a door's jamb (moving it would open a gap beside the door)
-# skipped h 168 43-44 offset 0.58: a door sits in this wall or where it would go (move it by hand)
 # skipped h 234 118-119 offset 0.52: sides not uniform
 # skipped v 37 168-170 offset -0.69: a door sits in this wall or where it would go (move it by hand)
 # skipped v 80 93-105 offset -0.58: on a staircase (its walls are set by hand in fixes.txt)

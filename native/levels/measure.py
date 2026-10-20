@@ -334,6 +334,9 @@ def emit_align(lv, runs, path):
     return moved, len(skipped)
 
 
+WALLCH = set("-|abcd")
+
+
 def measure(lv, im):
     """Each room's level rect (median rays between its walls) against the map:
     every one of its four walls is snapped to the map line running along it,
@@ -371,7 +374,7 @@ def measure(lv, im):
         lef, rig = xs == xs.min(), xs == xs.max()
         ext = [(Y0 + ys[lef].min(), Y0 + ys[lef].max() + 1), (X0 + xs[top].min(), X0 + xs[top].max() + 1),
                (Y0 + ys[rig].min(), Y0 + ys[rig].max() + 1), (X0 + xs[bot].min(), X0 + xs[bot].max() + 1)]
-        m, cov = [], []
+        m, cov, src = [], [], []
         wall_at = [(X0 + xs.min()) // C - 1, (Y0 + ys.min()) // C - 1, (X0 + xs.max()) // C + 1, (Y0 + ys.max()) // C + 1]
         for i, (mask, axis) in enumerate(((vmask, 1), (hmask, 0), (vmask, 1), (hmask, 0))):
             a0, a1 = ext[i]
@@ -381,11 +384,29 @@ def measure(lv, im):
             if on:
                 m.append(L[i] / C - float(np.mean([r["offset"] for r in on])))
                 cov.append(round(float(np.mean([r["cover"] for r in on])), 2))
+                src.append("run")
                 continue
+            # no wall run on this side: if the bbox side is a door gap or open
+            # floor (a section boundary), there is no wall here to measure; the
+            # door itself is checked against its map bar separately
+            k0, k1 = a0 // C, (a1 - 1) // C
+            cs = [(wall_at[i], k) if axis == 1 else (k, wall_at[i]) for k in range(k0, k1 + 1)]
+            ok = [(cx, cy) for cx, cy in cs if 0 <= cy < len(lv["tiles"]) and 0 <= cx < len(lv["tiles"][0])]
+            nw = sum(1 for cx, cy in ok if lv["tiles"][cy][cx] in WALLCH)
+            nd = sum(1 for cx, cy in ok if gapmask[cy * C + 1, cx * C + 1])
+            # a side that is mostly doorway (its jamb cells aren't a wall run)
+            if ok and (nw == 0 or nd >= nw):
+                kind = "door" if nd else "open"
+                src.append(kind)
+                m.append(L[i] / C)
+                cov.append(None)
+                continue
+            src.append("snap")
             c, cv = snap_edge(mask, axis, L[i], a0 - C, a1 + C)
             m.append(L[i] / C if c is None else c / C)
             cov.append(round(cv, 2) if c is not None else 0.0)
         unmatched = sum(1 for c in cov if c == 0.0)
+        cov = ["" if c is None else c for c in cov]
         # the walls around this room: runs touching its floor cells
         cells = set()
         for cy in range(sc["y"], sc["y"] + sc["h"]):
@@ -412,7 +433,7 @@ def measure(lv, im):
                          wall_err_mean=round(float(np.mean([abs(o) for o in offs])) if offs else 0.0, 2),
                          runs_without_map_line=sum(1 for i in mine if runs[i]["offset"] is None),
                          worst_run="" if worst is None else "{axis} {at} {start}-{end} {offset}".format(**runs[worst]),
-                         cover_l=cov[0], cover_t=cov[1], cover_r=cov[2], cover_b=cov[3]))
+                         edge_src="/".join(src), wall_at="/".join(map(str, wall_at)), cover_l=cov[0], cover_t=cov[1], cover_r=cov[2], cover_b=cov[3]))
     rows.sort(key=lambda r: (-r["floor"], r["name"], r["seed_y"], r["seed_x"]))
     return rows, runs
 
@@ -420,7 +441,7 @@ def measure(lv, im):
 def summary(rows):
     errs = [r["size_err"] for r in rows]
     edges = [r["edge_err"] for r in rows]
-    off = sum(1 for e in errs if e > 0.5)
+    off = sum(1 for e in edges if e > 0.5)
     return (f"{len(rows)} rooms and corridors; size error max {max(errs):.2f} mean {np.mean(errs):.2f};"
             f" edge error max {max(edges):.2f} mean {np.mean(edges):.2f}; {off} off by more than 0.5 cell;"
             f" {sum(r['walls_without_map_line'] for r in rows)} level walls with no map line;"

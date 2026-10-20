@@ -64,7 +64,8 @@ vwall 120 234 239
 # --- pass 3, wall-by-wall against the map (measure.py *_walls.csv) ---
 # F2 Nurses' Station: a stray L-shaped stub at x149-150 y89-90; the map's
 # wall here is only the vertical line at x151.5 down to the y91 line.
-floor 149 89 150 90
+void 148 88 150 90
+tile v 151 89 151 90
 # F1 Dining Room west: the dark shaft x62-63 between two walls is capped
 # by the map's y156.5 line, one row above where the trace capped it.
 tile h 62 156 63 156
@@ -120,3 +121,70 @@ door 53 184 h 2
 # y180-191.5) is a dark shaft on the map, not a walkable dead end
 void 38 180 39 190
 tile h 38 191 39 191
+# F2 Kitchenette door: the map bar is on the y82.0 line (x36.4-38), the trace
+# put the doorway a row low at y83
+erase 36 83
+tile v 35 82 35 82
+door 36 82 h 2
+floor 36 83 37 83
+# Restroom: the stall front (y168) ends at x43.5 on the map; x44 was a stub
+floor 44 168 44 168
+# Nurses' Station: row 105 x148-159 is a counter drawn in front of the
+# y106 wall, not a wall; keep col 150 as the door's jamb
+floor 148 105 149 105
+floor 151 105 159 105
+# opened-cell review (pass3/opened_cells.csv): the tracer read stair treads
+# as walls and left stubs across these flights; the opened cell was the only
+# way through. Clear the rest of each stub so the flight is one walkway.
+floor 132 37 133 37
+floor 133 39 133 40
+floor 76 49 77 49
+floor 75 51 77 51
+floor 100 100 100 100
+floor 36 121 37 121
+floor 90 142 93 142
+floor 117 145 117 145
+floor 160 203 161 203
+# red barriers: the tracer put both doorways two rows off their hatched bar.
+# F1 Alcove bar is at y216.3 (x89-93.3), F2 bar at y116.3 (x89-93.8)
+erase 89 214
+floor 89 216 92 216
+door 89 216 h 4 name=barrier
+erase 89 118
+floor 89 116 93 116
+door 89 116 h 5 name=barrier
+# opened-cell review: map wall, the rooms on both sides stay joined without it
+tile v 134 110
+# F3 flight below the Medical Supply corridor: interior x130.6-134.4, right
+# line x134.5 (the tracer's stubs at col 133 stood in for it)
+tile v 134 37 134 41
+floor 133 36 133 36
+# floor that touched the void: the east flight's foot (rows 204) and the
+# (Nurses stub is voided above)
+tile h 158 205 162 205
+# opened-cell review: the cell was the only way into a pocket the map draws
+# as a dark shaft (mean luminance <= 25, rooms are 35-60); the pocket goes
+# back to void and the wall is closed
+tile h 57 84
+void 57 85 61 85
+void 57 86 61 86
+void 57 87 61 87
+void 57 88 61 88
+void 57 89 61 89
+void 57 90 61 90
+void 57 91 61 91
+tile h 137 189
+void 137 190 138 190
+void 137 191 138 191
+void 137 192 138 192
+void 137 193 138 193
+tile h 75 197
+void 75 198 76 198
+tile h 137 24
+void 137 25 139 25
+void 137 26 139 26
+void 137 27 139 27
+void 137 28 139 28
+void 137 29 139 29
+void 137 30 139 30
+void 137 31 139 31
