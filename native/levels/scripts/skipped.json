@@ -4,9 +4,11 @@
   "floor 1: cyan door bar near cell 53,164",
   "floor 1: cyan door bar near cell 53,184",
   "floor 1: cyan door bar near cell 39,193",
-  "floor 1: cyan door bar near cell 42,200"
+  "floor 1: cyan door bar near cell 42,200",
+  "floor 1: cyan door bar near cell 132,204",
+  "floor 1: red door bar near cell 90,175"
  ],
- "double_wall_cells_thinned": 263,
+ "double_wall_cells_thinned": 270,
  "markers": {
   "1": {
    "Ammo: 12.7x55mm (1)": 1,
@@ -139,9 +141,10 @@
    "Weapon Part: Compensator": 1
   }
  },
+ "wall_cells_aligned_to_map": 106,
  "wall_cells_opened_to_join_pockets": {
-  "1": 14,
-  "2": 11,
-  "3": 6
+  "1": 16,
+  "2": 13,
+  "3": 7
  }
 }

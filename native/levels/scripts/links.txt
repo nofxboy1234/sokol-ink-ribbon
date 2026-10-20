@@ -34,18 +34,18 @@ link F3_attic_E_stairs F2_hall_E_stairs
 # Grace wakes in Room 203, at its label on the map.
 start 159 68
 # Room 201's lamp reaches the Fuse locker and the Lighter.
-set 109 79 radius=7
+setnear light 109 79 3 radius=7
 # The Nurses' Station lamp is the one the enemy can smash.
-set 142 93 breakable=1
+setnear light 142 93 6 breakable=1
 # The Fuse sits in a locker the Screwdriver (Nurses' Station) opens.
 obj obstacle 103 76 openable=1 name=fuse_locker link=Screwdriver
 # The Rehabilitation Ward vestibule: the cyan door takes the Cherub Key, the
 # red door is the gate the fusebox powers, the goal is in the ward.
-set 126 224 state=locked link=Cherub_Key name=cherub_door
+setnear door 126 224 2 state=locked link=Cherub_Key name=cherub_door
 obj fusebox 128 224 name=fusebox
-set 132 223 state=locked name=gate
+setnear door 132 223 2 state=locked name=gate
 obj goal 136 224 name=goal
-set 162 179 name=security_door
+setnear door 162 179 2 name=security_door
 
 # Furniture Grace can hide behind or climb. Polygon's map has no furniture
 # data, so these sit on tables drawn in the map art: the Bar & Lounge bar,

@@ -21,6 +21,10 @@ COLS, ROWS = 184, 252
 # belongs to the band its centre falls in
 FLOORS = {3: (0, 59), 2: (60, 141), 1: (142, 251)}
 LINE_MIN = 3 * CELL
+# a cell is in the building when it holds the outline wall's centre line,
+# about 4 px in from the outline: the outline wall lands in the cell it is
+# drawn in, not one cell inward
+INSIDE_FRAC = 0.2
 
 ITEM_MAP = {
     "Antique Coin": "coin",
@@ -62,7 +66,7 @@ def classify(im):
     inside_px = (lum >= 28.5) & grey
     inside_px = ndi.binary_closing(inside_px, np.ones((9, 9)))
     inside_px = ndi.binary_fill_holes(inside_px)
-    inside = cells(inside_px, 0.5)
+    inside = cells(inside_px, INSIDE_FRAC)
     lab, n = ndi.label(inside)
     sizes = ndi.sum(inside, lab, range(1, n + 1))
     inside = np.isin(lab, [i + 1 for i, s in enumerate(sizes) if s >= 40])
@@ -80,6 +84,67 @@ def classify(im):
     cyan = (b > 170) & (g > 150) & (r < 160)
     red = (r > 120) & (r - g > 60) & (r - b > 50)
     return inside, hcell, vcell, cyan, red, stairs, hsum, vsum
+
+
+def wall_pixels(im):
+    """Map pixels on a wall line: the long double lines inside, and the
+    building's outline wall (just inside the outline)."""
+    lum = im.mean(axis=2)
+    r, g, b = im[..., 0], im[..., 1], im[..., 2]
+    grey = (np.abs(r - b) < 25) & (np.abs(r - g) < 25)
+    inside_px = ndi.binary_fill_holes(ndi.binary_closing((lum >= 28.5) & grey, np.ones((9, 9))))
+    line_px = (lum >= 50) & grey
+    hl = paired(ndi.binary_opening(line_px, np.ones((1, LINE_MIN))), 0)
+    vl = paired(ndi.binary_opening(line_px, np.ones((LINE_MIN, 1))), 1)
+    outline = inside_px & ~ndi.binary_erosion(inside_px, iterations=8)
+    return hl | vl | outline, inside_px
+
+
+def align_walls(t, wallpx, stairs):
+    """Move each straight wall run (one cell thick, at least 2 long) to the
+    cell its map line's centre falls in, when that is the next cell over:
+    the trace's cell rounding can leave a wall a cell off its line."""
+    moved = 0
+    for axis in (0, 1):
+        tt = t if axis == 0 else t.T
+        px = wallpx if axis == 0 else wallpx.T
+        st = stairs if axis == 0 else stairs.T
+        R, Cc = tt.shape
+        for x in range(1, Cc - 1):
+            y = 0
+            while y < R:
+                ok = tt[y, x] == 2 and tt[y, x - 1] != 2 and tt[y, x + 1] != 2 and not st[y, x]
+                if not ok:
+                    y += 1
+                    continue
+                y1 = y
+                while (y1 + 1 < R and tt[y1 + 1, x] == 2 and tt[y1 + 1, x - 1] != 2 and tt[y1 + 1, x + 1] != 2
+                       and not st[y1 + 1, x]):
+                    y1 += 1
+                y0, y = y, y1 + 1
+                if y1 - y0 < 1:
+                    continue
+                prof = px[y0 * CELL:(y1 + 1) * CELL, (x - 1) * CELL:(x + 2) * CELL].sum(axis=0).astype(float)
+                if prof.max() <= 0:
+                    continue
+                prof = np.convolve(prof, np.ones(9) / 9, mode="same")
+                xn = x - 1 + int(np.argmax(prof)) // CELL
+                if xn == x:
+                    continue
+                far = 2 * x - xn
+                side = set(int(v) for v in tt[y0:y1 + 1, xn])
+                back = set(int(v) for v in tt[y0:y1 + 1, far])
+                if len(side) != 1 or len(back) != 1 or 2 in side or 2 in back:
+                    continue
+                tt[y0:y1 + 1, xn] = 2
+                tt[y0:y1 + 1, x] = 1 if 1 in back or 1 in side and 0 not in back else 0
+                if 0 in back:
+                    tt[y0:y1 + 1, x] = 0 if 0 in side else 1
+                for ye in (y0 - 1, y1 + 1):
+                    if 0 <= ye < R and tt[ye, xn] == 1 and tt[ye, x] == 2:
+                        tt[ye, xn] = 2
+                moved += y1 - y0 + 1
+    return moved
 
 
 def thin_walls(t, hsum, vsum, min_run=3):
@@ -123,6 +188,9 @@ def doors(mask, locked):
         h = sl[0].stop - sl[0].start
         w = sl[1].stop - sl[1].start
         if max(w, h) < 12:
+            continue
+        # a door is a bar; a square blob is a map marker (item/objective icon)
+        if max(w, h) < 1.8 * min(w, h):
             continue
         cy = (sl[0].start + sl[0].stop) / 2 / CELL
         cx = (sl[1].start + sl[1].stop) / 2 / CELL
@@ -478,6 +546,9 @@ def main():
     inside, hcell, vcell, cyan, red, stairs, hsum, vsum = classify(im)
     t, _ = tiles(inside, hcell, vcell, stairs)
     thinned = thin_walls(t, hsum, vsum)
+    wallpx, _ = wall_pixels(im)
+    aligned = align_walls(t, wallpx, stairs)
+    del wallpx
     lab, n = ndi.label(stairs)
     flights = [dict(x=int(sl[1].start), y=int(sl[0].start), w=int(sl[1].stop - sl[1].start),
                     h=int(sl[0].stop - sl[0].start)) for sl in ndi.find_objects(lab)]
@@ -566,7 +637,7 @@ def main():
                 skipped[fl][f"{m['layer']}: {title}"] += 1
         open(f"{out_dir}/floor{fl}.txt", "w").write("\n".join(lines) + "\n")
     json.dump(dict(markers=skipped, door_bars_without_a_doorway=unplaced,
-                   double_wall_cells_thinned=thinned,
+                   double_wall_cells_thinned=thinned, wall_cells_aligned_to_map=aligned,
                    wall_cells_opened_to_join_pockets={fl: len(v) for fl, v in repairs.items()}),
               open(f"{out_dir}/skipped.json", "w"), indent=1, sort_keys=True)
     np.save(f"{out_dir}/tiles.npy", t)

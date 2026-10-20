@@ -318,6 +318,30 @@ static int run_line(ctx_t* c, int argc, char** argv) {
             hit++;
         }
         if (!hit) return fail(c, "set: no object at %d %d", a[0], a[1]);
+    } else if (strcmp(cmd, "setnear") == 0) {
+        // setnear KIND X Y R key=value...: change the nearest KIND object
+        // within R cells, so a script survives a re-trace that moves it
+        if (argc < 6 || need_ints(c, argv, 2, 3, a)) return argc < 6 ? fail(c, "setnear KIND X Y R key=value...") : -1;
+        obj_kind_t k = obj_kind_from_name(argv[1]);
+        if ((int)k < 0) return fail(c, "unknown object kind '%s'", argv[1]);
+        obj_t* best = NULL;
+        int bd = 0;
+        for (int i = 0; i < lv->obj_count; i++) {
+            obj_t* o = &lv->objs[i];
+            int dx = o->x - (a[0] + ox), dy = o->y - (a[1] + oy);
+            int d = dx * dx + dy * dy;
+            if (o->kind != k || d > a[2] * a[2] || (best && d >= bd)) continue;
+            best = o;
+            bd = d;
+        }
+        if (!best) return fail(c, "setnear: no %s within %d of %d %d", argv[1], a[2], a[0], a[1]);
+        char* copy[MAX_ARGS];
+        char store[MAX_ARGS][128];
+        for (int j = 5; j < argc; j++) {
+            snprintf(store[j], sizeof(store[j]), "%s", argv[j]);
+            copy[j] = store[j];
+        }
+        if (apply_props(c, best, copy, 5, argc)) return -1;
     } else if (strcmp(cmd, "erase") == 0) {
         // erase X Y: remove every object anchored on that cell
         if (argc != 3 || need_ints(c, argv, 1, 2, a)) return argc != 3 ? fail(c, "erase X Y") : -1;

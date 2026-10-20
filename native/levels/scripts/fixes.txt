@@ -23,3 +23,40 @@ door 38 168 h 2
 
 # F2 Central Hall, east flight: a tread traced as a wall across the flight.
 floor 100 101 100 101
+
+# Courtyard -> Central Hall passage: the map draws a barred line with a red
+# marker across x89-91 at y175.3; the tracer now drops square marker blobs,
+# so place the barrier explicitly (red; the gap between the walls is 2 cells).
+door 90 175 h 2 state=locked name=barrier
+
+# Door bars the tracer found no doorway for (skipped.json): the map draws a
+# wall line through each, so close the wall and put the 2-wide door in it.
+# Filing Room / its south annex (map line y164.3, bar x50.5-52)
+hwall 50 53 164
+floor 51 164 52 164
+door 51 164 h 2
+# F2 east: upper room / Lead Researcher wing (map line y123.7, bar x160-161.5)
+hwall 156 162 123
+floor 160 123 161 123
+door 160 123 h 2
+# F1 Closet north wall (map line y203.8, bar x131.6-133)
+hwall 132 134 203
+floor 132 203 133 203
+door 132 203 h 2
+# Pantry / Kitchen (map line x39.4 rows 192-195, bar rows 192.5-194)
+vwall 39 192 195
+floor 39 193 39 194
+door 39 193 v 2
+# Pantry south / Custodian's corridor (map line x42.3, bar rows 199.6-201)
+vwall 42 197 200
+floor 42 199 42 200
+door 42 199 v 2
+# F1 south stairwell (Rehabilitation side): the trace wrapped walls around the
+# treads. Map: top wall y230.8 x117.5-123.3, landing x117.5-120.3 rows
+# 231-233.5, flight x120.3-123.3 down to y240 where it opens into the room.
+floor 118 231 122 233
+vwall 117 231 233
+vwall 123 231 239
+hwall 118 119 234
+floor 121 234 122 239
+vwall 120 234 239
