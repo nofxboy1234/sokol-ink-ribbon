@@ -34,6 +34,7 @@
 #include "tooltip.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 
@@ -147,7 +148,12 @@ static struct {
     bool touch_moved;
     float touch_start_x, touch_start_y;
     int respawn_x, respawn_y;
+    bool gl_full;      // last frame overflowed sokol_gl (tests)
+    int gl_vertices;   // vertices it used (tests)
 } app;
+
+#define SGL_MAX_VERTICES (1 << 19)
+#define SGL_MAX_COMMANDS (1 << 16)
 
 #define TOUCH_SLOP_PX 14.0f
 
@@ -775,7 +781,15 @@ static void init(void) {
         .environment = sglue_environment(),
         .logger.func = slog_func,
     });
-    sgl_setup(&(sgl_desc_t){ .logger.func = slog_func });
+    // sokol_gl's default 64k vertices ran out once enough of the hospital was
+    // revealed (walls, floor dots, items, routes all go through it); anything
+    // drawn after that point -- Grace's dot is drawn late -- was silently
+    // dropped. Room for the whole level revealed, with headroom.
+    sgl_setup(&(sgl_desc_t){
+        .max_vertices = SGL_MAX_VERTICES,
+        .max_commands = SGL_MAX_COMMANDS,
+        .logger.func = slog_func,
+    });
     render_init();
     _dbgui_setup();
 
@@ -892,8 +906,43 @@ static const obj_t* hover_interactable(void) {
     return NULL;
 }
 
+// Item labels: every item Grace could pick up right now (within the
+// one-cell reach Space and the hover popup use) that she can see gets its
+// name above it, white with a black border. Drawn on the foreground draw
+// list only, so they never take input. Same visibility rules as the hover.
+#define ITEM_LABEL_REACH 1
+static int item_labels_shown;
+static char item_label_last[64];
+
+static bool item_label_visible(int i) {
+    const obj_t* o = &app.level.objs[i];
+    return o->kind == OBJ_ITEM && grid_is_revealed(o->x, o->y) && !items_taken(i) &&
+           !openable_covers_closed(o->x, o->y) && light_item_visible(i) &&
+           interact_distance(i) <= ITEM_LABEL_REACH;
+}
+
+static void draw_item_labels(void) {
+    item_labels_shown = 0;
+    if (app.paused || app.dead || level_complete()) {
+        return;
+    }
+    for (int i = 0; i < app.level.obj_count; i++) {
+        if (!item_label_visible(i)) {
+            continue;
+        }
+        const obj_t* o = &app.level.objs[i];
+        float sx, sy;
+        camera_cell_to_screen((float)o->x + 0.5f, (float)o->y, &sx, &sy);
+        const char* name = item_display_name(o->item_type);
+        game_label(name, sx, sy - 6.0f);  // same pixel space as the hover popup
+        snprintf(item_label_last, sizeof item_label_last, "%s", name);
+        item_labels_shown++;
+    }
+}
+
 // Extra dear-imgui UI drawn inside the dbgui frame (the hover tooltip).
 void _dbgui_extra(void) {
+    draw_item_labels();
     const obj_t* hl = hover_interactable();
     if (hl) {
         const char* name = hl->name[0] ? hl->name : obj_kind_name(hl->kind);
@@ -1064,6 +1113,11 @@ static void frame(void) {
     fx.clock = (float)fmod(app.clock, 1000.0);
     render_set_fx(&fx);
     render_scene(-1, -1, NULL, &app.route);
+    {
+        sgl_error_t ge = sgl_error();
+        app.gl_full = ge.vertices_full || ge.commands_full;
+        app.gl_vertices = sgl_num_vertices();
+    }
 
     sg_begin_pass(&(sg_pass){
         .action = app.pass_action,
@@ -1630,6 +1684,46 @@ TEST_EXPORT void web_test_grace_at(int x, int y) {
     reveal_sections();
     interact_check_complete();
     bump_revision();
+}
+
+// Tests: did the last frame overflow sokol_gl's buffers (anything drawn
+// after that point, Grace included, is silently dropped)? And how many
+// vertices it used.
+TEST_EXPORT int web_test_gl_full(void) {
+    return app.gl_full ? 1 : 0;
+}
+
+TEST_EXPORT int web_test_gl_vertices(void) {
+    return app.gl_vertices;
+}
+
+// Tests: the nth door, packed x<<16 | y<<8 | span<<1 | horizontal; -1 past the end.
+TEST_EXPORT int web_test_door(int nth) {
+    int seen = 0;
+    for (int i = 0; i < app.level.obj_count; i++) {
+        obj_t* o = &app.level.objs[i];
+        if (o->kind != OBJ_DOOR) {
+            continue;
+        }
+        if (seen++ == nth) {
+            int span = o->span > 0 ? o->span : 1;
+            return (o->x << 16) | (o->y << 8) | (span << 1) | (o->horizontal ? 1 : 0);
+        }
+    }
+    return -1;
+}
+
+// Tests: how many item labels the last frame drew, and the last one's text.
+TEST_EXPORT int web_test_item_labels(void) {
+    return item_labels_shown;
+}
+
+TEST_EXPORT const char* web_test_item_label(void) {
+    return item_label_last;
+}
+
+TEST_EXPORT int web_test_ui_wants_mouse(void) {
+    return game_ui_wants_mouse() ? 1 : 0;
 }
 
 TEST_EXPORT void web_test_hurt(void) {

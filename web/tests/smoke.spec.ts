@@ -1596,3 +1596,116 @@ test("Space picks up an Antique Coin", async ({ page }) => {
   await page.keyboard.press(" ");
   await expect.poll(() => wasm(page, "items_collected")).toBe(before + 1);
 });
+
+type Wasm = Record<string, (...a: number[]) => number> & { UTF8ToString: (p: number) => string };
+
+// The colour of one screen pixel (CSS px inside the page), from a screenshot
+// decoded in the page (the WebGL canvas has no preserved drawing buffer).
+async function pixelAt(page: Page, x: number, y: number) {
+  const png = await page.screenshot({ clip: { x: Math.round(x) - 1, y: Math.round(y) - 1, width: 3, height: 3 } });
+  return page.evaluate(async (b64) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const c = document.createElement("canvas");
+    c.width = img.width;
+    c.height = img.height;
+    const g = c.getContext("2d")!;
+    g.drawImage(img, 0, 0);
+    const d = g.getImageData(Math.floor(img.width / 2), Math.floor(img.height / 2), 1, 1).data;
+    return [d[0], d[1], d[2]];
+  }, png.toString("base64"));
+}
+
+// Fractions of near-white and near-black pixels in a screen rectangle.
+async function inkAndPaper(page: Page, x: number, y: number, w: number, h: number) {
+  const png = await page.screenshot({ clip: { x: Math.round(x), y: Math.round(y), width: w, height: h } });
+  return page.evaluate(async (b64) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const c = document.createElement("canvas");
+    c.width = img.width;
+    c.height = img.height;
+    const g = c.getContext("2d")!;
+    g.drawImage(img, 0, 0);
+    const d = g.getImageData(0, 0, img.width, img.height).data;
+    let white = 0;
+    let black = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const lo = Math.min(d[i], d[i + 1], d[i + 2]);
+      const hi = Math.max(d[i], d[i + 1], d[i + 2]);
+      if (lo > 240) white++;
+      if (hi < 60) black++;
+    }
+    const n = d.length / 4;
+    return [white / n, black / n];
+  }, png.toString("base64"));
+}
+
+test("an item in reach shows its name label, black on white, and the label takes no input", async ({ page }) => {
+  const box = await boot(page);
+  await wasm(page, "web_test_enemy_place", 11550, 4550);
+  const coin = await findItem(page, 1, 0, 0); // first lit Antique Coin
+  // far from it: no label
+  await wasm(page, "web_test_grace_at", 159, 68);
+  await page.waitForTimeout(150);
+  expect(await wasm(page, "web_test_item_labels")).toBe(0);
+  // within pickup reach (standing on it): its label, with the item's name
+  await wasm(page, "web_test_grace_at", coin.x, coin.y);
+  await expect.poll(() => wasm(page, "web_test_item_labels")).toBeGreaterThanOrEqual(1);
+  const text = await page.evaluate(() => {
+    const M = window.Module as unknown as Wasm;
+    return M.UTF8ToString(M._web_test_item_label());
+  });
+  expect(text).toBe("Antique Coin");
+  // the label sits just above the item: a white box with black text and border
+  const gx = box.x + (await wasm(page, "web_grace_screen_x"));
+  const gy = box.y + (await wasm(page, "web_grace_screen_y"));
+  const cell = await wasm(page, "level_cell_px");
+  const ly = gy - cell / 2 - 16;
+  const [white, black] = await inkAndPaper(page, gx - 30, ly - 6, 60, 12);
+  expect(white).toBeGreaterThan(0.4);
+  expect(black).toBeGreaterThan(0.05);
+  // over the label the game still gets the mouse (dear-imgui takes none)
+  await page.mouse.move(gx, ly);
+  await page.waitForTimeout(100);
+  expect(await wasm(page, "web_test_ui_wants_mouse")).toBe(0);
+  // picked up: the label goes
+  await page.keyboard.press(" ");
+  await expect.poll(() => wasm(page, "web_test_item_labels")).toBe(0);
+});
+
+test("Grace's dot keeps rendering after walking through every door on every floor", async ({ page }) => {
+  test.setTimeout(120_000);
+  const box = await boot(page);
+  await wasm(page, "web_test_enemy_place", 11550, 4550);
+  // through every door in turn, so the revealed hospital grows as in play;
+  // before the fix sokol_gl's 64k vertices ran out partway and everything
+  // drawn after (Grace's dot) vanished
+  const bad = await page.evaluate(async () => {
+    const M = window.Module as unknown as Wasm;
+    const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const out: string[] = [];
+    for (let i = 0; ; i++) {
+      const d = M._web_test_door(i);
+      if (d < 0) break;
+      const x = d >> 16;
+      const y = (d >> 8) & 255;
+      const sides = d & 1 ? [[x, y - 1], [x, y + 1]] : [[x - 1, y], [x + 1, y]];
+      for (const [sx, sy] of sides) {
+        M._web_test_grace_at(sx, sy);
+        await frames();
+        if (M._web_test_gl_full()) out.push(`door ${i} at ${x},${y}, Grace at ${sx},${sy}`);
+      }
+    }
+    return out;
+  });
+  expect(bad).toEqual([]);
+  // and her purple dot is really on screen past the last door
+  await page.waitForTimeout(200);
+  const gx = box.x + (await wasm(page, "web_grace_screen_x"));
+  const gy = box.y + (await wasm(page, "web_grace_screen_y"));
+  const [, g] = await pixelAt(page, gx, gy);
+  expect(g).toBeLessThan(120); // purple has little green; white floor has 255
+});
