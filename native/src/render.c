@@ -285,6 +285,19 @@ static void draw_objects_pass(int item_pass) {
                 }
                 break;
             }
+            case OBJ_STAIRS: {
+                float w = (float)(o->w > 0 ? o->w : 1) * scale;
+                float h = (float)(o->h > 0 ? o->h : 1) * scale;
+                int steps = (o->w > o->h ? o->w : o->h) * 2;
+                for (int k = 0; k < steps; k += 2) {
+                    if (o->w >= o->h) {
+                        fill_rect(sx + w * (float)k / (float)steps, sy, w / (float)steps, h, C_GRAY_R);
+                    } else {
+                        fill_rect(sx, sy + h * (float)k / (float)steps, w, h / (float)steps, C_GRAY_R);
+                    }
+                }
+                break;
+            }
             // (movable/openable obstacles are drawn by the OBJ_OBSTACLE case:
             //  green rim for a container, grey block for a movable)
             case OBJ_FUSEBOX:

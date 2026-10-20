@@ -51,6 +51,16 @@ static void flood_floor(const level_t* lv) {
     int start = lv->start_y * cols + lv->start_x;
     g.floor[start] = 1;
     stack[top++] = start;
+    // every floor a staircase leads to is walkable too
+    for (int i = 0; i < lv->obj_count; i++) {
+        const obj_t* o = &lv->objs[i];
+        if (o->kind != OBJ_STAIRS || o->x < 0 || o->x >= cols || o->y < 0 || o->y >= rows) continue;
+        int c = o->y * cols + o->x;
+        if (!g.floor[c]) {
+            g.floor[c] = 1;
+            stack[top++] = c;
+        }
+    }
     while (top > 0) {
         int cur = stack[--top];
         int cx = cur % cols;
