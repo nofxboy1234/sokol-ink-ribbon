@@ -20,6 +20,14 @@ export function MapCanvas() {
       canvasEl.id = "canvas";
       canvasEl.className = "map-canvas";
       canvasEl.addEventListener("contextmenu", (event) => event.preventDefault());
+      // Middle-click is the Run latch: stop the browser's autoscroll (and
+      // the paste/open-link aux click) so it only reaches the game.
+      canvasEl.addEventListener("mousedown", (event) => {
+        if (event.button === 1) event.preventDefault();
+      });
+      canvasEl.addEventListener("auxclick", (event) => {
+        if (event.button === 1) event.preventDefault();
+      });
     }
     host.appendChild(canvasEl);
 

@@ -238,3 +238,12 @@ cd native
 `native/` itself is a fork of sokol-samples (it carries our `main` target and a
 small `box3d` compatibility shim in `fibs-scripts/box3d.ts`), so upstream
 sokol-samples changes are merged in manually rather than pulled.
+
+## Controls
+
+Desktop: WASD moves Grace; a middle-click while she walks makes her run until
+she stops (pressing it again while running does nothing). Q aims, Space
+interacts, Z is Quick Equip, P pauses, I opens the inventory.
+Touch: the left stick moves her, walking in the first half of its travel and
+running past half; the right stick aims, taps to interact and holds for
+Quick Equip.
