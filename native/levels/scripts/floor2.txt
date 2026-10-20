@@ -1,0 +1,1447 @@
+# Floor 2: traced from Polygon's Care Center map by trace_polygon.py
+# cells 24px of the 8192px map, crop origin (1840, 80)
+tile nw 28 61
+tile h 29 61 33 61
+tile ne 34 61
+tile v 28 62
+tile floor 29 62 33 62
+tile v 34 62
+tile v 28 63
+tile floor 29 63 33 63
+tile v 34 63
+tile nw 155 63
+tile h 156 63 162 63
+tile ne 163 63
+tile v 28 64
+tile floor 29 64
+tile h 30 64 31 64
+tile floor 32 64 33 64
+tile v 34 64
+tile nw 154 64
+tile se 155 64
+tile floor 156 64 162 64
+tile sw 163 64
+tile ne 164 64
+tile v 28 65
+tile floor 29 65 33 65
+tile v 34 65
+tile nw 47 65
+tile h 48 65 61 65
+tile ne 62 65
+tile v 154 65
+tile floor 155 65 163 65
+tile v 164 65
+tile v 28 66
+tile floor 29 66 33 66
+tile v 34 66
+tile nw 46 66
+tile se 47 66
+tile floor 48 66 61 66
+tile sw 62 66
+tile ne 63 66
+tile v 154 66
+tile floor 155 66 163 66
+tile v 164 66
+tile v 28 67
+tile floor 29 67 33 67
+tile v 34 67
+tile v 46 67
+tile floor 47 67 62 67
+tile v 63 67
+tile v 154 67
+tile floor 155 67 163 67
+tile v 164 67
+tile v 28 68
+tile floor 29 68 31 68
+tile h 32 68 34 68
+tile v 46 68
+tile floor 47 68 62 68
+tile v 63 68
+tile v 154 68
+tile floor 155 68 163 68
+tile v 164 68
+tile v 28 69
+tile floor 29 69 33 69
+tile v 34 69
+tile v 46 69
+tile floor 47 69 62 69
+tile v 63 69
+tile v 154 69
+tile floor 155 69 163 69
+tile v 164 69
+tile v 28 70
+tile floor 29 70 33 70
+tile v 34 70
+tile v 46 70
+tile floor 47 70 62 70
+tile v 63 70
+tile v 154 70
+tile floor 155 70 163 70
+tile v 164 70
+tile v 28 71
+tile floor 29 71 33 71
+tile v 34 71
+tile v 46 71
+tile floor 47 71 62 71
+tile v 63 71
+tile v 154 71
+tile floor 155 71 163 71
+tile v 164 71
+tile v 28 72
+tile floor 29 72 33 72
+tile v 34 72
+tile v 46 72
+tile floor 47 72 62 72
+tile v 63 72
+tile v 154 72
+tile floor 155 72 162 72
+tile nw 163 72
+tile se 164 72
+tile v 28 73
+tile floor 29 73 33 73
+tile v 34 73
+tile sw 46 73
+tile h 47 73
+tile ne 48 73
+tile floor 49 73 62 73
+tile v 63 73
+tile sw 154 73
+tile ne 155 73
+tile floor 156 73 162 73
+tile v 163 73
+tile sw 28 74
+tile h 29 74 30 74
+tile floor 31 74
+tile h 32 74 34 74
+tile v 48 74
+tile floor 49 74 62 74
+tile v 63 74
+tile sw 155 74
+tile h 156 74 160 74
+tile ne 161 74
+tile floor 162 74
+tile v 163 74
+tile v 30 75
+tile floor 31 75 33 75
+tile sw 34 75
+tile h 35 75 47 75
+tile se 48 75
+tile floor 49 75 62 75
+tile v 63 75
+tile nw 102 75
+tile h 103 75 105 75
+tile ne 106 75
+tile nw 119 75
+tile h 120 75 127 75
+tile ne 128 75
+tile v 161 75
+tile floor 162 75
+tile v 163 75
+tile v 30 76
+tile floor 31 76 62 76
+tile v 63 76
+tile v 102 76
+tile floor 103 76 105 76
+tile sw 106 76
+tile h 107 76 113 76
+tile ne 114 76
+tile nw 118 76
+tile se 119 76
+tile floor 120 76 127 76
+tile v 128 76
+tile v 161 76
+tile floor 162 76
+tile v 163 76
+tile v 30 77
+tile floor 31 77 62 77
+tile v 63 77
+tile v 102 77
+tile floor 103 77 113 77
+tile v 114 77
+tile nw 117 77
+tile h 118 77
+tile floor 119 77 127 77
+tile v 128 77
+tile v 161 77
+tile floor 162 77
+tile v 163 77
+tile v 30 78
+tile floor 31 78 38 78
+tile nw 39 78
+tile h 40 78 47 78
+tile ne 48 78
+tile floor 49 78 62 78
+tile v 63 78
+tile sw 102 78
+tile h 103 78 105 78
+tile ne 106 78
+tile floor 107 78 113 78
+tile v 114 78
+tile sw 117 78
+tile h 118 78
+tile floor 119 78 127 78
+tile v 128 78
+tile v 161 78
+tile floor 162 78
+tile v 163 78
+tile sw 30 79
+tile h 31 79 33 79
+tile ne 34 79
+tile floor 35 79 37 79
+tile nw 38 79
+tile h 39 79 48 79
+tile floor 49 79 62 79
+tile v 63 79
+tile v 106 79
+tile floor 107 79 113 79
+tile v 114 79
+tile sw 118 79
+tile ne 119 79
+tile floor 120 79 127 79
+tile v 128 79
+tile v 161 79
+tile floor 162 79
+tile v 163 79
+tile sw 34 80
+tile ne 35 80
+tile floor 36 80 37 80
+tile h 38 80 39 80
+tile floor 40 80 62 80
+tile v 63 80
+tile v 106 80
+tile floor 107 80 113 80
+tile v 114 80
+tile v 119 80
+tile floor 120 80 127 80
+tile v 128 80
+tile v 161 80
+tile floor 162 80
+tile v 163 80
+tile v 35 81
+tile floor 36 81 37 81
+tile h 38 81 39 81
+tile floor 40 81 47 81
+tile v 48 81
+tile floor 49 81 62 81
+tile v 63 81
+tile v 106 81
+tile floor 107 81 113 81
+tile v 114 81
+tile v 119 81
+tile floor 120 81 127 81
+tile v 128 81
+tile v 161 81
+tile floor 162 81
+tile v 163 81
+tile v 35 82
+tile floor 36 82 37 82
+tile h 38 82 39 82
+tile floor 40 82 47 82
+tile v 48 82
+tile floor 49 82 62 82
+tile v 63 82
+tile v 106 82
+tile floor 107 82
+tile nw 108 82
+tile h 109 82 110 82
+tile ne 111 82
+tile floor 112 82 113 82
+tile v 114 82
+tile v 119 82
+tile floor 120 82 127 82
+tile v 128 82
+tile v 161 82
+tile floor 162 82
+tile v 163 82
+tile v 35 83
+tile floor 36 83 37 83
+tile h 38 83 39 83
+tile floor 40 83 47 83
+tile h 48 83 51 83
+tile ne 52 83
+tile floor 53 83 56 83
+tile nw 57 83
+tile h 58 83 63 83
+tile sw 106 83
+tile h 107 83
+tile se 108 83
+tile v 111 83
+tile floor 112 83 113 83
+tile v 114 83
+tile v 119 83
+tile floor 120 83 127 83
+tile v 128 83
+tile v 161 83
+tile floor 162 83
+tile v 163 83
+tile v 35 84
+tile floor 36 84 37 84
+tile h 38 84 39 84
+tile floor 40 84 47 84
+tile sw 48 84
+tile h 49 84 51 84
+tile se 52 84
+tile h 53 84 54 84
+tile floor 55 84
+tile h 56 84 71 84
+tile ne 72 84
+tile v 111 84
+tile floor 112 84 113 84
+tile v 114 84
+tile v 119 84
+tile floor 120 84 127 84
+tile v 128 84
+tile v 161 84
+tile floor 162 84
+tile v 163 84
+tile v 35 85
+tile floor 36 85 37 85
+tile h 38 85 39 85
+tile floor 40 85 50 85
+tile v 51 85
+tile floor 52 85 55 85
+tile nw 56 85
+tile h 57 85
+tile floor 58 85 71 85
+tile v 72 85
+tile v 111 85
+tile floor 112 85 113 85
+tile v 114 85
+tile sw 119 85
+tile h 120 85 123 85
+tile ne 124 85
+tile floor 125 85 126 85
+tile nw 127 85
+tile se 128 85
+tile v 161 85
+tile floor 162 85
+tile v 163 85
+tile v 35 86
+tile floor 36 86 37 86
+tile sw 38 86
+tile h 39 86 40 86
+tile ne 41 86
+tile floor 42 86 50 86
+tile v 51 86
+tile floor 52 86 55 86
+tile h 56 86 57 86
+tile floor 58 86 61 86
+tile v 62 86
+tile floor 63 86 71 86
+tile v 72 86
+tile v 111 86
+tile floor 112 86 113 86
+tile v 114 86
+tile v 124 86
+tile floor 125 86 126 86
+tile v 127 86
+tile nw 152 86
+tile h 153 86 160 86
+tile se 161 86
+tile floor 162 86
+tile v 163 86
+tile v 35 87
+tile floor 36 87 38 87
+tile sw 39 87
+tile h 40 87 41 87
+tile ne 42 87
+tile floor 43 87 50 87
+tile v 51 87
+tile floor 52 87 55 87
+tile h 56 87 57 87
+tile floor 58 87 61 87
+tile v 62 87
+tile floor 63 87 71 87
+tile v 72 87
+tile v 111 87
+tile floor 112 87 113 87
+tile v 114 87
+tile v 124 87
+tile floor 125 87 126 87
+tile v 127 87
+tile nw 151 87
+tile se 152 87
+tile floor 153 87 162 87
+tile v 163 87
+tile v 35 88
+tile floor 36 88 41 88
+tile v 42 88
+tile floor 43 88 50 88
+tile v 51 88
+tile floor 52 88 55 88
+tile h 56 88 57 88
+tile floor 58 88 61 88
+tile v 62 88
+tile floor 63 88 71 88
+tile v 72 88
+tile v 111 88
+tile floor 112 88 113 88
+tile sw 114 88
+tile ne 115 88
+tile nw 123 88
+tile se 124 88
+tile floor 125 88 126 88
+tile sw 127 88
+tile ne 128 88
+tile v 151 88
+tile floor 152 88 162 88
+tile v 163 88
+tile v 35 89
+tile floor 36 89 41 89
+tile v 42 89
+tile floor 43 89 50 89
+tile v 51 89
+tile floor 52 89 55 89
+tile h 56 89 57 89
+tile floor 58 89 61 89
+tile v 62 89
+tile floor 63 89 71 89
+tile h 72 89 74 89
+tile nw 106 89
+tile h 107 89 110 89
+tile se 111 89
+tile floor 112 89 114 89
+tile sw 115 89
+tile h 116 89 122 89
+tile se 123 89
+tile floor 124 89 127 89
+tile sw 128 89
+tile h 129 89 142 89
+tile ne 143 89
+tile v 149 89
+tile v 151 89
+tile floor 152 89 162 89
+tile v 163 89
+tile v 35 90
+tile floor 36 90 41 90
+tile v 42 90
+tile floor 43 90 50 90
+tile v 51 90
+tile floor 52 90 55 90
+tile h 56 90 57 90
+tile floor 58 90 61 90
+tile v 62 90
+tile floor 63 90 71 90
+tile h 72 90
+tile se 73 90
+tile v 106 90
+tile floor 107 90 142 90
+tile v 143 90
+tile v 149 90
+tile v 151 90
+tile floor 152 90 162 90
+tile v 163 90
+tile nw 34 91
+tile se 35 91
+tile floor 36 91 41 91
+tile v 42 91
+tile floor 43 91 51 91
+tile nw 52 91
+tile ne 53 91
+tile floor 54 91 55 91
+tile h 56 91 57 91
+tile floor 58 91 61 91
+tile v 62 91
+tile floor 63 91 71 91
+tile v 72 91
+tile v 106 91
+tile floor 107 91 142 91
+tile sw 143 91
+tile h 144 91 156 91
+tile floor 157 91 162 91
+tile v 163 91
+tile v 34 92
+tile floor 35 92 42 92
+tile nw 43 92
+tile ne 44 92
+tile floor 45 92 51 92
+tile h 52 92 53 92
+tile floor 54 92 55 92
+tile sw 56 92
+tile h 57 92 61 92
+tile se 62 92
+tile floor 63 92 71 92
+tile sw 72 92
+tile ne 73 92
+tile nw 80 92
+tile h 81 92 83 92
+tile ne 84 92
+tile nw 98 92
+tile h 99 92 101 92
+tile ne 102 92
+tile v 106 92
+tile floor 107 92 108 92
+tile nw 109 92
+tile h 110 92 136 92
+tile ne 137 92
+tile floor 138 92 162 92
+tile v 163 92
+tile v 34 93
+tile floor 35 93 42 93
+tile h 43 93 44 93
+tile floor 45 93 51 93
+tile h 52 93 53 93
+tile floor 54 93 58 93
+tile sw 59 93
+tile h 60 93
+tile se 61 93
+tile floor 62 93 72 93
+tile sw 73 93
+tile h 74 93 76 93
+tile ne 77 93
+tile v 80 93
+tile floor 81 93 83 93
+tile v 84 93
+tile v 98 93
+tile floor 99 93 101 93
+tile v 102 93
+tile v 106 93
+tile floor 107 93 108 93
+tile v 109 93
+tile v 137 93
+tile floor 138 93 162 93
+tile v 163 93
+tile v 34 94
+tile floor 35 94 42 94
+tile h 43 94 44 94
+tile floor 45 94 51 94
+tile h 52 94 53 94
+tile floor 54 94 76 94
+tile v 77 94
+tile v 80 94
+tile floor 81 94 83 94
+tile v 84 94
+tile v 98 94
+tile floor 99 94 101 94
+tile v 102 94
+tile v 106 94
+tile floor 107 94 108 94
+tile v 109 94
+tile sw 137 94
+tile h 138 94 143 94
+tile ne 144 94
+tile floor 145 94 146 94
+tile h 147 94 157 94
+tile floor 158 94 162 94
+tile v 163 94
+tile v 34 95
+tile floor 35 95 42 95
+tile h 43 95 44 95
+tile floor 45 95 51 95
+tile h 52 95
+tile se 53 95
+tile floor 54 95 76 95
+tile v 77 95
+tile v 80 95
+tile floor 81 95 83 95
+tile v 84 95
+tile v 98 95
+tile floor 99 95 101 95
+tile v 102 95
+tile v 106 95
+tile floor 107 95 108 95
+tile v 109 95
+tile v 144 95
+tile floor 145 95 158 95
+tile v 159 95
+tile floor 160 95 162 95
+tile v 163 95
+tile v 34 96
+tile floor 35 96 42 96
+tile h 43 96 44 96
+tile floor 45 96 51 96
+tile v 52 96
+tile floor 53 96 55 96
+tile nw 56 96
+tile h 57 96 61 96
+tile ne 62 96
+tile floor 63 96 70 96
+tile nw 71 96
+tile h 72 96
+tile ne 73 96
+tile floor 74 96 76 96
+tile v 77 96
+tile sw 80 96
+tile ne 81 96
+tile floor 82 96
+tile nw 83 96
+tile se 84 96
+tile v 98 96
+tile floor 99 96 100 96
+tile nw 101 96
+tile se 102 96
+tile v 106 96
+tile floor 107 96 108 96
+tile v 109 96
+tile v 144 96
+tile floor 145 96 158 96
+tile v 159 96
+tile floor 160 96 162 96
+tile v 163 96
+tile v 34 97
+tile floor 35 97 42 97
+tile h 43 97 51 97
+tile se 52 97
+tile floor 53 97 55 97
+tile v 56 97
+tile v 62 97
+tile floor 63 97 70 97
+tile v 71 97
+tile v 73 97
+tile floor 74 97 76 97
+tile v 77 97
+tile v 81 97
+tile floor 82 97
+tile v 83 97
+tile v 98 97
+tile floor 99 97 100 97
+tile v 101 97
+tile v 106 97
+tile floor 107 97 108 97
+tile v 109 97
+tile v 144 97
+tile floor 145 97 158 97
+tile v 159 97
+tile floor 160 97 162 97
+tile v 163 97
+tile v 34 98
+tile floor 35 98 42 98
+tile h 43 98 44 98
+tile floor 45 98 55 98
+tile v 56 98
+tile nw 60 98
+tile h 61 98 66 98
+tile floor 67 98
+tile h 68 98 72 98
+tile se 73 98
+tile floor 74 98 76 98
+tile v 77 98
+tile v 81 98
+tile floor 82 98
+tile v 83 98
+tile v 98 98
+tile floor 99 98 100 98
+tile v 101 98
+tile v 106 98
+tile floor 107 98 108 98
+tile v 109 98
+tile v 144 98
+tile floor 145 98 158 98
+tile v 159 98
+tile floor 160 98 162 98
+tile v 163 98
+tile v 34 99
+tile floor 35 99 42 99
+tile h 43 99 44 99
+tile floor 45 99 55 99
+tile v 56 99
+tile v 60 99
+tile floor 61 99 76 99
+tile v 77 99
+tile v 81 99
+tile floor 82 99
+tile v 83 99
+tile v 98 99
+tile floor 99 99 100 99
+tile v 101 99
+tile v 106 99
+tile floor 107 99 108 99
+tile v 109 99
+tile v 144 99
+tile floor 145 99 158 99
+tile v 159 99
+tile h 160 99 161 99
+tile floor 162 99
+tile v 163 99
+tile v 34 100
+tile floor 35 100 42 100
+tile h 43 100 44 100
+tile floor 45 100 55 100
+tile v 56 100
+tile v 60 100
+tile floor 61 100 76 100
+tile v 77 100
+tile v 81 100
+tile floor 82 100
+tile v 83 100
+tile v 98 100
+tile floor 99 100 100 100
+tile v 101 100
+tile v 106 100
+tile floor 107 100 108 100
+tile v 109 100
+tile v 144 100
+tile floor 145 100 162 100
+tile v 163 100
+tile v 34 101
+tile floor 35 101 42 101
+tile sw 43 101
+tile se 44 101
+tile floor 45 101 55 101
+tile v 56 101
+tile v 60 101
+tile floor 61 101 76 101
+tile v 77 101
+tile h 81 101
+tile floor 82 101
+tile h 83 101
+tile h 98 101
+tile floor 99 101
+tile h 100 101 101 101
+tile v 106 101
+tile floor 107 101 108 101
+tile v 109 101
+tile v 144 101
+tile floor 145 101 149 101
+tile h 150 101 159 101
+tile floor 160 101 162 101
+tile v 163 101
+tile v 34 102
+tile floor 35 102 55 102
+tile v 56 102
+tile v 60 102
+tile floor 61 102 76 102
+tile v 77 102
+tile v 81 102
+tile floor 82 102
+tile v 83 102
+tile v 98 102
+tile floor 99 102 100 102
+tile v 101 102
+tile v 106 102
+tile floor 107 102 108 102
+tile v 109 102
+tile v 144 102
+tile floor 145 102 149 102
+tile v 150 102
+tile floor 151 102 162 102
+tile v 163 102
+tile v 34 103
+tile floor 35 103 42 103
+tile nw 43 103
+tile ne 44 103
+tile floor 45 103 55 103
+tile v 56 103
+tile v 60 103
+tile floor 61 103 76 103
+tile v 77 103
+tile v 81 103
+tile floor 82 103
+tile v 83 103
+tile v 98 103
+tile floor 99 103 100 103
+tile v 101 103
+tile v 106 103
+tile floor 107 103 108 103
+tile v 109 103
+tile v 144 103
+tile floor 145 103 162 103
+tile v 163 103
+tile v 34 104
+tile floor 35 104 42 104
+tile h 43 104 44 104
+tile floor 45 104 55 104
+tile v 56 104
+tile v 60 104
+tile floor 61 104 76 104
+tile v 77 104
+tile v 81 104
+tile floor 82 104
+tile v 83 104
+tile v 98 104
+tile floor 99 104 100 104
+tile v 101 104
+tile v 106 104
+tile floor 107 104 108 104
+tile v 109 104
+tile v 144 104
+tile floor 145 104 149 104
+tile v 150 104
+tile floor 151 104 162 104
+tile v 163 104
+tile v 34 105
+tile floor 35 105 42 105
+tile h 43 105 44 105
+tile floor 45 105 55 105
+tile v 56 105
+tile v 60 105
+tile floor 61 105 76 105
+tile v 77 105
+tile v 81 105
+tile floor 82 105
+tile v 83 105
+tile v 98 105
+tile floor 99 105 100 105
+tile v 101 105
+tile v 106 105
+tile floor 107 105 108 105
+tile v 109 105
+tile sw 144 105
+tile h 145 105 162 105
+tile se 163 105
+tile v 34 106
+tile floor 35 106 42 106
+tile h 43 106 44 106
+tile floor 45 106 55 106
+tile v 56 106
+tile v 60 106
+tile floor 61 106 76 106
+tile sw 77 106
+tile h 78 106 80 106
+tile se 81 106
+tile floor 82 106
+tile v 83 106
+tile v 98 106
+tile floor 99 106 100 106
+tile sw 101 106
+tile h 102 106 103 106
+tile ne 104 106
+tile v 106 106
+tile floor 107 106 108 106
+tile v 109 106
+tile v 34 107
+tile floor 35 107 42 107
+tile h 43 107 44 107
+tile floor 45 107 55 107
+tile v 56 107
+tile v 60 107
+tile floor 61 107 82 107
+tile v 83 107
+tile v 98 107
+tile floor 99 107 103 107
+tile v 104 107
+tile v 106 107
+tile floor 107 107 108 107
+tile v 109 107
+tile nw 125 107
+tile h 126 107 133 107
+tile ne 134 107
+tile v 34 108
+tile floor 35 108 42 108
+tile h 43 108 55 108
+tile se 56 108
+tile v 60 108
+tile floor 61 108 82 108
+tile v 83 108
+tile v 98 108
+tile floor 99 108 103 108
+tile h 104 108 105 108
+tile se 106 108
+tile floor 107 108 108 108
+tile v 109 108
+tile v 125 108
+tile floor 126 108 133 108
+tile v 134 108
+tile nw 159 108
+tile h 160 108 161 108
+tile ne 162 108
+tile nw 32 109
+tile h 33 109
+tile se 34 109
+tile h 35 109
+tile floor 36 109
+tile h 37 109
+tile nw 38 109
+tile h 39 109 44 109
+tile sw 54 109
+tile se 55 109
+tile v 60 109
+tile floor 61 109 70 109
+tile nw 71 109
+tile h 72 109 79 109
+tile ne 80 109
+tile floor 81 109 82 109
+tile v 83 109
+tile v 98 109
+tile floor 99 109 108 109
+tile v 109 109
+tile v 125 109
+tile floor 126 109 133 109
+tile h 134 109 137 109
+tile ne 138 109
+tile nw 143 109
+tile h 144 109 150 109
+tile ne 151 109
+tile v 159 109
+tile floor 160 109 161 109
+tile v 162 109
+tile v 32 110
+tile floor 33 110 37 110
+tile v 38 110
+tile v 44 110
+tile v 60 110
+tile floor 61 110 68 110
+tile nw 69 110
+tile h 70 110
+tile se 71 110
+tile v 80 110
+tile floor 81 110 82 110
+tile sw 83 110
+tile ne 84 110
+tile v 98 110
+tile floor 99 110 108 110
+tile v 109 110
+tile v 125 110
+tile floor 126 110 133 110
+tile h 134 110 135 110
+tile floor 136 110 137 110
+tile v 138 110
+tile v 143 110
+tile floor 144 110 150 110
+tile v 151 110
+tile v 159 110
+tile floor 160 110 161 110
+tile v 162 110
+tile v 32 111
+tile floor 33 111 37 111
+tile v 38 111
+tile v 60 111
+tile floor 61 111 68 111
+tile v 69 111
+tile v 80 111
+tile floor 81 111 83 111
+tile h 84 111 97 111
+tile se 98 111
+tile floor 99 111 108 111
+tile v 109 111
+tile v 125 111
+tile floor 126 111 133 111
+tile h 134 111 135 111
+tile floor 136 111 137 111
+tile v 138 111
+tile v 143 111
+tile floor 144 111 150 111
+tile v 151 111
+tile v 159 111
+tile floor 160 111 161 111
+tile v 162 111
+tile v 32 112
+tile floor 33 112 37 112
+tile v 38 112
+tile v 60 112
+tile floor 61 112 68 112
+tile v 69 112
+tile v 80 112
+tile floor 81 112 103 112
+tile h 104 112 105 112
+tile ne 106 112
+tile floor 107 112 108 112
+tile v 109 112
+tile v 125 112
+tile floor 126 112 133 112
+tile h 134 112 135 112
+tile floor 136 112 137 112
+tile v 138 112
+tile v 143 112
+tile floor 144 112 150 112
+tile v 151 112
+tile v 159 112
+tile floor 160 112 161 112
+tile v 162 112
+tile v 32 113
+tile floor 33 113 37 113
+tile v 38 113
+tile v 60 113
+tile floor 61 113 68 113
+tile v 69 113
+tile v 80 113
+tile floor 81 113 83 113
+tile v 84 113
+tile floor 85 113 103 113
+tile v 104 113
+tile v 106 113
+tile floor 107 113 108 113
+tile v 109 113
+tile v 125 113
+tile floor 126 113 133 113
+tile h 134 113 135 113
+tile floor 136 113 137 113
+tile v 138 113
+tile v 143 113
+tile floor 144 113 150 113
+tile v 151 113
+tile v 159 113
+tile floor 160 113 161 113
+tile v 162 113
+tile v 32 114
+tile floor 33 114 37 114
+tile v 38 114
+tile v 60 114
+tile floor 61 114 68 114
+tile v 69 114
+tile v 80 114
+tile floor 81 114 83 114
+tile v 84 114
+tile floor 85 114 103 114
+tile v 104 114
+tile v 106 114
+tile floor 107 114 108 114
+tile v 109 114
+tile v 125 114
+tile floor 126 114 133 114
+tile h 134 114 135 114
+tile floor 136 114 137 114
+tile v 138 114
+tile v 143 114
+tile floor 144 114 150 114
+tile v 151 114
+tile v 159 114
+tile floor 160 114 161 114
+tile v 162 114
+tile v 32 115
+tile floor 33 115 37 115
+tile v 38 115
+tile v 60 115
+tile floor 61 115 68 115
+tile v 69 115
+tile v 80 115
+tile floor 81 115 83 115
+tile v 84 115
+tile floor 85 115 102 115
+tile nw 103 115
+tile se 104 115
+tile v 106 115
+tile floor 107 115 108 115
+tile v 109 115
+tile v 125 115
+tile floor 126 115 133 115
+tile h 134 115 135 115
+tile floor 136 115 137 115
+tile v 138 115
+tile v 143 115
+tile floor 144 115 150 115
+tile v 151 115
+tile v 159 115
+tile floor 160 115 161 115
+tile v 162 115
+tile v 32 116
+tile floor 33 116 37 116
+tile v 38 116
+tile v 60 116
+tile floor 61 116 68 116
+tile v 69 116
+tile sw 80 116
+tile h 81 116 88 116
+tile floor 89 116
+tile h 90 116 102 116
+tile se 103 116
+tile sw 106 116
+tile ne 107 116
+tile floor 108 116
+tile v 109 116
+tile v 125 116
+tile floor 126 116 133 116
+tile h 134 116 135 116
+tile floor 136 116 137 116
+tile v 138 116
+tile nw 142 116
+tile se 143 116
+tile floor 144 116 150 116
+tile v 151 116
+tile v 159 116
+tile floor 160 116 161 116
+tile v 162 116
+tile nw 31 117
+tile se 32 117
+tile floor 33 117 36 117
+tile nw 37 117
+tile se 38 117
+tile v 60 117
+tile floor 61 117 62 117
+tile nw 63 117
+tile h 64 117 65 117
+tile ne 66 117
+tile floor 67 117 68 117
+tile v 69 117
+tile v 88 117
+tile floor 89 117 92 117
+tile v 93 117
+tile sw 107 117
+tile h 108 117
+tile se 109 117
+tile v 125 117
+tile floor 126 117 133 117
+tile h 134 117 135 117
+tile floor 136 117 137 117
+tile sw 138 117
+tile h 139 117 141 117
+tile se 142 117
+tile floor 143 117 145 117
+tile nw 146 117
+tile h 147 117 150 117
+tile se 151 117
+tile v 159 117
+tile floor 160 117 161 117
+tile v 162 117
+tile v 31 118
+tile floor 32 118 36 118
+tile v 37 118
+tile sw 60 118
+tile h 61 118 68 118
+tile se 69 118
+tile nw 86 118
+tile h 87 118
+tile se 88 118
+tile floor 89 118 92 118
+tile sw 93 118
+tile h 94 118 95 118
+tile ne 96 118
+tile v 125 118
+tile floor 126 118 133 118
+tile h 134 118 135 118
+tile floor 136 118 145 118
+tile v 146 118
+tile nw 157 118
+tile h 158 118
+tile se 159 118
+tile floor 160 118 161 118
+tile sw 162 118
+tile ne 163 118
+tile v 31 119
+tile floor 32 119 36 119
+tile v 37 119
+tile nw 85 119
+tile se 86 119
+tile floor 87 119 95 119
+tile sw 96 119
+tile ne 97 119
+tile v 125 119
+tile floor 126 119 133 119
+tile h 134 119 135 119
+tile floor 136 119 145 119
+tile sw 146 119
+tile h 147 119 156 119
+tile se 157 119
+tile floor 158 119 162 119
+tile v 163 119
+tile v 31 120
+tile floor 32 120 36 120
+tile v 37 120
+tile v 85 120
+tile floor 86 120 96 120
+tile v 97 120
+tile sw 125 120
+tile h 126 120
+tile floor 127 120
+tile h 128 120 135 120
+tile floor 136 120
+tile nw 137 120
+tile h 138 120 141 120
+tile ne 142 120
+tile floor 143 120 162 120
+tile v 163 120
+tile v 31 121
+tile floor 32 121 36 121
+tile v 37 121
+tile v 85 121
+tile floor 86 121 96 121
+tile v 97 121
+tile v 126 121
+tile floor 127 121 133 121
+tile h 134 121 136 121
+tile se 137 121
+tile sw 142 121
+tile ne 143 121
+tile floor 144 121 162 121
+tile v 163 121
+tile v 31 122
+tile floor 32 122 34 122
+tile nw 35 122
+tile floor 36 122
+tile h 37 122
+tile v 85 122
+tile floor 86 122 96 122
+tile sw 97 122
+tile h 98 122 115 122
+tile ne 116 122
+tile v 126 122
+tile floor 127 122 133 122
+tile v 134 122
+tile v 143 122
+tile floor 144 122 145 122
+tile nw 146 122
+tile h 147 122 156 122
+tile floor 157 122 162 122
+tile v 163 122
+tile v 31 123
+tile floor 32 123 34 123
+tile v 35 123
+tile floor 36 123
+tile v 37 123
+tile v 85 123
+tile floor 86 123 115 123
+tile v 116 123
+tile v 126 123
+tile floor 127 123 133 123
+tile v 134 123
+tile sw 143 123
+tile h 144 123 146 123
+tile floor 147 123 162 123
+tile v 163 123
+tile v 31 124
+tile floor 32 124 34 124
+tile h 35 124 36 124
+tile se 37 124
+tile v 85 124
+tile floor 86 124 115 124
+tile v 116 124
+tile v 126 124
+tile floor 127 124 133 124
+tile v 134 124
+tile h 145 124 157 124
+tile floor 158 124 162 124
+tile sw 163 124
+tile ne 164 124
+tile v 31 125
+tile floor 32 125 34 125
+tile v 35 125
+tile v 85 125
+tile floor 86 125 97 125
+tile nw 98 125
+tile h 99 125 112 125
+tile ne 113 125
+tile floor 114 125 115 125
+tile v 116 125
+tile v 126 125
+tile floor 127 125 133 125
+tile v 134 125
+tile nw 144 125
+tile se 145 125
+tile floor 146 125 163 125
+tile v 164 125
+tile h 31 126
+tile floor 32 126
+tile h 33 126 36 126
+tile ne 37 126
+tile sw 85 126
+tile ne 86 126
+tile floor 87 126 97 126
+tile v 98 126
+tile v 113 126
+tile floor 114 126 115 126
+tile v 116 126
+tile v 126 126
+tile floor 127 126 133 126
+tile v 134 126
+tile v 144 126
+tile floor 145 126 163 126
+tile v 164 126
+tile v 31 127
+tile floor 32 127 36 127
+tile v 37 127
+tile sw 86 127
+tile h 87 127 97 127
+tile se 98 127
+tile v 113 127
+tile floor 114 127 115 127
+tile v 116 127
+tile v 126 127
+tile floor 127 127 133 127
+tile v 134 127
+tile h 142 127 144 127
+tile floor 145 127 163 127
+tile v 164 127
+tile v 31 128
+tile floor 32 128 36 128
+tile v 37 128
+tile h 92 128
+tile se 93 128
+tile v 113 128
+tile floor 114 128 115 128
+tile v 116 128
+tile sw 126 128
+tile h 127 128 133 128
+tile se 134 128
+tile v 144 128
+tile floor 145 128 163 128
+tile v 164 128
+tile sw 31 129
+tile h 32 129 36 129
+tile se 37 129
+tile v 92 129
+tile v 113 129
+tile floor 114 129 115 129
+tile v 116 129
+tile sw 144 129
+tile ne 145 129
+tile floor 146 129 163 129
+tile v 164 129
+tile v 113 130
+tile floor 114 130 115 130
+tile v 116 130
+tile sw 145 130
+tile ne 146 130
+tile floor 147 130 148 130
+tile h 149 130 156 130
+tile ne 157 130
+tile floor 158 130 163 130
+tile v 164 130
+tile v 113 131
+tile floor 114 131 115 131
+tile v 116 131
+tile v 146 131
+tile floor 147 131 156 131
+tile v 157 131
+tile floor 158 131 163 131
+tile v 164 131
+tile v 113 132
+tile floor 114 132 115 132
+tile v 116 132
+tile v 146 132
+tile floor 147 132 156 132
+tile v 157 132
+tile floor 158 132 163 132
+tile v 164 132
+tile v 113 133
+tile floor 114 133 115 133
+tile v 116 133
+tile v 146 133
+tile floor 147 133 156 133
+tile v 157 133
+tile floor 158 133 163 133
+tile v 164 133
+tile v 113 134
+tile floor 114 134 115 134
+tile v 116 134
+tile v 146 134
+tile floor 147 134 156 134
+tile v 157 134
+tile floor 158 134 163 134
+tile v 164 134
+tile v 113 135
+tile floor 114 135 115 135
+tile v 116 135
+tile v 146 135
+tile floor 147 135 156 135
+tile v 157 135
+tile floor 158 135 163 135
+tile v 164 135
+tile v 113 136
+tile floor 114 136 115 136
+tile v 116 136
+tile sw 146 136
+tile h 147 136 163 136
+tile se 164 136
+tile v 113 137
+tile floor 114 137 115 137
+tile v 116 137
+tile v 113 138
+tile floor 114 138 115 138
+tile v 116 138
+tile v 113 139
+tile floor 114 139 115 139
+tile v 116 139
+tile v 113 140
+tile floor 114 140 115 140
+tile v 116 140
+tile v 113 141
+tile floor 114 141 115 141
+tile v 116 141
+tile v 113 142
+tile floor 114 142 115 142
+tile v 116 142
+tile v 113 143
+tile floor 114 143 115 143
+tile h 116 143 118 143
+tile ne 119 143
+tile v 113 144
+tile floor 114 144 118 144
+tile v 119 144
+tile v 113 145
+tile floor 114 145 115 145
+tile v 116 145
+tile floor 117 145 118 145
+tile v 119 145
+tile v 113 146
+tile floor 114 146 115 146
+tile h 116 146 120 146
+tile v 113 147
+tile floor 114 147 115 147
+tile v 116 147
+tile v 113 148
+tile floor 114 148 115 148
+tile v 116 148
+tile sw 113 149
+tile h 114 149 115 149
+tile se 116 149
+door 162 74 h 1
+door 44 76 v 2
+door 36 82 h 2
+door 112 83 h 2
+door 55 84 h 1
+door 112 87 h 2
+door 125 87 h 2
+door 67 98 h 1
+door 162 99 h 1
+door 44 102 v 1
+door 150 103 v 1
+door 80 107 v 2
+door 36 109 h 1
+door 142 118 v 2
+door 105 109 v 3  # red on the map
+door 89 118 h 4  # red on the map
+section 29 62 15 20 F2 Corridor
+section 155 64 9 10 F2 Room 203
+obj light 159 68 radius=4 state=1 name=light
+section 40 66 23 31 F2 Bar & Lounge
+obj light 52 79 radius=8 state=1 name=light
+section 105 74 58 43 F2 Nurses' Station
+obj light 142 93 radius=8 state=1 name=light
+section 103 76 11 7 F2 Room 201
+obj light 109 79 radius=4 state=1 name=light
+section 119 76 9 11 F2 Room 202
+obj light 123 80 radius=4 state=1 name=light
+section 35 82 9 27 F2 Kitchenette
+obj light 38 97 radius=6 state=1 name=light
+section 112 83 2 4 F2 Alcove
+section 44 84 36 34 F2 Gallery
+obj light 63 100 radius=8 state=1 name=light
+section 80 93 25 25 F2 Corridor
+section 126 108 8 20 F2 Conference Room
+obj light 130 117 radius=6 state=1 name=light
+section 32 109 6 20 F2 Corridor
+section 142 109 22 27 F2 Lead Researcher
+obj light 153 125 radius=8 state=1 name=light
+section 136 110 6 11 F2 Alcove
+section 86 118 33 31 F2 Corridor
+item 56 66 herb name=Green_Herb
+item 47 67 coin name=Antique_Coin_(3)
+obj safe 47 68 name=Bar_&_Lounge_Safe
+obj file 160 70 name=Progress_Notes
+item 57 74 coin name=Antique_Coin
+item 103 76 fuse name=Fuse
+item 109 77 ink_ribbon name=Ink_Ribbon
+obj file 119 78 name=Note_on_Cardboard_Box
+item 55 78 coin name=Antique_Coin
+item 103 77 lighter name=Lighter
+obj typewriter 113 79 name=Typewriter
+obj file 33 78 name=West_Wing_Map
+item 107 82 bottle name=Empty_Bottle
+item 39 88 herb name=Green_Herb
+obj file 63 90 name=Folded_Note
+item 71 90 herb name=Green_Herb
+obj file 54 94 name=Dishwasher\\
+obj file 41 95 name=Background_Check
+item 152 95 herb name=Green_Herb
+item 155 95 ink_ribbon name=Ink_Ribbon
+item 46 98 herb name=Mixed_Herb_(G+G)
+item 55 98 injector name=Empty_Injector
+obj file 37 100 name=Bar_&_Lounge_Safe_Code
+item 41 101 bottle name=Empty_Bottle
+item 157 100 screwdriver name=Screwdriver
+obj file 53 101 name=Disposal_Team_Report
+obj file 66 103 name=Chairman\\
+item 156 104 bottle name=Empty_Bottle
+item 131 108 coin name=Antique_Coin
+obj file 63 109 name=Copy_of_Email_to_Manager
+obj file 61 111 name=Note_to_Chairman
+obj file 148 115 name=Examination_Room_Safe_Code
+item 126 115 coin name=Antique_Coin
+item 108 116 cherub_key name=Cherub_Key
+obj file 129 124 name=Patient_Medical_Records
+obj typewriter 155 129 name=Save_Point
+obj file 156 132 name=Lead_Researcher\\
+obj file 154 133 name=Lead_Researcher\\
+obj file 153 134 name=Lead_Researcher\\
+item 147 135 herb name=Green_Herb
+obj file 151 135 name=Lead_Researcher\\

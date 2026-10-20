@@ -67,6 +67,8 @@ static bool find_target(int gx, int gy, int* tx, int* ty) {
     float best = 0.0f;
     for (int y = gy - 8; y <= gy + 8; y++) {
         for (int x = gx - 8; x <= gx + 8; x++) {
+            // an exact diagonal grazes every cell corner on the way; skip it
+            if (abs(x - gx) == abs(y - gy)) continue;
             if (throw_in_reach(gx, gy, x, y)) {
                 float d = hypotf((float)(x - gx), (float)(y - gy));
                 if (d > best) {
@@ -608,7 +610,7 @@ int main(int argc, char** argv) {
             for (int k = 0; k < sp; k++) {
                 int ax = o->horizontal ? o->x + k : o->x - 1, ay = o->horizontal ? o->y - 1 : o->y + k;
                 int bx = o->horizontal ? o->x + k : o->x,     by = o->horizontal ? o->y : o->y + k;
-                if (!grid_is_floor(ax, ay) || !grid_is_floor(bx, by)) bad++;
+                if (level_tile(&level, ax, ay) != TILE_FLOOR || level_tile(&level, bx, by) != TILE_FLOOR) bad++;
             }
         }
         CHECK(bad == 0, "doors: every slab cell has floor on both sides (%d bad of %d doors)", bad, doors);
@@ -694,7 +696,8 @@ int main(int argc, char** argv) {
         for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_DOOR && o->link_id>0) cdoor=o; }
         cdoor->state = DOOR_LOCKED; cdoor->open = 0;
         inventory_init(); inventory_add(ITEM_SCREWDRIVER); inventory_add(ITEM_COIN);
-        player_set_cell(cdoor->x, cdoor->y - 1);  // north side of the horizontal door
+        if (cdoor->horizontal) player_set_cell(cdoor->x, cdoor->y - 1);  // the near side of the door
+        else player_set_cell(cdoor->x - 1, cdoor->y);
         doors_interact(cdoor->x, cdoor->y);
         CHECK(cdoor->state == DOOR_LOCKED, "cherub door: screwdriver/coin do not open it");
         inventory_add(ITEM_CHERUB_KEY);
@@ -824,7 +827,7 @@ int main(int argc, char** argv) {
 
         // safe + combination door codes
         obj_t* safe = NULL; obj_t* codelock = NULL;
-        for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_SAFE) safe=o; if (o->kind==OBJ_DOOR && !codelock) codelock=o; }
+        for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_SAFE) safe=o; if (o->kind==OBJ_DOOR && o->horizontal && !codelock && grid_is_floor(o->x, o->y - 1)) codelock=o; }
         if (!safe) { // none in level 1: borrow the goal marker for the check
             for (int i = 0; i < level.obj_count; i++) { obj_t* o=(obj_t*)&grid_level()->objs[i]; if (o->kind==OBJ_GOAL) safe=o; }
             if (safe) safe->kind = OBJ_SAFE;
@@ -986,13 +989,17 @@ int main(int argc, char** argv) {
         for (int i = 0; i < level.obj_count; i++) {
             obj_t* o = (obj_t*)&grid_level()->objs[i];
             if (o->kind != OBJ_DOOR) continue;
+            // the doorway's room side: the row under the door, or under the
+            // wall cells the doorway cuts through when walls are tiles
+            int ry = grid_is_floor(o->x - 1, o->y) ? o->y : o->y + 1;
             if (!door && o->horizontal && o->state == DOOR_UNLOCKED && o->span <= 2 &&
-                grid_is_floor(o->x, o->y) && grid_is_floor(o->x - 1, o->y) && grid_is_floor(o->x, o->y - 1) &&
-                grid_is_floor(o->x - 1, o->y + 1) && grid_is_floor(o->x, o->y + 1)) door = o;
+                grid_is_floor(o->x, o->y) && grid_is_floor(o->x, o->y - 1) &&
+                grid_is_floor(o->x - 1, ry) && grid_is_floor(o->x, ry) && grid_is_floor(o->x - 1, ry + 1) &&
+                grid_is_floor(o->x, ry + 1)) door = o;
             if (o->link_id > 0) ldoor = o;  // the cherub door: locked, span 1
         }
         CHECK(door && ldoor, "door-frame checks found their doors");
-        const int dx = door->x, dy = door->y;
+        const int dx = door->x, dy = grid_is_floor(door->x - 1, door->y) ? door->y : door->y + 1;
         player_set_position((float)dx - 0.15f, (float)dy + 0.25f);
         player_set_velocity(0.0f, 3.0f);  // away from the wall, south
         for (int i = 0; i < 10; i++) player_update(0.05f);
@@ -1008,23 +1015,30 @@ int main(int argc, char** argv) {
         // bump-to-open still works for that unlocked door
         door->open = 0;
         CHECK(door->state == DOOR_UNLOCKED && !door->open, "the bump-open test door starts shut and unlocked");
-        player_set_cell(dx, dy);
+        player_set_cell(door->x, door->y);
         doors_update(0.016f);
         CHECK(door->open, "bump-open: stepping up to an unlocked door opens it");
 
         // a locked door still blocks crossing (the cherub door)
+        // (u, v): along the door's slab and across it, so one check covers
+        // horizontal and vertical doors
         ldoor->state = DOOR_LOCKED; ldoor->open = 0;
+        bool lh = ldoor->horizontal;
         player_set_position((float)ldoor->x + 0.5f, (float)ldoor->y + 0.5f);
-        player_set_velocity(0.0f, -3.0f);
+        player_set_velocity(lh ? 0.0f : -3.0f, lh ? -3.0f : 0.0f);
         for (int i = 0; i < 20; i++) player_update(0.05f);
         int lx, ly; player_cell(&lx, &ly);
-        CHECK(ly == ldoor->y, "locked door still blocks crossing (cell %d,%d)", lx, ly);
+        CHECK(lh ? ly == ldoor->y : lx == ldoor->x, "locked door still blocks crossing (cell %d,%d)", lx, ly);
         player_set_velocity(0.0f, 0.0f);
-        // ...but hugging its west frame end, she can still move away
-        player_set_position((float)ldoor->x - 0.15f, (float)ldoor->y + 0.25f);
-        player_set_velocity(3.0f, 0.0f);
+        // ...but hugging one end of its frame, she can still move away along it
+        int along = lh ? 0 : 1;
+        float hug_u = (float)(lh ? ldoor->x : ldoor->y) - 0.15f, hug_v = (float)(lh ? ldoor->y : ldoor->x) + 0.25f;
+        if (!grid_is_floor(lh ? ldoor->x - 1 : ldoor->x, lh ? ldoor->y : ldoor->y - 1)) hug_u += 0.3f;  // tile jamb
+        player_set_position(lh ? hug_u : hug_v, lh ? hug_v : hug_u);
+        player_set_velocity(along == 0 ? 3.0f : 0.0f, along == 1 ? 3.0f : 0.0f);
         for (int i = 0; i < 10; i++) player_update(0.05f);
-        CHECK(player_x() > (float)ldoor->x + 0.2f, "locked door side: moving away along the frame works (x %.2f)", (double)player_x());
+        float moved = lh ? player_x() : player_y();
+        CHECK(moved > (float)(lh ? ldoor->x : ldoor->y) + 0.2f, "locked door side: moving away along the frame works (%.2f)", (double)moved);
         player_set_velocity(0.0f, 0.0f);
     }
 
@@ -1122,7 +1136,8 @@ int main(int argc, char** argv) {
                 verified = true;
             }
         }
-        CHECK(verified, "through-wall: verified a walled/open item pair end to end");
+        // tile-built levels have thick walls: no two floor cells share a wall edge
+        CHECK(verified || level.has_tiles, "through-wall: verified a walled/open item pair end to end");
         // through a closed (locked) door edge: unreachable; through an
         // unlocked door edge: reachable (the cherub door vs a plain door,
         // each found by role; the target is the cell past the door slab)
