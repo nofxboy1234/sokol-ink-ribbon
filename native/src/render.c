@@ -8,12 +8,15 @@
 #include "light.h"
 #include "palette.h"
 #include "player.h"
+#include "stream.h"
 
 #include "sokol_app.h"
 #include "sokol_gfx.h"
 #include "sokol_gl.h"
 
 #include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 // Reference palette (ref/map.kra)
 #define C_INK_R PAL_INK, 1.0f
@@ -115,6 +118,124 @@ static void outline_cell(float sx, float sy, float scale, float cr, float cg, fl
     thick_line(sx, sy + scale, sx, sy, 2.0f, cr, cg, cb, ca);
 }
 
+// ---- streamed map geometry ------------------------------------------------
+// A chunk's cached geometry: the revealed floor cells and the wall edges in
+// it, in cell units (screen-size independent, so camera moves never rebuild
+// it). Lighting is drawn live per visible floor cell (the lighter moves).
+enum { MARK_FLOOR, MARK_VWALL, MARK_HWALL };
+typedef struct {
+    int16_t x, y;
+    uint8_t kind;
+} mark_t;
+typedef struct {
+    int n;
+    mark_t m[];
+} chunk_geo_t;
+
+static int chunk_marks(int cx, int cy, mark_t* out) {
+    int cols = grid_cols(), rows = grid_rows(), n = 0;
+    int x0 = cx * STREAM_CHUNK, y0 = cy * STREAM_CHUNK;
+    int x1 = x0 + STREAM_CHUNK, y1 = y0 + STREAM_CHUNK;
+    if (x1 > cols) x1 = cols;
+    if (y1 > rows) y1 = rows;
+    for (int y = y0; y < y1; y++) {
+        for (int x = x0; x < x1; x++) {
+            if (grid_is_floor(x, y) && grid_is_revealed(x, y)) {
+                if (out) out[n] = (mark_t){ (int16_t)x, (int16_t)y, MARK_FLOOR };
+                n++;
+            }
+        }
+    }
+    // vertical wall edge at x (between x-1 and x); the map's right border
+    // belongs to the last chunk column
+    int vx1 = x1 == cols ? cols : x1 - 1;
+    for (int y = y0; y < y1; y++) {
+        for (int x = x0; x <= vx1; x++) {
+            int ax = x - 1, bx = x;
+            bool a = ax >= 0 && grid_is_revealed(ax, y);
+            bool b = bx < cols && grid_is_revealed(bx, y);
+            if ((a || b) && ((ax < 0 || bx >= cols) ? true : grid_blocked(ax, y, bx, y))) {
+                if (out) out[n] = (mark_t){ (int16_t)x, (int16_t)y, MARK_VWALL };
+                n++;
+            }
+        }
+    }
+    int hy1 = y1 == rows ? rows : y1 - 1;
+    for (int y = y0; y <= hy1; y++) {
+        for (int x = x0; x < x1; x++) {
+            int ay = y - 1, by = y;
+            bool a = ay >= 0 && grid_is_revealed(x, ay);
+            bool b = by < rows && grid_is_revealed(x, by);
+            if ((a || b) && ((ay < 0 || by >= rows) ? true : grid_blocked(x, ay, x, by))) {
+                if (out) out[n] = (mark_t){ (int16_t)x, (int16_t)y, MARK_HWALL };
+                n++;
+            }
+        }
+    }
+    return n;
+}
+
+static void chunk_build(int cx, int cy, void** data, int* bytes) {
+    int n = chunk_marks(cx, cy, NULL);
+    size_t sz = sizeof(chunk_geo_t) + (size_t)n * sizeof(mark_t);
+    chunk_geo_t* g = malloc(sz);
+    g->n = chunk_marks(cx, cy, g->m);
+    *data = g;
+    *bytes = (int)sz;
+}
+
+static void chunk_free(void* data) {
+    free(data);
+}
+
+static struct {
+    bool overlay;
+    bool frozen;             // tests/screenshots: keep the resident set as is
+    stream_rect_t frozen_view;
+    int cols, rows;
+} st;
+
+// The camera view in cells for a centre and the current scale/viewport.
+static stream_rect_t view_at(float cx, float cy) {
+    float scale = camera_cell_px();
+    if (scale <= 0.0f) scale = 16.0f;
+    float hw = (float)sapp_width() * 0.5f / scale, hh = (float)sapp_height() * 0.5f / scale;
+    return (stream_rect_t){ cx - hw, cy - hh, cx + hw, cy + hh };
+}
+
+static stream_rect_t view_now(void) {
+    return view_at(camera_center_x(), camera_center_y());
+}
+
+static void ensure_stream(void) {
+    if (st.cols != grid_cols() || st.rows != grid_rows()) {
+        st.cols = grid_cols();
+        st.rows = grid_rows();
+        stream_init(st.cols, st.rows, chunk_build, chunk_free);
+    }
+}
+
+void render_map_changed(void) {
+    ensure_stream();
+    stream_invalidate();
+}
+
+void render_stream_prefetch(void) {
+    ensure_stream();
+    if (!st.frozen) stream_prefetch(view_now());
+}
+
+void render_stream_prefetch_at(float cx, float cy) {
+    ensure_stream();
+    if (!st.frozen) stream_prefetch(view_at(cx, cy));
+}
+
+void render_stream_debug(bool overlay, bool freeze) {
+    st.overlay = overlay;
+    if (freeze && !st.frozen) st.frozen_view = view_now();
+    st.frozen = freeze;
+}
+
 void render_init(void) {
     r.pip = sgl_make_pipeline(&(sg_pipeline_desc){
         .colors[0].blend = {
@@ -150,6 +271,15 @@ static void draw_objects_pass(int item_pass) {
         }
         if (!grid_is_revealed(o->x, o->y)) {
             continue;
+        }
+        {
+            // off screen: not drawn (objects span at most a few cells)
+            stream_rect_t v = view_now();
+            int ow = o->w > 0 ? o->w : (o->kind == OBJ_DOOR && o->horizontal ? o->span : 1);
+            int oh = o->h > 0 ? o->h : (o->kind == OBJ_DOOR && !o->horizontal ? o->span : 1);
+            if (o->x + ow + 1 < v.x0 || o->x - 1 > v.x1 || o->y + oh + 1 < v.y0 || o->y - 1 > v.y1) {
+                continue;
+            }
         }
         if (o->kind == OBJ_ITEM && items_taken(i)) {
             continue;
@@ -403,51 +533,35 @@ void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* ro
     int cols = grid_cols();
     int rows = grid_rows();
 
-    for (int y = 0; y < rows; y++) {
-        for (int x = 0; x < cols; x++) {
-            if (!grid_is_floor(x, y) || !grid_is_revealed(x, y)) {
-                continue;
-            }
-            float sx, sy;
-            camera_cell_to_screen((float)x, (float)y, &sx, &sy);
-            fill_rect(sx, sy, scale, scale, 1.0f, 1.0f, 1.0f, 1.0f);
-            if (light_cell_lit(x, y)) {
-                fill_rect(sx, sy, scale, scale, 0.949f, 1.0f, 0.0f, LIGHT_OVERLAY_ALPHA);
-            }
-        }
-    }
-
-    for (int y = 0; y < rows; y++) {
-        for (int x = 0; x <= cols; x++) {
-            int ax = x - 1;
-            int bx = x;
-            bool a = ax >= 0 && grid_is_revealed(ax, y);
-            bool b = bx < cols && grid_is_revealed(bx, y);
-            if (!(a || b)) {
-                continue;
-            }
-            bool blocked = (ax < 0 || bx >= cols) ? true : grid_blocked(ax, y, bx, y);
-            if (blocked) {
-                float sx, sy;
-                camera_cell_to_screen((float)x, (float)y, &sx, &sy);
-                fill_rect(sx - 1.0f, sy, 2.0f, scale, C_INK_R);
-            }
-        }
-    }
-    for (int y = 0; y <= rows; y++) {
-        for (int x = 0; x < cols; x++) {
-            int ay = y - 1;
-            int by = y;
-            bool a = ay >= 0 && grid_is_revealed(x, ay);
-            bool b = by < rows && grid_is_revealed(x, by);
-            if (!(a || b)) {
-                continue;
-            }
-            bool blocked = (ay < 0 || by >= rows) ? true : grid_blocked(x, ay, x, by);
-            if (blocked) {
-                float sx, sy;
-                camera_cell_to_screen((float)x, (float)y, &sx, &sy);
-                fill_rect(sx, sy - 1.0f, scale, 2.0f, C_INK_R);
+    (void)cols;
+    (void)rows;
+    // Only chunks that intersect the view are drawn, from their cached
+    // geometry; they were made resident ahead of time (see stream.h).
+    ensure_stream();
+    stream_rect_t view = view_now();
+    int cx0, cy0, cx1, cy1;
+    stream_chunks_in(view, &cx0, &cy0, &cx1, &cy1);
+    for (int pass = 0; pass < 2; pass++) {  // floors first, then the wall lines on top
+        for (int cy = cy0; cy <= cy1; cy++) {
+            for (int cx = cx0; cx <= cx1; cx++) {
+                // frozen (debug): show exactly what is loaded, load nothing
+                const chunk_geo_t* g = st.frozen ? stream_peek(cx, cy) : stream_acquire(cx, cy);
+                if (!g) continue;
+                for (int i = 0; i < g->n; i++) {
+                    const mark_t* m = &g->m[i];
+                    float sx, sy;
+                    camera_cell_to_screen((float)m->x, (float)m->y, &sx, &sy);
+                    if (pass == 0 && m->kind == MARK_FLOOR) {
+                        fill_rect(sx, sy, scale, scale, 1.0f, 1.0f, 1.0f, 1.0f);
+                        if (light_cell_lit(m->x, m->y)) {
+                            fill_rect(sx, sy, scale, scale, 0.949f, 1.0f, 0.0f, LIGHT_OVERLAY_ALPHA);
+                        }
+                    } else if (pass == 1 && m->kind == MARK_VWALL) {
+                        fill_rect(sx - 1.0f, sy, 2.0f, scale, C_INK_R);
+                    } else if (pass == 1 && m->kind == MARK_HWALL) {
+                        fill_rect(sx, sy - 1.0f, scale, 2.0f, C_INK_R);
+                    }
+                }
             }
         }
     }
@@ -586,5 +700,34 @@ void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* ro
         float ring = dot + (scale * 1.4f - dot) * r.fx.impact_pulse;
         fill_circle(cx, cy, dot, br, bg, bb, a);
         ring_circle(cx, cy, ring, scale * 0.1f, br, bg, bb, a * (1.0f - 0.5f * r.fx.impact_pulse));
+    }
+
+    // debug overlay: resident chunks green, unloaded grey, the (frozen) view red
+    if (st.overlay) {
+        for (int cy = 0; cy < stream_chunk_rows(); cy++) {
+            for (int cx = 0; cx < stream_chunk_cols(); cx++) {
+                float sx, sy;
+                camera_cell_to_screen((float)(cx * STREAM_CHUNK), (float)(cy * STREAM_CHUNK), &sx, &sy);
+                float sz = scale * STREAM_CHUNK;
+                if (stream_is_resident(cx, cy)) {
+                    fill_rect(sx, sy, sz, sz, 0.0f, 0.8f, 0.2f, 0.18f);
+                }
+                thick_line(sx, sy, sx + sz, sy, 1.0f, 0.5f, 0.5f, 0.5f, 0.6f);
+                thick_line(sx, sy, sx, sy + sz, 1.0f, 0.5f, 0.5f, 0.5f, 0.6f);
+            }
+        }
+        stream_rect_t v = st.frozen ? st.frozen_view : view;
+        float ax, ay, bx, by;
+        camera_cell_to_screen(v.x0, v.y0, &ax, &ay);
+        camera_cell_to_screen(v.x1, v.y1, &bx, &by);
+        thick_line(ax, ay, bx, ay, 3.0f, C_RED_R);
+        thick_line(bx, ay, bx, by, 3.0f, C_RED_R);
+        thick_line(bx, by, ax, by, 3.0f, C_RED_R);
+        thick_line(ax, by, ax, ay, 3.0f, C_RED_R);
+    }
+
+    // stream for the next frame: resident = view + LOAD margin
+    if (!st.frozen) {
+        stream_prefetch(view);
     }
 }

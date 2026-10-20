@@ -1709,3 +1709,63 @@ test("Grace's dot keeps rendering after walking through every door on every floo
   const [, g] = await pixelAt(page, gx, gy);
   expect(g).toBeLessThan(120); // purple has little green; white floor has 255
 });
+
+// Map streaming: walk every door, take every staircase (each end, so both
+// directions), run about on foot, and repeat at the camera's widest zoom.
+// Every map chunk must already be loaded when it first comes into view.
+async function streamTour(page: Page) {
+  return page.evaluate(async () => {
+    const M = window.Module as unknown as Wasm;
+    const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    for (let i = 0; ; i++) {
+      const d = M._web_test_door(i);
+      if (d < 0) break;
+      const x = d >> 16;
+      const y = (d >> 8) & 255;
+      const sides = d & 1 ? [[x, y - 1], [x, y + 1]] : [[x - 1, y], [x + 1, y]];
+      for (const [sx, sy] of sides) {
+        M._web_test_grace_at(sx, sy);
+        await frames();
+      }
+    }
+    const trips: string[] = [];
+    for (let n = 0; ; n++) {
+      const v = M._web_test_find_object(13, n); // stairs
+      if (v < 0) break;
+      const x = v >> 16;
+      const y = (v >> 8) & 255;
+      M._web_test_grace_at(x - 3, y);
+      await frames();
+      M._web_test_grace_at(x, y); // step on: the stairs take her to the linked flight
+      for (let k = 0; k < 4; k++) await frames();
+      trips.push(`${x},${y}->${M._player_cell_x()},${M._player_cell_y()}`);
+    }
+    return trips;
+  });
+}
+
+test("map streaming: every chunk is loaded before it comes into view (doors, stairs, running, zoomed out)", async ({ page }) => {
+  test.setTimeout(180_000);
+  await boot(page);
+  await wasm(page, "web_test_enemy_place", 11550, 4550);
+  await wasm(page, "web_stream_reset");
+  const trips = await streamTour(page);
+  expect(trips.length).toBeGreaterThanOrEqual(2);
+  // on foot: run (E latch) around the start for a few seconds
+  await wasm(page, "web_test_grace_at", 159, 68);
+  await page.keyboard.press("e");
+  for (const k of ["a", "s", "d", "w", "a"]) await steer(page, k, 700);
+  expect(await wasm(page, "web_stream_violations")).toBe(0);
+  expect(await wasm(page, "web_test_gl_full")).toBe(0);
+  const fitPeak = await wasm(page, "web_test_gl_peak");
+  // zoomed all the way out (the camera clamps at 16 px a cell)
+  for (let i = 0; i < 20; i++) await wasm(page, "web_test_zoom", 0.8);
+  expect(await wasm(page, "web_test_cell_px")).toBe(16);
+  await streamTour(page);
+  expect(await wasm(page, "web_stream_violations")).toBe(0);
+  expect(await wasm(page, "web_test_gl_full")).toBe(0);
+  // only a window's worth of the 12x16 chunk map is ever resident
+  expect(await wasm(page, "web_stream_peak_resident")).toBeLessThan(192);
+  expect(await wasm(page, "web_stream_evictions")).toBeGreaterThan(0);
+  expect(fitPeak).toBeLessThan(1 << 17);
+});

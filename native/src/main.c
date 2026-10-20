@@ -25,6 +25,7 @@
 #include "pathfind.h"
 #include "player.h"
 #include "render.h"
+#include "stream.h"
 #include "savegame.h"
 #include "throw.h"
 #include "webexport.h"
@@ -150,10 +151,17 @@ static struct {
     int respawn_x, respawn_y;
     bool gl_full;      // last frame overflowed sokol_gl (tests)
     int gl_vertices;   // vertices it used (tests)
+    int gl_peak;       // most vertices any frame used (tests)
 } app;
 
-#define SGL_MAX_VERTICES (1 << 19)
-#define SGL_MAX_COMMANDS (1 << 16)
+// Map streaming (stream.h) draws only the chunks in view, so the per-frame
+// vertex count follows the window, not how much of the hospital is revealed.
+// Measured peak over every door + every staircase: 49,334 vertices at the
+// widest window tried (3840x1080, 32:9); 73,234 at the camera's 16 px/cell
+// minimum on 3440x1440 (zoom is test-only today). 128k leaves 2.6x / 1.75x
+// headroom: 128k x 28 B = 3.5 MB (CPU copy + GPU buffer each).
+#define SGL_MAX_VERTICES (1 << 17)
+#define SGL_MAX_COMMANDS 16384
 
 #define TOUCH_SLOP_PX 14.0f
 
@@ -198,6 +206,7 @@ static void reveal_sections(void) {
 
 static void bump_revision(void) {
     app.revision++;
+    render_map_changed();  // reveals, doors, ...: cached chunk geometry rebuilds
 }
 
 // Stepping onto a staircase moves Grace to the linked one. She has to step
@@ -218,10 +227,13 @@ static void take_stairs(void) {
     if (!dst) {
         return;
     }
+    // load the destination's map chunks before the jump, so no pop-in
+    render_stream_prefetch_at((float)(dst->x + dst->w / 2) + 0.5f, (float)(dst->y + dst->h / 2) + 0.5f);
     player_set_cell(dst->x + dst->w / 2, dst->y + dst->h / 2);
     app.route.count = 0;
     camera_follow(player_x(), player_y());
     camera_recentre();
+    render_stream_prefetch();
     reveal_sections();
     bump_revision();
 }
@@ -781,10 +793,8 @@ static void init(void) {
         .environment = sglue_environment(),
         .logger.func = slog_func,
     });
-    // sokol_gl's default 64k vertices ran out once enough of the hospital was
-    // revealed (walls, floor dots, items, routes all go through it); anything
-    // drawn after that point -- Grace's dot is drawn late -- was silently
-    // dropped. Room for the whole level revealed, with headroom.
+    // sokol_gl silently drops everything past a full buffer (Grace's dot is
+    // drawn late), so it is sized from the measured streaming peak above.
     sgl_setup(&(sgl_desc_t){
         .max_vertices = SGL_MAX_VERTICES,
         .max_commands = SGL_MAX_COMMANDS,
@@ -812,6 +822,7 @@ static void init(void) {
     camera_set_viewport(sapp_width(), sapp_height());
     camera_follow(player_x(), player_y());
     camera_recentre();
+    render_stream_prefetch();
     reveal_sections();
 
     app.hover_x = -1;
@@ -1117,6 +1128,9 @@ static void frame(void) {
         sgl_error_t ge = sgl_error();
         app.gl_full = ge.vertices_full || ge.commands_full;
         app.gl_vertices = sgl_num_vertices();
+        if (app.gl_vertices > app.gl_peak) {
+            app.gl_peak = app.gl_vertices;
+        }
     }
 
     sg_begin_pass(&(sg_pass){
@@ -1194,6 +1208,7 @@ static void event(const sapp_event* e) {
         }
         case SAPP_EVENTTYPE_RESIZED:
             camera_set_viewport(sapp_width(), sapp_height());
+            render_stream_prefetch();  // a bigger window sees more map: load it first
             return;
         case SAPP_EVENTTYPE_MOUSE_MOVE:
             app.touch_pointer = false;
@@ -1681,6 +1696,7 @@ TEST_EXPORT void web_test_grace_at(int x, int y) {
     app.pending = false;
     camera_follow(player_x(), player_y());
     camera_recentre();
+    render_stream_prefetch();
     reveal_sections();
     interact_check_complete();
     bump_revision();
@@ -1835,6 +1851,60 @@ WEB_EXPORT float web_grace_screen_y(void) {
 // Test hook: move the camera off Grace (CSS pixels) to put her near an edge.
 TEST_EXPORT void web_camera_pan(float dx, float dy) {
     camera_pan_pixels(dx * sapp_dpi_scale(), dy * sapp_dpi_scale());
+    render_stream_prefetch();
+}
+
+// Tests: zoom the camera about the screen centre (factor < 1 zooms out; the
+// camera clamps at its 16 px/cell minimum), then stream for the new view.
+TEST_EXPORT void web_test_zoom(float factor) {
+    camera_zoom_at((float)sapp_width() * 0.5f, (float)sapp_height() * 0.5f, factor);
+    render_stream_prefetch();
+}
+
+TEST_EXPORT float web_test_cell_px(void) {
+    return camera_cell_px();
+}
+
+// Tests: map streaming counters (stream.h).
+TEST_EXPORT int web_stream_violations(void) {
+    return (int)stream_stats()->violations;
+}
+
+TEST_EXPORT int web_stream_resident(void) {
+    return stream_stats()->resident;
+}
+
+TEST_EXPORT int web_stream_peak_resident(void) {
+    return stream_stats()->peak_resident;
+}
+
+TEST_EXPORT int web_stream_bytes(void) {
+    return (int)stream_stats()->bytes;
+}
+
+TEST_EXPORT int web_stream_peak_bytes(void) {
+    return (int)stream_stats()->peak_bytes;
+}
+
+TEST_EXPORT int web_stream_loads(void) {
+    return (int)stream_stats()->loads;
+}
+
+TEST_EXPORT int web_stream_evictions(void) {
+    return (int)stream_stats()->evictions;
+}
+
+TEST_EXPORT void web_stream_reset(void) {
+    stream_reset_stats();
+    app.gl_peak = 0;
+}
+
+TEST_EXPORT int web_test_gl_peak(void) {
+    return app.gl_peak;
+}
+
+TEST_EXPORT void web_stream_debug(int overlay, int freeze) {
+    render_stream_debug(overlay != 0, freeze != 0);
 }
 
 WEB_EXPORT float web_cell_css_px(void) {
@@ -1999,6 +2069,7 @@ WEB_EXPORT void game_reset(void) {
     camera_set_follow(true);
     camera_follow(player_x(), player_y());
     camera_recentre();
+    render_stream_prefetch();
     memset(app.section_revealed, 0, sizeof(app.section_revealed));
     reveal_sections();
     app.elapsed = 0.0;
