@@ -3,7 +3,8 @@
 //  Dear ImGui level editor: paint the tile map (floor, the four room corners,
 //  straight walls), drop doors and items, run level scripts, and save/load
 //  the level JSON. Every brush stroke runs as a script command, so what you
-//  paint can be replayed from a script file.
+//  paint can be replayed from a script file. Selecting, deleting (Del) and
+//  dragging tiles and objects run script commands too.
 //------------------------------------------------------------------------------
 #include "sokol_app.h"
 #include "sokol_gfx.h"
@@ -48,6 +49,7 @@ enum {
 
 static struct {
     sg_pass_action pass_action;
+    sgl_pipeline alpha_pip;  // alpha blending: the wall tint and overlays
     level_t level;
     char path[512];
     int tool;
@@ -86,6 +88,18 @@ static struct {
     float pan_x, pan_y;
     bool dirty;
     char status[640];
+    // a selected tile (Select tool): Del voids it, dragging moves it
+    bool tile_sel;
+    int tile_x, tile_y;
+    bool tile_drag;
+    // where a dragged object started, so the drop runs as one move command
+    int drag_from_x, drag_from_y;
+    // --idcheck: sweep the mouse over every panel and count ImGui ID clashes
+    bool idcheck;
+    int idcheck_frame;
+    int idcheck_conflicts;
+    int idcheck_states;  // --idcheck N: only the first N states (0 = all)
+    // --shot FILE: write the next frames' framebuffer (for the screenshots)
 } ed;
 
 static int g_argc;
@@ -331,7 +345,7 @@ static void add_object(int kind, int x, int y) {
     o->radius = LIGHT_DEFAULT_RADIUS;
     o->state = (kind == OBJ_LIGHT) ? 1 : 0;
     if (kind == OBJ_DOOR) {
-        o->span = 3;
+        o->span = DOOR_SPAN;
     }
     if (kind == OBJ_OBSTACLE) {
         o->w = 2;
@@ -342,16 +356,26 @@ static void add_object(int kind, int x, int y) {
     ed.dirty = true;
 }
 
+static bool run_command(const char* fmt, ...);
+
+// Del on a selected object: one script command, so it replays.
 static void delete_selected(void) {
     if (ed.selected < 0 || ed.selected >= ed.level.obj_count) {
         return;
     }
-    for (int i = ed.selected; i < ed.level.obj_count - 1; i++) {
-        ed.level.objs[i] = ed.level.objs[i + 1];
-    }
-    ed.level.obj_count--;
+    int id = ed.level.objs[ed.selected].id;
     ed.selected = -1;
-    ed.dirty = true;
+    run_command("delete %d", id);
+}
+
+// Del on a selected tile: true void (paper, like the game), not a grey cell.
+static void delete_tile(void) {
+    if (!ed.tile_sel) {
+        return;
+    }
+    ed.tile_sel = false;
+    ed.tile_drag = false;
+    run_command("tile void %d %d", ed.tile_x, ed.tile_y);
 }
 
 // Centre of a door's bar: along the span, on the wall line it sits on.
@@ -467,28 +491,41 @@ static void pick_object(float wx, float wy) {
 }
 
 
-// A wall tile draws as an ink bar through the middle of its cell, so corners
-// read as the L where two walls meet.
+// Tiles draw the way the game draws the level: floor and void are both
+// paper (the game's background), and the walls are the ink lines between
+// floor and everything else (ed.level.walls, compiled from the tiles, the
+// same edges the game draws). Solid wall tiles get a faint tint and glyph
+// so they can be seen and picked while editing; void gets nothing.
 static void draw_tile(tile_t t, float sx, float sy, float sc) {
-    if (t == TILE_VOID) {
+    if (t == TILE_VOID || t == TILE_FLOOR) {
         return;
     }
-    if (t == TILE_FLOOR) {
-        fill_rect(sx, sy, sc, sc, PAL_PAPER, 1.0f);
-        return;
-    }
-    fill_rect(sx, sy, sc, sc, PAL_GRAY, 1.0f);
-    float th = sc * 0.4f;
+    fill_rect(sx, sy, sc, sc, PAL_GRAY, 0.22f);
+    float th = sc * 0.16f;
     float mid = (sc - th) * 0.5f;
     bool l = t == TILE_WALL_H || t == TILE_CORNER_NE || t == TILE_CORNER_SE;
     bool r = t == TILE_WALL_H || t == TILE_CORNER_NW || t == TILE_CORNER_SW;
     bool u = t == TILE_WALL_V || t == TILE_CORNER_SW || t == TILE_CORNER_SE;
     bool d = t == TILE_WALL_V || t == TILE_CORNER_NW || t == TILE_CORNER_NE;
-    fill_rect(sx + mid, sy + mid, th, th, PAL_INK, 1.0f);
-    if (l) fill_rect(sx, sy + mid, mid, th, PAL_INK, 1.0f);
-    if (r) fill_rect(sx + mid + th, sy + mid, mid, th, PAL_INK, 1.0f);
-    if (u) fill_rect(sx + mid, sy, th, mid, PAL_INK, 1.0f);
-    if (d) fill_rect(sx + mid, sy + mid + th, th, mid, PAL_INK, 1.0f);
+    fill_rect(sx + mid, sy + mid, th, th, PAL_GRAY, 0.6f);
+    if (l) fill_rect(sx, sy + mid, mid, th, PAL_GRAY, 0.6f);
+    if (r) fill_rect(sx + mid + th, sy + mid, mid, th, PAL_GRAY, 0.6f);
+    if (u) fill_rect(sx + mid, sy, th, mid, PAL_GRAY, 0.6f);
+    if (d) fill_rect(sx + mid, sy + mid + th, th, mid, PAL_GRAY, 0.6f);
+}
+
+static void draw_walls(void) {
+    float t = PAL_WALL_PX;
+    for (int i = 0; i < ed.level.wall_count; i++) {
+        const wall_seg_t* w = &ed.level.walls[i];
+        float x0 = view_x((float)w->x0), y0 = view_y((float)w->y0);
+        float x1 = view_x((float)w->x1), y1 = view_y((float)w->y1);
+        if (w->y0 == w->y1) {
+            fill_rect(x0, y0 - t * 0.5f, x1 - x0, t, PAL_INK, 1.0f);
+        } else {
+            fill_rect(x0 - t * 0.5f, y0, t, y1 - y0, PAL_INK, 1.0f);
+        }
+    }
 }
 
 static void log_line(const char* line) {
@@ -568,9 +605,20 @@ static void brush_press(int x, int y) {
     if (ed.brush < TILE_KIND_COUNT) {
         brush_paint(x, y);
     } else if (ed.brush == BRUSH_DOOR) {
-        // a door across a horizontal wall run sits on that run
-        bool h = is_wall_tile(x - 1, y) || is_wall_tile(x + 1, y);
-        run_command("door %d %d %c 1", x, y, h ? 'h' : 'v');
+        // snap to the doorway under the cursor: a 2-cell gap gets a normal
+        // door, any other gap a barrier of its width; on a solid wall it
+        // cuts a normal span-2 door along that wall
+        int fx, fy, fh, fs;
+        if (level_door_fit(&ed.level, x, y, &fx, &fy, &fh, &fs)) {
+            if (fs == DOOR_SPAN) {
+                run_command("door %d %d", x, y);
+            } else {
+                run_command("door %d %d name=barrier", x, y);
+            }
+        } else {
+            bool h = is_wall_tile(x - 1, y) || is_wall_tile(x + 1, y);
+            run_command("door %d %d %c", x, y, h ? 'h' : 'v');
+        }
     } else if (ed.brush == BRUSH_ITEM) {
         run_command("item %d %d %s", x, y, item_name((item_t)ed.place_item));
     } else if (ed.brush == BRUSH_ROOM) {
@@ -583,7 +631,7 @@ static void brush_press(int x, int y) {
 static void draw_map(void) {
     sgl_defaults();
     sgl_viewport(0, 0, sapp_width(), sapp_height(), true);
-    sgl_load_default_pipeline();
+    sgl_load_pipeline(ed.alpha_pip);
     sgl_matrix_mode_projection();
     sgl_load_identity();
     sgl_ortho(0.0f, sapp_widthf(), sapp_heightf(), 0.0f, -1.0f, 1.0f);
@@ -592,7 +640,7 @@ static void draw_map(void) {
 
     int cols = ed.level.cols;
     int rows = ed.level.rows;
-    fill_rect(view_x(0.0f), view_y(0.0f), (float)cols * ed.scale, (float)rows * ed.scale, 0.78f, 0.78f, 0.78f, 1.0f);
+    fill_rect(view_x(0.0f), view_y(0.0f), (float)cols * ed.scale, (float)rows * ed.scale, PAL_PAPER, 1.0f);
     if (ed.ref_loaded && ed.ref_show) {
         float x0 = view_x(ed.ref_x);
         float y0 = view_y(ed.ref_y);
@@ -612,6 +660,25 @@ static void draw_map(void) {
     for (int y = 0; y < rows; y++) {
         for (int x = 0; x < cols; x++) {
             draw_tile(level_tile(&ed.level, x, y), view_x((float)x), view_y((float)y), ed.scale);
+        }
+    }
+    draw_walls();
+    if (ed.tile_sel) {
+        float sx = view_x((float)ed.tile_x), sy = view_y((float)ed.tile_y), sc = ed.scale;
+        draw_line(sx, sy, sx + sc, sy, 2.0f, PAL_CYAN, 1);
+        draw_line(sx + sc, sy, sx + sc, sy + sc, 2.0f, PAL_CYAN, 1);
+        draw_line(sx + sc, sy + sc, sx, sy + sc, 2.0f, PAL_CYAN, 1);
+        draw_line(sx, sy + sc, sx, sy, 2.0f, PAL_CYAN, 1);
+        if (ed.tile_drag) {
+            ImVec2 m = ImGui::GetIO().MousePos;
+            float wx, wy;
+            screen_to_world(m.x, m.y, &wx, &wy);
+            float dx = view_x(floorf(wx)), dy = view_y(floorf(wy));
+            draw_tile(level_tile(&ed.level, ed.tile_x, ed.tile_y), dx, dy, sc);
+            draw_line(dx, dy, dx + sc, dy, 2.0f, 1.0f, 0.55f, 0.0f, 1);
+            draw_line(dx + sc, dy, dx + sc, dy + sc, 2.0f, 1.0f, 0.55f, 0.0f, 1);
+            draw_line(dx + sc, dy + sc, dx, dy + sc, 2.0f, 1.0f, 0.55f, 0.0f, 1);
+            draw_line(dx, dy + sc, dx, dy, 2.0f, 1.0f, 0.55f, 0.0f, 1);
         }
     }
     if (ed.room_drag) {
@@ -853,81 +920,115 @@ static void delete_section(void) {
     ed.dirty = true;
 }
 
+// A short hover tooltip on the widget just drawn.
+static void tip(const char* text) {
+    ImGui::SetItemTooltip("%s", text);
+}
+
 static void ui_toolbar(void) {
     ImGui::Begin("Tools");
     if (ImGui::Button("Save")) {
         save_level();
     }
+    tip("Write the level JSON to its file");
     ImGui::SameLine();
     if (ImGui::Button("Reload")) {
         load_level();
     }
+    tip("Reload the level from its file, dropping unsaved edits");
     ImGui::SameLine();
     if (ImGui::Button("New")) {
         new_level();
     }
+    tip("Start an empty level of the same size");
     ImGui::SameLine();
     if (ImGui::Button("Fit")) {
         fit_view();
     }
+    tip("Zoom and pan so the whole level is in view");
     ImGui::Separator();
     ImGui::Text("Tool");
     ImGui::RadioButton("Select", &ed.tool, TOOL_SELECT);
+    tip("Click a tile, object, link or section to select it.\nDrag to move it, Del to delete it.");
     ImGui::RadioButton("Tiles", &ed.tool, TOOL_TILE);
+    tip("Paint with the brush picked in the Tiles panel");
     ImGui::RadioButton("Place", &ed.tool, TOOL_PLACE);
+    tip("Click to place one object of the Kind below ([ and ] cycle it)");
     ImGui::RadioButton("Link", &ed.tool, TOOL_LINK);
+    tip("Click the source, then the object it drives (switch to light, key to door)");
     if (ImGui::Button("Light")) {
         ed.tool = TOOL_PLACE;
         ed.place_kind = OBJ_LIGHT;
     }
+    tip("Place a light");
     ImGui::SameLine();
     if (ImGui::Button("Switch")) {
         ed.tool = TOOL_PLACE;
         ed.place_kind = OBJ_SWITCH;
     }
+    tip("Place a light switch");
     if (ed.tool == TOOL_PLACE) {
         const char* kinds[OBJ_KIND_COUNT];
         for (int i = 0; i < OBJ_KIND_COUNT; i++) {
             kinds[i] = obj_kind_name((obj_kind_t)i);
         }
         ImGui::Combo("Kind", &ed.place_kind, kinds, OBJ_KIND_COUNT);
+        tip("The object the Place tool drops");
         if (ed.place_kind == OBJ_ITEM) {
             const char* items[ITEM_COUNT];
             for (int i = 0; i < ITEM_COUNT; i++) {
                 items[i] = item_name((item_t)i);
             }
             ImGui::Combo("Item", &ed.place_item, items, ITEM_COUNT);
+            tip("The item type (, and . cycle it)");
         }
     }
     ImGui::Separator();
     ImGui::Text("Sections");
     ImGui::SameLine();
     ImGui::Checkbox("show", &ed.show_sections);
+    tip("Draw the section outlines on the map");
     if (ImGui::Button("Add")) {
         add_section();
     }
+    tip("Add a 10x10 section at the top-left corner");
     ImGui::SameLine();
-    if (ImGui::Button("Delete")) {
+    if (ImGui::Button("Delete##section")) {
         delete_section();
     }
+    tip("Delete the selected section");
+    // names repeat (two "F1 Corridor"s), so each row gets its index as its ID
     for (int i = 0; i < ed.level.section_count; i++) {
-        if (ImGui::Selectable(ed.level.sections[i].name, i == ed.section_selected)) {
+        const section_t* sec = &ed.level.sections[i];
+        ImGui::PushID(i);
+        if (ImGui::Selectable(sec->name, i == ed.section_selected)) {
             ed.section_selected = i;
+            ed.selected = -1;
+            ed.tile_sel = false;
         }
+        ImGui::SetItemTooltip("%s: %d,%d  %dx%d", sec->name, sec->x, sec->y, sec->w, sec->h);
+        ImGui::PopID();
     }
     ImGui::Separator();
     ImGui::Text("Reference image");
     ImGui::InputText("path", ed.ref_path, sizeof(ed.ref_path));
+    tip("Image file to trace over");
     if (ImGui::Button("Load")) {
         load_reference();
     }
+    tip("Load the reference image");
     ImGui::SameLine();
     ImGui::Checkbox("show##ref", &ed.ref_show);
+    tip("Show the reference image under the map");
     if (ed.ref_loaded) {
         ImGui::DragFloat("ref x", &ed.ref_x, 0.25f);
+        tip("Reference image left edge, in cells (drag)");
         ImGui::DragFloat("ref y", &ed.ref_y, 0.25f);
+        tip("Reference image top edge, in cells (drag)");
         ImGui::DragFloat("ref scale", &ed.ref_scale, 0.001f, 0.001f, 4.0f, "%.4f");
+        tip("Cells per image pixel (drag)");
         ImGui::SliderFloat("opacity", &ed.ref_alpha, 0.0f, 1.0f);
+        tip("How strongly the reference image shows");
     }
     ImGui::End();
 }
@@ -953,7 +1054,14 @@ static void ui_properties(void) {
             }
             changed |= ImGui::Checkbox("open", (bool*)&o->open);
             changed |= ImGui::InputInt("key_id", &o->key_id);
-            changed |= ImGui::InputInt("span", &o->span);
+            // a normal door is always DOOR_SPAN wide; barriers and gates fit their gap
+            if (strstr(o->name, "barrier") || strstr(o->name, "gate")) {
+                changed |= ImGui::InputInt("span", &o->span);
+                tip("Barrier width in cells (the Door tool fits it to the gap)");
+            } else {
+                ImGui::Text("span %d (fixed)", o->span);
+                tip("Normal doors are 2 cells wide, like Room 202's door");
+            }
             changed |= ImGui::InputFloat("auto_close", &o->auto_close);
             changed |= ImGui::Checkbox("breakable", (bool*)&o->breakable);
         } else if (o->kind == OBJ_ITEM) {
@@ -964,6 +1072,7 @@ static void ui_properties(void) {
             changed |= ImGui::Combo("item", &o->item_type, items, ITEM_COUNT);
         } else if (o->kind == OBJ_LIGHT) {
             changed |= ImGui::SliderFloat("light radius", &o->radius, LIGHT_RADIUS_MIN, LIGHT_RADIUS_MAX, "%.1f cells");
+            tip("How far the light reaches (the game also stops it at walls)");
             ImGui::TextDisabled("game: unlit items are hidden");
             ImGui::TextDisabled("link: the switch that toggles it");
             if (o->state == LIGHT_BROKEN) {
@@ -991,9 +1100,10 @@ static void ui_properties(void) {
         }
         changed |= ImGui::InputInt("link", &o->link_id);
         ed.dirty |= changed;
-        if (ImGui::Button("Delete")) {
+        if (ImGui::Button("Delete##object")) {
             delete_selected();
         }
+        tip("Delete this object (Del)");
     } else if (ed.section_selected >= 0 && ed.section_selected < ed.level.section_count) {
         section_t* s = &ed.level.sections[ed.section_selected];
         ImGui::Text("Section %s", s->name);
@@ -1004,6 +1114,13 @@ static void ui_properties(void) {
         changed |= ImGui::InputInt("w", &s->w);
         changed |= ImGui::InputInt("h", &s->h);
         ed.dirty |= changed;
+    } else if (ed.tile_sel) {
+        ImGui::Text("Tile %d,%d: %s", ed.tile_x, ed.tile_y, tile_name(level_tile(&ed.level, ed.tile_x, ed.tile_y)));
+        if (ImGui::Button("Delete##tile")) {
+            delete_tile();
+        }
+        tip("Remove the tile completely, leaving void (Del)");
+        ImGui::TextDisabled("drag it on the map to move it");
     } else {
         ImGui::TextUnformatted("Nothing selected");
         ImGui::Text("Level");
@@ -1024,15 +1141,30 @@ static void ui_properties(void) {
 
 static void ui_tiles(void) {
     ImGui::Begin("Tiles");
+    // No Void brush: select a tile and press Del to remove it (true void).
     static const char* labels[BRUSH_COUNT] = {
-        "Void (erase)", "Floor", "Corner NW", "Corner NE", "Corner SW", "Corner SE",
+        "", "Floor", "Corner NW", "Corner NE", "Corner SW", "Corner SE",
         "Horizontal wall", "Vertical wall", "Door", "Item", "Room (drag)",
     };
-    for (int b = 0; b < BRUSH_COUNT; b++) {
+    static const char* tips[BRUSH_COUNT] = {
+        "",
+        "Walkable floor (drag to paint)",
+        "Wall corner opening to the south-east",
+        "Wall corner opening to the south-west",
+        "Wall corner opening to the north-east",
+        "Wall corner opening to the north-west",
+        "Straight wall running east-west",
+        "Straight wall running north-south",
+        "Click a doorway: snaps a 2-cell door flush between the jambs\n(other gap widths get a barrier); on a wall it cuts a 2-cell door",
+        "Click to drop the item picked below",
+        "Drag out a whole room: floor wrapped in walls",
+    };
+    for (int b = TILE_FLOOR; b < BRUSH_COUNT; b++) {
         if (ImGui::RadioButton(labels[b], ed.tool == TOOL_TILE && ed.brush == b)) {
             ed.tool = TOOL_TILE;
             ed.brush = b;
         }
+        tip(tips[b]);
     }
     if (ed.brush == BRUSH_ITEM) {
         const char* items[ITEM_COUNT];
@@ -1040,14 +1172,16 @@ static void ui_tiles(void) {
             items[i] = item_name((item_t)i);
         }
         ImGui::Combo("item##brush", &ed.place_item, items, ITEM_COUNT);
+        tip("The item the Item brush drops");
     }
     ImGui::Separator();
     if (ImGui::Button("Auto walls")) {
         run_command("autowall");
     }
+    tip("Wrap every floor cell in wall tiles and fix the corner glyphs");
     ImGui::SameLine();
     ImGui::TextDisabled("wrap floor in walls");
-    ImGui::TextDisabled("Each stroke runs a script command;\nsee the Script log.");
+    ImGui::TextDisabled("Each stroke runs a script command;\nsee the Script log. To erase, select\na tile (Select tool) and press Del.");
     ImGui::End();
 }
 
@@ -1057,12 +1191,15 @@ static void ui_script(void) {
     if (ImGui::Button("Run")) {
         run_script(ed.script, true);
     }
+    tip("Run the script above against the level");
     ImGui::SameLine();
     ImGui::TextDisabled("one command per line");
     ImGui::InputText("file", ed.script_path, sizeof(ed.script_path));
+    tip("Script file for Run file and Save log to file");
     if (ImGui::Button("Run file")) {
         run_script_file(ed.script_path);
     }
+    tip("Run the script file");
     ImGui::SameLine();
     if (ImGui::Button("Save log to file")) {
         FILE* f = fopen(ed.script_path, "wb");
@@ -1074,16 +1211,19 @@ static void ui_script(void) {
             snprintf(ed.status, sizeof(ed.status), "cannot write %s", ed.script_path);
         }
     }
+    tip("Write every command run so far to the script file, to replay later");
     ImGui::Separator();
     ImGui::Text("Log");
     ImGui::SameLine();
     if (ImGui::SmallButton("Copy")) {
         ImGui::SetClipboardText(ed.script_log);
     }
+    tip("Copy the log to the clipboard");
     ImGui::SameLine();
     if (ImGui::SmallButton("Clear")) {
         ed.script_log[0] = 0;
     }
+    tip("Clear the log (the level is unchanged)");
     ImGui::BeginChild("log", ImVec2(0, 0), ImGuiChildFlags_Borders);
     ImGui::TextUnformatted(ed.script_log);
     if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
@@ -1146,6 +1286,8 @@ static void handle_input(void) {
             } else if (ed.tool == TOOL_SELECT) {
                 pick_object(wx, wy);
                 ed.section_selected = -1;
+                ed.tile_sel = false;
+                ed.tile_drag = false;
                 if (ed.selected >= 0) {
                     obj_t* o = &ed.level.objs[ed.selected];
                     ed.section_selected = -1;
@@ -1174,6 +1316,8 @@ static void handle_input(void) {
                     }
                     ed.drag_dx = (int)floorf(wx) - o->x;
                     ed.drag_dy = (int)floorf(wy) - o->y;
+                    ed.drag_from_x = o->x;
+                    ed.drag_from_y = o->y;
                     if (ed.obj_grab == 2) {
                         ed.drag_obj = -1;
                     }
@@ -1212,12 +1356,24 @@ static void handle_input(void) {
                                 break;
                             }
                             if (wx >= rx && wx <= x1 && wy >= ry && wy <= y1) {
+                                // a painted tile inside wins over the section body
+                                if (level_tile(&ed.level, (int)floorf(wx), (int)floorf(wy)) != TILE_VOID) {
+                                    break;
+                                }
                                 ed.section_selected = si;
                                 ed.sec_grab = 1;
                                 ed.sec_dx = wx - rx;
                                 ed.sec_dy = wy - ry;
                                 break;
                             }
+                        }
+                        // nothing else hit: select the tile under the cursor
+                        int tx = (int)floorf(wx), ty = (int)floorf(wy);
+                        if (ed.section_selected < 0 && level_tile(&ed.level, tx, ty) != TILE_VOID) {
+                            ed.tile_sel = true;
+                            ed.tile_drag = true;
+                            ed.tile_x = tx;
+                            ed.tile_y = ty;
                         }
                     }
                 }
@@ -1263,7 +1419,25 @@ static void handle_input(void) {
                     ed.dirty = true;
                 }
             } else {
+                // dropped: put it back and run the move as one command
+                int tx = o->x, ty = o->y, id = o->id;
                 ed.drag_obj = -1;
+                if (tx != ed.drag_from_x || ty != ed.drag_from_y) {
+                    o->x = ed.drag_from_x;
+                    o->y = ed.drag_from_y;
+                    run_command("move %d %d %d", id, tx, ty);
+                }
+            }
+        }
+        // dragging a selected tile carries it to the cell it is dropped on
+        if (ed.tile_drag && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            ed.tile_drag = false;
+            int tx = (int)floorf(wx), ty = (int)floorf(wy);
+            if (ed.tile_sel && (tx != ed.tile_x || ty != ed.tile_y) && tx >= 0 && ty >= 0 &&
+                tx < ed.level.cols && ty < ed.level.rows) {
+                run_command("movetile %d %d %d %d", ed.tile_x, ed.tile_y, tx, ty);
+                ed.tile_x = tx;
+                ed.tile_y = ty;
             }
         }
         // resizing a rectangle object (obstacle/openable) from a corner
@@ -1359,10 +1533,12 @@ static void handle_input(void) {
         if (ImGui::IsKeyPressed(ImGuiKey_Delete)) {
             if (ed.link_selected >= 0) {
                 delete_link();
+            } else if (ed.selected >= 0) {
+                delete_selected();
+            } else if (ed.tile_sel) {
+                delete_tile();
             } else if (ed.section_selected >= 0) {
                 delete_section();
-            } else {
-                delete_selected();
             }
         }
         // R rotates a door: the selected one if there is one, else the next placed
@@ -1390,6 +1566,11 @@ static void init(void) {
     sgld.max_commands = 1 << 14;
     sgld.logger.func = slog_func;
     sgl_setup(&sgld);
+    sg_pipeline_desc pd = {};
+    pd.colors[0].blend.enabled = true;
+    pd.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+    pd.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    ed.alpha_pip = sgl_make_pipeline(&pd);
     simgui_desc_t simgui_desc = {};
     simgui_desc.logger.func = slog_func;
     simgui_setup(&simgui_desc);
@@ -1398,7 +1579,7 @@ static void init(void) {
     ImGui::StyleColorsLight();  // panels on paper, like the game's UI
 
     ed.pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
-    ed.pass_action.colors[0].clear_value = { 0.85f, 0.85f, 0.85f, 1.0f };  // outside the level
+    ed.pass_action.colors[0].clear_value = { 0.85f, 0.85f, 0.85f, 1.0f };  // outside the level (inside is paper, like the game)
     ed.tool = TOOL_SELECT;
     ed.place_kind = OBJ_DOOR;
     ed.place_item = ITEM_HERB;
@@ -1445,17 +1626,84 @@ static void init(void) {
     fit_view();
 }
 
+// --idcheck: a self-test for ImGui ID clashes. ImGui only reports a clash
+// for the item under the mouse, so this sweeps the mouse down columns over
+// both panel stacks in several editor states (nothing / a section / a tile /
+// one object of each kind selected, the Place and Item tools) and counts the
+// frames where ImGui flags a conflict. Exit code 1 if any.
+enum { IDCHECK_STEP = 12 };  // under one row of ImGui text, so every row is hit
+static const float k_idcheck_x[] = { 20.0f, 70.0f, 140.0f, 230.0f, -330.0f, -240.0f, -120.0f, -30.0f };
+#define IDCHECK_COLS ((int)(sizeof(k_idcheck_x) / sizeof(k_idcheck_x[0])))
+
+static int idcheck_rows(void) {
+    return sapp_height() / IDCHECK_STEP;
+}
+
+// Set up editor state number st; false when there are no more states.
+static bool idcheck_state(int st) {
+    ed.selected = -1;
+    ed.section_selected = -1;
+    ed.tile_sel = false;
+    ed.tool = TOOL_SELECT;
+    if (st == 0) return true;
+    if (st == 1) { ed.section_selected = 0; return true; }
+    if (st == 2) {
+        for (int y = 0; y < ed.level.rows && !ed.tile_sel; y++)
+            for (int x = 0; x < ed.level.cols && !ed.tile_sel; x++)
+                if (level_tile(&ed.level, x, y) != TILE_VOID) { ed.tile_sel = true; ed.tile_x = x; ed.tile_y = y; }
+        return true;
+    }
+    if (st == 3) { ed.tool = TOOL_PLACE; ed.place_kind = OBJ_ITEM; return true; }
+    if (st == 4) { ed.tool = TOOL_TILE; ed.brush = BRUSH_ITEM; return true; }
+    int kind = st - 5;
+    if (kind >= OBJ_KIND_COUNT) return false;
+    for (int i = 0; i < ed.level.obj_count; i++)
+        if (ed.level.objs[i].kind == kind) { ed.selected = i; break; }
+    return true;
+}
+
+static void idcheck_before_frame(void) {
+    int f = ed.idcheck_frame++;
+    int per_col = idcheck_rows() * 2;  // two frames per spot: hover, then the check
+    int per_state = per_col * IDCHECK_COLS;
+    int st = f / per_state;
+    int in = f % per_state;
+    if (in == 0 && ((ed.idcheck_states > 0 && st >= ed.idcheck_states) || !idcheck_state(st))) {
+        printf("idcheck: %d frames, %d conflict frames\n", f, ed.idcheck_conflicts);
+        fflush(stdout);
+        sapp_request_quit();
+        return;
+    }
+    float x = k_idcheck_x[in / per_col];
+    if (x < 0.0f) x += sapp_widthf();
+    float y = (float)((in % per_col) / 2 * IDCHECK_STEP + 4);
+    ImGui::GetIO().AddMousePosEvent(x, y);
+}
+
 static void frame(void) {
     simgui_frame_desc_t fd = {};
     fd.width = sapp_width();
     fd.height = sapp_height();
     fd.delta_time = sapp_frame_duration();
     fd.dpi_scale = sapp_dpi_scale();
+    if (ed.idcheck) {
+        idcheck_before_frame();
+    }
     simgui_new_frame(&fd);
+    if (ed.idcheck && GImGui->DebugDrawIdConflictsId != 0) {
+        ImVec2 m = ImGui::GetIO().MousePos;
+        if (ed.idcheck_conflicts < 20) {
+            printf("idcheck: ID conflict under the mouse at %.0f,%.0f (selected obj %d, section %d, tile %d)\n", m.x, m.y,
+                   ed.selected, ed.section_selected, ed.tile_sel ? 1 : 0);
+        }
+        ed.idcheck_conflicts++;
+    }
     dock_panels();
     handle_input();
 
-    draw_map();
+    if (!ed.idcheck) {
+        draw_map();  // the ID sweep only needs the panels
+    }
     ui_toolbar();
     ui_tiles();
     ui_properties();
@@ -1478,6 +1726,11 @@ static void event(const sapp_event* e) {
 }
 
 static void cleanup(void) {
+    if (ed.idcheck) {
+        printf("idcheck: %s\n", ed.idcheck_conflicts ? "FAILED" : "PASS no ImGui ID conflicts");
+        fflush(stdout);
+        exit(ed.idcheck_conflicts ? 1 : 0);
+    }
     if (ed.ref_loaded) {
         sg_destroy_view(ed.ref_view);
         sg_destroy_image(ed.ref_img);
@@ -1500,6 +1753,17 @@ sapp_desc sokol_main(int argc, char* argv[]) {
     desc.cleanup_cb = cleanup;
     desc.width = 1280;
     desc.height = 800;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--idcheck") == 0) {
+            // tall, so every row of the docked panels is on screen
+            ed.idcheck = true;
+            if (i + 1 < argc && argv[i + 1][0] >= '0' && argv[i + 1][0] <= '9') {
+                ed.idcheck_states = atoi(argv[i + 1]);
+            }
+            desc.width = 1600;
+            desc.height = 2400;
+        }
+    }
     desc.window_title = "sokol-ink-ribbon level editor";
     desc.icon.sokol_default = true;
     desc.logger.func = slog_func;

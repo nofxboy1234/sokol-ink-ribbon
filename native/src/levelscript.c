@@ -282,22 +282,69 @@ static int run_line(ctx_t* c, int argc, char** argv) {
         s->x = lv->start_x;
         s->y = lv->start_y;
     } else if (strcmp(cmd, "door") == 0) {
-        // door X Y h|v SPAN [props]: door tiles on a wall run; the door sits
-        // on the edge at the top (h) or left (v) of its cells
-        if (argc < 5 || need_ints(c, argv, 1, 2, a) || need_ints(c, argv, 4, 1, a + 2))
-            return argc < 5 ? fail(c, "door X Y h|v SPAN [key=value...]") : -1;
-        bool h = argv[3][0] == 'h';
-        if (!h && argv[3][0] != 'v') return fail(c, "door orientation must be h or v");
-        int x = a[0] + ox, y = a[1] + oy;
+        // door X Y [h|v [SPAN]] [props]: door tiles on a wall run; the door
+        // sits on the edge at the top (h) or left (v) of its cells. With no
+        // orientation it snaps to the doorway at or next to X Y (span = the
+        // gap between the jambs); with no span a normal door is DOOR_SPAN
+        // wide (barriers and gates pass their own span).
+        if (argc < 3 || need_ints(c, argv, 1, 2, a))
+            return argc < 3 ? fail(c, "door X Y [h|v [SPAN]] [key=value...]") : -1;
+        int x = a[0] + ox, y = a[1] + oy, span = DOOR_SPAN, h = 0, first_prop = 3;
+        bool oriented = argc > 3 && !strchr(argv[3], '=');
+        if (oriented) {
+            if (strcmp(argv[3], "h") != 0 && strcmp(argv[3], "v") != 0) return fail(c, "door orientation must be h or v");
+            h = argv[3][0] == 'h';
+            first_prop = 4;
+            if (argc > 4 && !strchr(argv[4], '=')) {
+                if (need_ints(c, argv, 4, 1, a + 2)) return -1;
+                span = a[2] < 1 ? 1 : a[2];
+                first_prop = 5;
+            }
+        } else if (!level_door_fit(lv, x, y, &x, &y, &h, &span)) {
+            return fail(c, "door %d %d: no doorway there (give h|v to cut one)", a[0], a[1]);
+        }
         obj_t* o = new_obj(c, OBJ_DOOR, x, y);
         if (!o) return fail(c, "too many objects");
         o->horizontal = h ? 1 : 0;
-        o->span = a[2] < 1 ? 1 : a[2];
+        o->span = span;
         o->state = DOOR_UNLOCKED;
         snprintf(o->name, LEVEL_MAX_NAME, "door");
         if (h) fill(lv, x, y, x + o->span - 1, y, TILE_FLOOR);
         else fill(lv, x, y, x, y + o->span - 1, TILE_FLOOR);
-        if (apply_props(c, o, argv, 5, argc)) return -1;
+        if (apply_props(c, o, argv, first_prop, argc)) return -1;
+    } else if (strcmp(cmd, "delete") == 0) {
+        // delete ID: remove one object
+        if (argc != 2 || need_ints(c, argv, 1, 1, a)) return argc != 2 ? fail(c, "delete ID") : -1;
+        int w = 0, hit = 0;
+        for (int i = 0; i < lv->obj_count; i++) {
+            if (lv->objs[i].id == a[0]) hit = 1;
+            else lv->objs[w++] = lv->objs[i];
+        }
+        if (!hit) return fail(c, "delete: no object #%d", a[0]);
+        lv->obj_count = w;
+    } else if (strcmp(cmd, "move") == 0) {
+        // move ID X Y: move one object (a door snaps to the doorway there)
+        if (argc != 4 || need_ints(c, argv, 1, 3, a)) return argc != 4 ? fail(c, "move ID X Y") : -1;
+        obj_t* o = NULL;
+        for (int i = 0; i < lv->obj_count; i++)
+            if (lv->objs[i].id == a[0]) o = &lv->objs[i];
+        if (!o) return fail(c, "move: no object #%d", a[0]);
+        int x = a[1] + ox, y = a[2] + oy;
+        int fx, fy, fh, fs;
+        if (o->kind == OBJ_DOOR && level_door_fit(lv, x, y, &fx, &fy, &fh, &fs)) {
+            x = fx;
+            y = fy;
+            o->horizontal = fh;
+            o->span = fs;
+        }
+        o->x = x;
+        o->y = y;
+    } else if (strcmp(cmd, "movetile") == 0) {
+        // movetile X Y NX NY: carry one tile to another cell, leaving void
+        if (argc != 5 || need_ints(c, argv, 1, 4, a)) return argc != 5 ? fail(c, "movetile X Y NX NY") : -1;
+        tile_t t = level_tile(lv, a[0] + ox, a[1] + oy);
+        level_set_tile(lv, a[0] + ox, a[1] + oy, TILE_VOID);
+        level_set_tile(lv, a[2] + ox, a[3] + oy, t);
     } else if (strcmp(cmd, "item") == 0) {
         if (argc < 4 || need_ints(c, argv, 1, 2, a)) return argc < 4 ? fail(c, "item X Y TYPE [key=value...]") : -1;
         obj_t* o = new_obj(c, OBJ_ITEM, a[0] + ox, a[1] + oy);

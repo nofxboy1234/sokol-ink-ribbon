@@ -151,6 +151,21 @@ void level_set_tile(level_t* lv, int x, int y, tile_t t);
 // Rebuild walls[] from the tile map: a wall edge wherever floor meets a
 // non-floor tile or the map border.
 void level_compile_tiles(level_t* lv);
+
+// A normal door is two cells wide (Room 202's door is the reference).
+// Barriers and gates are a separate kind of door and keep their own span.
+#define DOOR_SPAN 2
+// The widest gap a doorway fit accepts (wider is an open room, not a door).
+#define DOOR_FIT_MAX_GAP 6
+
+// Snap a door to the doorway at or next to cell (x, y): the run of floor
+// cells through a wall band, between solid jamb cells, with floor on both
+// sides. The door sits on the band's top (h) or left (v) wall line, the way
+// the game draws and collides it. Returns false when there is no doorway.
+bool level_door_fit(const level_t* lv, int x, int y, int* ox, int* oy, int* horizontal, int* span);
+// True when the door fills its doorway exactly: both ends touch a jamb and it
+// lies on the band's wall line (what level_door_fit would place).
+bool level_door_flush(const level_t* lv, const obj_t* door);
 char tile_glyph(tile_t t);
 tile_t tile_from_glyph(char c);
 const char* tile_name(tile_t t);
