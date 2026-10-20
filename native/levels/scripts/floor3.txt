@@ -341,9 +341,7 @@ tile floor 131 42 132 42
 tile sw 133 42
 tile ne 134 42
 tile v 23 43
-tile floor 24 43 33 43
-tile v 34 43
-tile floor 35 43 46 43
+tile floor 24 43 46 43
 tile v 47 43
 tile v 56 43
 tile floor 57 43 76 43
@@ -515,11 +513,11 @@ tile sw 100 56
 tile h 101 56 133 56
 tile se 134 56
 door 49 34 v 2
-door 34 42 v 1
+door 34 42 v 2
 door 131 42 h 2
 door 100 53 v 2
-door 26 27 h 3  # red on the map
-door 34 34 v 2  # red on the map
+door 26 27 h 3 name=barrier  # red on the map
+door 34 34 v 2 name=barrier  # red on the map
 section 26 5 8 22 F3 Corridor
 section 123 23 20 19 F3 Medical Supply Room
 obj light 133 29 radius=6 state=1 name=light

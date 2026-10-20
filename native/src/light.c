@@ -128,11 +128,17 @@ bool light_cell_lit(int x, int y) {
     return grid_in_bounds(x, y) && lit[y][x] != 0;
 }
 
+static bool items_always_visible = true;
+
+void light_set_items_always_visible(bool on) {
+    items_always_visible = on;
+}
+
 bool light_item_visible(int object_index) {
     const level_t* lv = grid_level();
     if (object_index < 0 || object_index >= lv->obj_count) {
         return false;
     }
     const obj_t* o = &lv->objs[object_index];
-    return light_cell_lit(o->x, o->y) || items_seen(object_index);
+    return items_always_visible || light_cell_lit(o->x, o->y) || items_seen(object_index);
 }

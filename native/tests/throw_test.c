@@ -70,6 +70,11 @@ static bool find_target(int gx, int gy, int* tx, int* ty) {
             // an exact diagonal grazes every cell corner on the way; skip it
             if (abs(x - gx) == abs(y - gy)) continue;
             if (throw_in_reach(gx, gy, x, y)) {
+                // the hitscan ray must reach it too (no wall corner grazed)
+                fresh_enemy_at(x, y);
+                throw_scan_t scan;
+                if (!throw_hitscan((float)gx + 0.5f, (float)gy + 0.5f, (float)(x - gx), (float)(y - gy),
+                                   THROW_RANGE_CELLS, &scan) || !scan.hit_enemy) continue;
                 float d = hypotf((float)(x - gx), (float)(y - gy));
                 if (d > best) {
                     best = d;
@@ -489,7 +494,14 @@ int main(int argc, char** argv) {
         CHECK(enemy_sense() == SENSE_SMELL, "and through a wall at (%d,%d)", wx, wy);
     }
 
-    // the Lighter's finds stay on the map
+    CHECK(light_item_visible(0) || level.objs[0].kind != OBJ_ITEM, "every item is visible by default");
+    {
+        bool all = true;
+        for (int i = 0; i < level.obj_count; i++) all &= level.objs[i].kind != OBJ_ITEM || light_item_visible(i);
+        CHECK(all, "every item is visible without the Lighter");
+    }
+    // the Lighter's finds stay on the map (with dark items switched back on)
+    light_set_items_always_visible(false);
     {
         int hi = -1;
         light_update();
@@ -614,6 +626,21 @@ int main(int argc, char** argv) {
             }
         }
         CHECK(bad == 0, "doors: every slab cell has floor on both sides (%d bad of %d doors)", bad, doors);
+        // every normal door is Room 202's size (2 cells); only the red
+        // barricades (barrier, gate) keep the width the map draws
+        int odd = 0;
+        for (int i = 0; i < level.obj_count; i++) {
+            const obj_t* o = &level.objs[i];
+            if (o->kind == OBJ_DOOR && strcmp(o->name, "barrier") != 0 && strcmp(o->name, "gate") != 0 && o->span != 2) odd++;
+        }
+        CHECK(odd == 0, "doors: every normal door spans 2 cells (%d odd)", odd);
+        bool in203 = false;
+        for (int i = 0; i < level.section_count; i++) {
+            const section_t* sc = &level.sections[i];
+            if (strcmp(sc->name, "F2 Room 203") == 0 && level.start_x >= sc->x && level.start_x < sc->x + sc->w &&
+                level.start_y >= sc->y && level.start_y < sc->y + sc->h) in203 = true;
+        }
+        CHECK(in203 && grid_is_floor(level.start_x, level.start_y), "Grace starts on the floor of Room 203");
         CHECK(long_doors * 2 > doors, "doors: most doors span their map bar (%d of %d are 2+ cells)", long_doors, doors);
     }
 

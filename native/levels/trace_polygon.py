@@ -79,7 +79,40 @@ def classify(im):
 
     cyan = (b > 170) & (g > 150) & (r < 160)
     red = (r > 120) & (r - g > 60) & (r - b > 50)
-    return inside, hcell, vcell, cyan, red, stairs
+    return inside, hcell, vcell, cyan, red, stairs, hsum, vsum
+
+
+def thin_walls(t, hsum, vsum, min_run=3):
+    """A wall line on a cell boundary marks the cells on both sides, so the
+    trace draws it two cells thick and narrows the rooms. Where a straight
+    run of wall is two cells thick with floor on both faces, keep the side
+    holding more of the line (over the whole run) and give the other side
+    back to the floor."""
+    rows, cols = t.shape
+    thinned = 0
+    for axis in (0, 1):
+        tt = t if axis == 0 else t.T
+        line = vsum if axis == 0 else hsum.T
+        R, C = tt.shape
+        pair = np.zeros((R, C), dtype=bool)
+        for y in range(R):
+            for x in range(1, C - 2):
+                pair[y, x] = tt[y, x] == 2 and tt[y, x + 1] == 2 and tt[y, x - 1] == 1 and tt[y, x + 2] == 1
+        for x in range(C):
+            y = 0
+            while y < R:
+                if not pair[y, x]:
+                    y += 1
+                    continue
+                y1 = y
+                while y1 + 1 < R and pair[y1 + 1, x]:
+                    y1 += 1
+                if y1 - y + 1 >= min_run:
+                    k = x if line[y:y1 + 1, x].sum() < line[y:y1 + 1, x + 1].sum() else x + 1
+                    tt[y:y1 + 1, k] = 1
+                    thinned += y1 - y + 1
+                y = y1 + 1
+    return thinned
 
 
 def doors(mask, locked):
@@ -326,6 +359,68 @@ def fit_door(names, o, x, y, g, span):
     return x, y, g
 
 
+# Every normal (cyan) door is as wide as Room 202's door: 2 cells. The red
+# barricades keep the width the map draws.
+DOOR_SPAN = 2
+
+
+def widen_passage(names, o, x, y, reach=24):
+    """A one-cell doorway in a one-cell passage: widen the whole passage by a
+    cell on one side (the side with wall to spare), so the door fits."""
+    dx, dy = (1, 0) if o == "h" else (0, 1)  # along the slab
+    px, py = dy, dx                          # along the passage
+
+    def at(cx, cy):
+        return names[cy, cx] if 0 <= cx < COLS and 0 <= cy < ROWS else ""
+
+    for side in (1, -1):
+        sx, sy = x + dx * side, y + dy * side
+        if at(sx, sy) in ("", "floor"):
+            continue
+        carve = []
+        ok = True
+        for sign in (1, -1):
+            k = 0 if sign == 1 else 1
+            while k <= reach:
+                cx, cy = x + px * sign * k, y + py * sign * k
+                if at(cx, cy) != "floor":
+                    break
+                nx, ny = cx + dx * side, cy + dy * side
+                if at(nx, ny) == "floor":
+                    break
+                if at(nx, ny) == "" or at(nx + dx * side, ny + dy * side) == "floor":
+                    ok = False
+                    break
+                carve.append((nx, ny))
+                k += 1
+            if k > reach:
+                ok = False
+        if not ok or not carve:
+            continue
+        for cx, cy in carve:
+            names[cy, cx] = "floor"
+            bx, by = cx + dx * side, cy + dy * side
+            if at(bx, by) == "":
+                names[by, bx] = "v" if o == "h" else "h"
+        return (min(x, sx), min(y, sy), DOOR_SPAN)
+    return None
+
+
+def size_door(names, o, x, y, g):
+    """Make a normal doorway DOOR_SPAN cells wide: grow it with fit_door, or
+    wall off its ends, keeping it centred on the gap."""
+    if g < DOOR_SPAN:
+        fitted = fit_door(names, o, x, y, g, DOOR_SPAN)
+        if fitted and fitted[2] >= DOOR_SPAN:
+            return fitted
+        return widen_passage(names, o, x, y) or (x, y, g)
+    dx, dy = (1, 0) if o == "h" else (0, 1)
+    lead = (g - DOOR_SPAN) // 2
+    for k in list(range(lead)) + list(range(lead + DOOR_SPAN, g)):
+        names[y + dy * k, x + dx * k] = o
+    return x + dx * lead, y + dy * lead, DOOR_SPAN
+
+
 def floor_map(inside):
     lab, n = ndi.label(inside, np.ones((3, 3)))
     rows = ndi.center_of_mass(inside, lab, range(1, n + 1))
@@ -380,8 +475,9 @@ def main():
     out_dir = sys.argv[3]
     im = load(sys.argv[1])
     markers = json.load(open(sys.argv[2]))["markers"]
-    inside, hcell, vcell, cyan, red, stairs = classify(im)
+    inside, hcell, vcell, cyan, red, stairs, hsum, vsum = classify(im)
     t, _ = tiles(inside, hcell, vcell, stairs)
+    thinned = thin_walls(t, hsum, vsum)
     lab, n = ndi.label(stairs)
     flights = [dict(x=int(sl[1].start), y=int(sl[0].start), w=int(sl[1].stop - sl[1].start),
                     h=int(sl[0].stop - sl[0].start)) for sl in ndi.find_objects(lab)]
@@ -406,12 +502,17 @@ def main():
                    or punch_door(names, o, x, y, span))
         if snapped:
             snapped = fit_door(names, o, snapped[0], snapped[1], snapped[2], span)
+        if snapped and not locked:
+            snapped = size_door(names, o, *snapped)
         if not snapped:
             unplaced.append(f"floor {fl}: {'red' if locked else 'cyan'} door bar near cell {x},{y}")
             continue
         d = (o, snapped[0], snapped[1], snapped[2], locked)
         if d not in doors_on[fl]:
             doors_on[fl].append(d)
+    # walls the door fitting added outside the traced building join its floor
+    for y, x in zip(*np.nonzero((names != "") & (floor_of == 0))):
+        floor_of[y, x] = floor_at(floor_of, x, y)
     repairs = {fl: connect_rooms(names, floor_of, fl) for fl in FLOORS}
     for fl in FLOORS:
         fl_doors = doors_on[fl]
@@ -423,7 +524,7 @@ def main():
                 if k:
                     lines.append(f"tile {k} {x0} {y} {x1} {y}" if x1 > x0 else f"tile {k} {x0} {y}")
         for o, x, y, span, locked in fl_doors:
-            lines.append(f"door {x} {y} {o} {span}" + ("  # red on the map" if locked else ""))
+            lines.append(f"door {x} {y} {o} {span}" + (" name=barrier  # red on the map" if locked else ""))
         lab, n = regions(names, floor_of, fl, fl_doors)
         labelled = {}
         for label, (lx, ly) in LABELS[fl].items():
@@ -465,6 +566,7 @@ def main():
                 skipped[fl][f"{m['layer']}: {title}"] += 1
         open(f"{out_dir}/floor{fl}.txt", "w").write("\n".join(lines) + "\n")
     json.dump(dict(markers=skipped, door_bars_without_a_doorway=unplaced,
+                   double_wall_cells_thinned=thinned,
                    wall_cells_opened_to_join_pockets={fl: len(v) for fl, v in repairs.items()}),
               open(f"{out_dir}/skipped.json", "w"), indent=1, sort_keys=True)
     np.save(f"{out_dir}/tiles.npy", t)

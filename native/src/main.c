@@ -1788,6 +1788,12 @@ WEB_EXPORT int lighter_value(void) {
     return lighter_on() ? 1 : 0;
 }
 
+// Tests: 0 brings back dark items (only lit or Lighter-shown ones show).
+TEST_EXPORT void web_test_items_always_visible(int on) {
+    light_set_items_always_visible(on != 0);
+    bump_revision();
+}
+
 TEST_EXPORT void lighter_set(int on) {
     if ((on != 0) != lighter_on()) {
         lighter_toggle();

@@ -10,5 +10,5 @@ if [ "$1" = "--trace" ]; then
 fi
 mkdir -p ../.fibs/tests
 cc -std=c11 -O1 -I../src -I../libs -o ../.fibs/tests/levelscript ../tools/levelscript.c ../src/levelscript.c ../src/level.c
-../.fibs/tests/levelscript scripts/care_center.txt scripts/floor1.txt scripts/floor2.txt scripts/floor3.txt \
+../.fibs/tests/levelscript scripts/care_center.txt scripts/floor1.txt scripts/floor2.txt scripts/floor3.txt scripts/fixes.txt \
     scripts/links.txt -o ../src/level_01.json

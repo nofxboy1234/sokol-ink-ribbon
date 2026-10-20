@@ -18,8 +18,10 @@
 // Recomputes the lit cells from every active source.
 void light_update(void);
 bool light_cell_lit(int x, int y);
-// An item is on the map if it is lit now or the Lighter has shown it before.
+// An item is on the map if it is lit now or the Lighter has shown it before,
+// or always while every item is set visible (the default for now).
 bool light_item_visible(int object_index);
+void light_set_items_always_visible(bool on);
 // The radius a level light shines with (its own, or the default).
 float light_radius_of(float radius);
 
