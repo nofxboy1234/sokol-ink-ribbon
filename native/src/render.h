@@ -24,3 +24,12 @@ typedef struct {
 
 void render_set_fx(const render_fx_t* fx);
 void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* route);
+
+// Map streaming (stream.h): the map changed, so cached chunk geometry rebuilds.
+void render_map_changed(void);
+// Load the chunks around the current camera view now (after a camera jump).
+void render_stream_prefetch(void);
+// Load the chunks around a view centred on (cx, cy) cells, before a teleport.
+void render_stream_prefetch_at(float cx, float cy);
+// Debug: draw the chunk overlay; freeze the resident set (screenshots).
+void render_stream_debug(bool overlay, bool freeze);

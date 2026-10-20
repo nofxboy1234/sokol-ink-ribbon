@@ -25,6 +25,7 @@
 #include "pathfind.h"
 #include "player.h"
 #include "render.h"
+#include "stream.h"
 #include "savegame.h"
 #include "throw.h"
 #include "webexport.h"
@@ -34,6 +35,7 @@
 #include "tooltip.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 
@@ -147,7 +149,19 @@ static struct {
     bool touch_moved;
     float touch_start_x, touch_start_y;
     int respawn_x, respawn_y;
+    bool gl_full;      // last frame overflowed sokol_gl (tests)
+    int gl_vertices;   // vertices it used (tests)
+    int gl_peak;       // most vertices any frame used (tests)
 } app;
+
+// Map streaming (stream.h) draws only the chunks in view, so the per-frame
+// vertex count follows the window, not how much of the hospital is revealed.
+// Measured peak over every door + every staircase: 49,334 vertices at the
+// widest window tried (3840x1080, 32:9); 73,234 at the camera's 16 px/cell
+// minimum on 3440x1440 (zoom is test-only today). 128k leaves 2.6x / 1.75x
+// headroom: 128k x 28 B = 3.5 MB (CPU copy + GPU buffer each).
+#define SGL_MAX_VERTICES (1 << 17)
+#define SGL_MAX_COMMANDS 16384
 
 #define TOUCH_SLOP_PX 14.0f
 
@@ -192,6 +206,7 @@ static void reveal_sections(void) {
 
 static void bump_revision(void) {
     app.revision++;
+    render_map_changed();  // reveals, doors, ...: cached chunk geometry rebuilds
 }
 
 // Stepping onto a staircase moves Grace to the linked one. She has to step
@@ -212,10 +227,13 @@ static void take_stairs(void) {
     if (!dst) {
         return;
     }
+    // load the destination's map chunks before the jump, so no pop-in
+    render_stream_prefetch_at((float)(dst->x + dst->w / 2) + 0.5f, (float)(dst->y + dst->h / 2) + 0.5f);
     player_set_cell(dst->x + dst->w / 2, dst->y + dst->h / 2);
     app.route.count = 0;
     camera_follow(player_x(), player_y());
     camera_recentre();
+    render_stream_prefetch();
     reveal_sections();
     bump_revision();
 }
@@ -775,7 +793,13 @@ static void init(void) {
         .environment = sglue_environment(),
         .logger.func = slog_func,
     });
-    sgl_setup(&(sgl_desc_t){ .logger.func = slog_func });
+    // sokol_gl silently drops everything past a full buffer (Grace's dot is
+    // drawn late), so it is sized from the measured streaming peak above.
+    sgl_setup(&(sgl_desc_t){
+        .max_vertices = SGL_MAX_VERTICES,
+        .max_commands = SGL_MAX_COMMANDS,
+        .logger.func = slog_func,
+    });
     render_init();
     _dbgui_setup();
 
@@ -798,6 +822,7 @@ static void init(void) {
     camera_set_viewport(sapp_width(), sapp_height());
     camera_follow(player_x(), player_y());
     camera_recentre();
+    render_stream_prefetch();
     reveal_sections();
 
     app.hover_x = -1;
@@ -892,8 +917,43 @@ static const obj_t* hover_interactable(void) {
     return NULL;
 }
 
+// Item labels: every item Grace could pick up right now (within the
+// one-cell reach Space and the hover popup use) that she can see gets its
+// name above it, white with a black border. Drawn on the foreground draw
+// list only, so they never take input. Same visibility rules as the hover.
+#define ITEM_LABEL_REACH 1
+static int item_labels_shown;
+static char item_label_last[64];
+
+static bool item_label_visible(int i) {
+    const obj_t* o = &app.level.objs[i];
+    return o->kind == OBJ_ITEM && grid_is_revealed(o->x, o->y) && !items_taken(i) &&
+           !openable_covers_closed(o->x, o->y) && light_item_visible(i) &&
+           interact_distance(i) <= ITEM_LABEL_REACH;
+}
+
+static void draw_item_labels(void) {
+    item_labels_shown = 0;
+    if (app.paused || app.dead || level_complete()) {
+        return;
+    }
+    for (int i = 0; i < app.level.obj_count; i++) {
+        if (!item_label_visible(i)) {
+            continue;
+        }
+        const obj_t* o = &app.level.objs[i];
+        float sx, sy;
+        camera_cell_to_screen((float)o->x + 0.5f, (float)o->y, &sx, &sy);
+        const char* name = item_display_name(o->item_type);
+        game_label(name, sx, sy - 6.0f);  // same pixel space as the hover popup
+        snprintf(item_label_last, sizeof item_label_last, "%s", name);
+        item_labels_shown++;
+    }
+}
+
 // Extra dear-imgui UI drawn inside the dbgui frame (the hover tooltip).
 void _dbgui_extra(void) {
+    draw_item_labels();
     const obj_t* hl = hover_interactable();
     if (hl) {
         const char* name = hl->name[0] ? hl->name : obj_kind_name(hl->kind);
@@ -1064,6 +1124,14 @@ static void frame(void) {
     fx.clock = (float)fmod(app.clock, 1000.0);
     render_set_fx(&fx);
     render_scene(-1, -1, NULL, &app.route);
+    {
+        sgl_error_t ge = sgl_error();
+        app.gl_full = ge.vertices_full || ge.commands_full;
+        app.gl_vertices = sgl_num_vertices();
+        if (app.gl_vertices > app.gl_peak) {
+            app.gl_peak = app.gl_vertices;
+        }
+    }
 
     sg_begin_pass(&(sg_pass){
         .action = app.pass_action,
@@ -1140,6 +1208,7 @@ static void event(const sapp_event* e) {
         }
         case SAPP_EVENTTYPE_RESIZED:
             camera_set_viewport(sapp_width(), sapp_height());
+            render_stream_prefetch();  // a bigger window sees more map: load it first
             return;
         case SAPP_EVENTTYPE_MOUSE_MOVE:
             app.touch_pointer = false;
@@ -1627,9 +1696,50 @@ TEST_EXPORT void web_test_grace_at(int x, int y) {
     app.pending = false;
     camera_follow(player_x(), player_y());
     camera_recentre();
+    render_stream_prefetch();
     reveal_sections();
     interact_check_complete();
     bump_revision();
+}
+
+// Tests: did the last frame overflow sokol_gl's buffers (anything drawn
+// after that point, Grace included, is silently dropped)? And how many
+// vertices it used.
+TEST_EXPORT int web_test_gl_full(void) {
+    return app.gl_full ? 1 : 0;
+}
+
+TEST_EXPORT int web_test_gl_vertices(void) {
+    return app.gl_vertices;
+}
+
+// Tests: the nth door, packed x<<16 | y<<8 | span<<1 | horizontal; -1 past the end.
+TEST_EXPORT int web_test_door(int nth) {
+    int seen = 0;
+    for (int i = 0; i < app.level.obj_count; i++) {
+        obj_t* o = &app.level.objs[i];
+        if (o->kind != OBJ_DOOR) {
+            continue;
+        }
+        if (seen++ == nth) {
+            int span = o->span > 0 ? o->span : 1;
+            return (o->x << 16) | (o->y << 8) | (span << 1) | (o->horizontal ? 1 : 0);
+        }
+    }
+    return -1;
+}
+
+// Tests: how many item labels the last frame drew, and the last one's text.
+TEST_EXPORT int web_test_item_labels(void) {
+    return item_labels_shown;
+}
+
+TEST_EXPORT const char* web_test_item_label(void) {
+    return item_label_last;
+}
+
+TEST_EXPORT int web_test_ui_wants_mouse(void) {
+    return game_ui_wants_mouse() ? 1 : 0;
 }
 
 TEST_EXPORT void web_test_hurt(void) {
@@ -1741,6 +1851,60 @@ WEB_EXPORT float web_grace_screen_y(void) {
 // Test hook: move the camera off Grace (CSS pixels) to put her near an edge.
 TEST_EXPORT void web_camera_pan(float dx, float dy) {
     camera_pan_pixels(dx * sapp_dpi_scale(), dy * sapp_dpi_scale());
+    render_stream_prefetch();
+}
+
+// Tests: zoom the camera about the screen centre (factor < 1 zooms out; the
+// camera clamps at its 16 px/cell minimum), then stream for the new view.
+TEST_EXPORT void web_test_zoom(float factor) {
+    camera_zoom_at((float)sapp_width() * 0.5f, (float)sapp_height() * 0.5f, factor);
+    render_stream_prefetch();
+}
+
+TEST_EXPORT float web_test_cell_px(void) {
+    return camera_cell_px();
+}
+
+// Tests: map streaming counters (stream.h).
+TEST_EXPORT int web_stream_violations(void) {
+    return (int)stream_stats()->violations;
+}
+
+TEST_EXPORT int web_stream_resident(void) {
+    return stream_stats()->resident;
+}
+
+TEST_EXPORT int web_stream_peak_resident(void) {
+    return stream_stats()->peak_resident;
+}
+
+TEST_EXPORT int web_stream_bytes(void) {
+    return (int)stream_stats()->bytes;
+}
+
+TEST_EXPORT int web_stream_peak_bytes(void) {
+    return (int)stream_stats()->peak_bytes;
+}
+
+TEST_EXPORT int web_stream_loads(void) {
+    return (int)stream_stats()->loads;
+}
+
+TEST_EXPORT int web_stream_evictions(void) {
+    return (int)stream_stats()->evictions;
+}
+
+TEST_EXPORT void web_stream_reset(void) {
+    stream_reset_stats();
+    app.gl_peak = 0;
+}
+
+TEST_EXPORT int web_test_gl_peak(void) {
+    return app.gl_peak;
+}
+
+TEST_EXPORT void web_stream_debug(int overlay, int freeze) {
+    render_stream_debug(overlay != 0, freeze != 0);
 }
 
 WEB_EXPORT float web_cell_css_px(void) {
@@ -1905,6 +2069,7 @@ WEB_EXPORT void game_reset(void) {
     camera_set_follow(true);
     camera_follow(player_x(), player_y());
     camera_recentre();
+    render_stream_prefetch();
     memset(app.section_revealed, 0, sizeof(app.section_revealed));
     reveal_sections();
     app.elapsed = 0.0;
