@@ -626,6 +626,26 @@ int main(int argc, char** argv) {
             }
         }
         CHECK(bad == 0, "doors: every slab cell has floor on both sides (%d bad of %d doors)", bad, doors);
+        // and the wall carries on past both ends of every door: no open
+        // cell beside a door that lets Grace walk round it (a locked one
+        // above all)
+        int open_jambs = 0;
+        for (int i = 0; i < level.obj_count; i++) {
+            const obj_t* o = &grid_level()->objs[i];
+            if (o->kind != OBJ_DOOR) continue;
+            int sp = o->span > 0 ? o->span : 1;
+            for (int e = 0; e < 2; e++) {
+                int k = e ? sp : -1;
+                int ax = o->horizontal ? o->x + k : o->x - 1, ay = o->horizontal ? o->y - 1 : o->y + k;
+                int bx = o->horizontal ? o->x + k : o->x,     by = o->horizontal ? o->y : o->y + k;
+                if (level_tile(&level, ax, ay) == TILE_FLOOR && level_tile(&level, bx, by) == TILE_FLOOR &&
+                    !grid_blocked(ax, ay, bx, by)) {
+                    open_jambs++;
+                    printf("  open beside door at %d,%d\n", o->x, o->y);
+                }
+            }
+        }
+        CHECK(open_jambs == 0, "doors: the wall carries on past both ends of every door (%d open)", open_jambs);
         // every normal door is Room 202's size (2 cells); only the red
         // barricades (barrier, gate) keep the width the map draws
         int odd = 0;

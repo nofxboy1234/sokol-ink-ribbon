@@ -18,18 +18,19 @@ tile v 34 8
 tile v 31 9
 tile floor 32 9 33 9
 tile v 34 9
-tile nw 28 10
-tile h 29 10 30 10
+tile nw 27 10
+tile h 28 10 30 10
 tile se 31 10
 tile floor 32 10 33 10
 tile v 34 10
-tile nw 27 11
-tile se 28 11
-tile floor 29 11 33 11
-tile v 34 11
+tile v 27 11
+tile floor 28 11 33 11
+tile h 34 11 35 11
+tile ne 36 11
 tile v 27 12
 tile floor 28 12 33 12
 tile v 34 12
+tile v 36 12
 tile v 27 13
 tile floor 28 13 33 13
 tile v 34 13
@@ -62,102 +63,101 @@ tile v 25 21
 tile floor 26 21 33 21
 tile v 34 21
 tile v 25 22
-tile floor 26 22 32 22
-tile nw 33 22
-tile se 34 22
-tile nw 123 22
-tile h 124 22 142 22
-tile ne 143 22
+tile floor 26 22 33 22
+tile v 34 22
+tile nw 122 22
+tile h 123 22 143 22
+tile ne 144 22
 tile v 25 23
 tile floor 26 23 28 23
 tile nw 29 23
-tile h 30 23 32 23
-tile se 33 23
-tile v 123 23
+tile h 30 23 33 23
+tile se 34 23
+tile h 122 23 123 23
 tile floor 124 23 142 23
-tile v 143 23
+tile h 143 23 144 23
 tile v 25 24
 tile floor 26 24 28 24
 tile v 29 24
-tile v 123 24
+tile h 122 24 123 24
 tile floor 124 24 135 24
 tile nw 136 24
 tile floor 137 24
 tile h 138 24 139 24
 tile ne 140 24
 tile floor 141 24 142 24
-tile v 143 24
+tile h 143 24 144 24
 tile v 25 25
 tile floor 26 25 28 25
 tile v 29 25
 tile nw 59 25
 tile h 60 25 69 25
 tile ne 70 25
-tile v 123 25
+tile h 122 25
+tile se 123 25
 tile floor 124 25 135 25
 tile v 136 25
 tile floor 137 25 139 25
 tile v 140 25
 tile floor 141 25 142 25
-tile v 143 25
+tile h 143 25 144 25
 tile v 25 26
 tile floor 26 26 28 26
 tile v 29 26
-tile nw 52 26
-tile h 53 26 55 26
-tile ne 56 26
-tile v 59 26
+tile nw 51 26
+tile h 52 26 59 26
 tile floor 60 26 69 26
 tile v 70 26
-tile v 123 26
-tile floor 124 26 135 26
+tile v 122 26
+tile floor 123 26 135 26
 tile v 136 26
 tile floor 137 26 139 26
 tile v 140 26
 tile floor 141 26 142 26
-tile v 143 26
+tile h 143 26 144 26
 tile v 25 27
 tile floor 26 27 28 27
 tile v 29 27
-tile v 52 27
+tile h 51 27 52 27
 tile floor 53 27 54 27
-tile h 55 27 59 27
-tile floor 60 27 69 27
+tile h 55 27 56 27
+tile floor 57 27 69 27
 tile v 70 27
-tile v 123 27
-tile floor 124 27 135 27
+tile v 122 27
+tile floor 123 27 135 27
 tile v 136 27
 tile floor 137 27 139 27
 tile v 140 27
 tile floor 141 27 142 27
-tile v 143 27
-tile nw 23 28
-tile h 24 28
+tile h 143 27 144 27
+tile nw 22 28
+tile h 23 28 24 28
 tile se 25 28
 tile floor 26 28 28 28
 tile sw 29 28
 tile h 30 28 33 28
 tile ne 34 28
-tile v 52 28
+tile h 51 28 52 28
 tile floor 53 28 54 28
 tile h 55 28 56 28
-tile floor 57 28 69 28
+tile floor 57 28 58 28
+tile v 59 28
+tile floor 60 28 69 28
 tile v 70 28
-tile nw 122 28
-tile se 123 28
-tile floor 124 28 135 28
+tile v 122 28
+tile floor 123 28 135 28
 tile v 136 28
 tile floor 137 28 139 28
 tile v 140 28
 tile floor 141 28 142 28
-tile v 143 28
-tile v 23 29
+tile h 143 28 144 28
+tile h 22 29 23 29
 tile floor 24 29 33 29
 tile v 34 29
 tile nw 40 29
 tile h 41 29 44 29
 tile ne 45 29
-tile v 52 29
+tile h 51 29 52 29
 tile floor 53 29 54 29
 tile h 55 29 59 29
 tile floor 60 29 69 29
@@ -168,8 +168,8 @@ tile v 136 29
 tile floor 137 29 139 29
 tile v 140 29
 tile floor 141 29 142 29
-tile v 143 29
-tile v 23 30
+tile h 143 29 144 29
+tile h 22 30 23 30
 tile floor 24 30 33 30
 tile h 34 30 39 30
 tile se 40 30
@@ -177,81 +177,80 @@ tile floor 41 30 44 30
 tile sw 45 30
 tile h 46 30 48 30
 tile ne 49 30
-tile v 52 30
+tile h 51 30 52 30
 tile floor 53 30
 tile nw 54 30
-tile h 55 30
-tile sw 59 30
-tile h 60 30 69 30
+tile h 55 30 69 30
 tile se 70 30
-tile sw 122 30
-tile ne 123 30
-tile floor 124 30 135 30
+tile v 122 30
+tile floor 123 30 135 30
 tile v 136 30
 tile floor 137 30 139 30
 tile v 140 30
 tile floor 141 30 142 30
-tile v 143 30
-tile v 23 31
+tile h 143 30 144 30
+tile h 22 31 23 31
 tile floor 24 31 33 31
 tile v 34 31
 tile floor 35 31 48 31
 tile v 49 31
-tile v 52 31
+tile h 51 31 52 31
 tile floor 53 31
-tile h 54 31
-tile se 55 31
-tile sw 123 31
-tile h 124 31 129 31
+tile h 54 31 55 31
+tile sw 59 31
+tile h 60 31 68 31
+tile se 69 31
+tile sw 122 31
+tile h 123 31 129 31
 tile ne 130 31
 tile floor 131 31 135 31
 tile v 136 31
 tile floor 137 31 139 31
 tile v 140 31
 tile floor 141 31 142 31
-tile v 143 31
-tile v 23 32
+tile h 143 31 144 31
+tile h 22 32 23 32
 tile floor 24 32 33 32
 tile v 34 32
 tile floor 35 32 48 32
-tile v 49 32
-tile v 52 32
+tile sw 49 32
+tile h 50 32 51 32
+tile se 52 32
 tile floor 53 32
-tile v 54 32
+tile h 54 32
+tile se 55 32
 tile v 130 32
 tile floor 131 32 135 32
 tile sw 136 32
 tile h 137 32 139 32
 tile se 140 32
 tile floor 141 32 142 32
-tile v 143 32
-tile v 23 33
+tile h 143 32 144 32
+tile h 22 33 23 33
 tile floor 24 33 33 33
 tile v 34 33
 tile floor 35 33 48 33
-tile sw 49 33
-tile h 50 33 51 33
-tile se 52 33
-tile floor 53 33
+tile v 49 33
+tile floor 50 33 53 33
 tile v 54 33
 tile v 130 33
 tile floor 131 33 142 33
-tile v 143 33
-tile v 23 34
+tile h 143 33 144 33
+tile h 22 34 23 34
 tile floor 24 34 53 34
 tile v 54 34
 tile v 130 34
 tile floor 131 34 142 34
-tile v 143 34
-tile v 23 35
+tile h 143 34 144 34
+tile h 22 35 23 35
 tile floor 24 35 53 35
 tile v 54 35
 tile v 130 35
-tile floor 131 35 132 35
-tile nw 133 35
-tile h 134 35 142 35
-tile se 143 35
-tile v 23 36
+tile floor 131 35 133 35
+tile nw 134 35
+tile h 135 35 143 35
+tile se 144 35
+tile h 22 36 23 36
 tile floor 24 36 33 36
 tile v 34 36
 tile floor 35 36 48 36
@@ -259,24 +258,25 @@ tile nw 49 36
 tile h 50 36 53 36
 tile se 54 36
 tile nw 112 36
-tile h 113 36 123 36
-tile ne 124 36
-tile h 130 36
-tile floor 131 36
-tile h 132 36 133 36
-tile v 23 37
+tile h 113 36 124 36
+tile ne 125 36
+tile v 130 36
+tile floor 131 36 132 36
+tile nw 133 36
+tile se 134 36
+tile h 22 37 23 37
 tile floor 24 37 33 37
 tile v 34 37
 tile floor 35 37 48 37
 tile v 49 37
 tile v 112 37
-tile floor 113 37 123 37
-tile sw 124 37
-tile ne 125 37
-tile v 130 37
-tile floor 131 37 132 37
-tile v 133 37
-tile v 23 38
+tile floor 113 37 124 37
+tile v 125 37
+tile h 130 37
+tile floor 131 37
+tile h 132 37 133 37
+tile floor 134 37
+tile h 22 38 23 38
 tile floor 24 38 33 38
 tile h 34 38 48 38
 tile se 49 38
@@ -284,9 +284,8 @@ tile v 112 38
 tile floor 113 38 124 38
 tile v 125 38
 tile v 130 38
-tile floor 131 38 132 38
-tile v 133 38
-tile v 23 39
+tile floor 131 38 134 38
+tile h 22 39 23 39
 tile floor 24 39 33 39
 tile v 34 39
 tile floor 35 39 46 39
@@ -297,41 +296,46 @@ tile v 125 39
 tile v 130 39
 tile floor 131 39 132 39
 tile v 133 39
-tile v 23 40
+tile floor 134 39
+tile h 22 40 23 40
 tile floor 24 40 33 40
 tile v 34 40
 tile floor 35 40 46 40
 tile v 47 40
-tile nw 56 40
-tile h 57 40 76 40
+tile nw 55 40
+tile h 56 40 76 40
 tile ne 77 40
-tile v 112 40
+tile nw 101 40
+tile h 102 40 111 40
+tile se 112 40
 tile floor 113 40 124 40
 tile v 125 40
 tile v 130 40
 tile floor 131 40 132 40
 tile v 133 40
-tile v 23 41
+tile floor 134 40
+tile h 22 41 23 41
 tile floor 24 41 33 41
 tile v 34 41
 tile floor 35 41 46 41
 tile v 47 41
-tile h 55 41 56 41
-tile floor 57 41 76 41
+tile v 55 41
+tile floor 56 41 76 41
 tile v 77 41
 tile nw 100 41
-tile h 101 41 111 41
-tile se 112 41
-tile floor 113 41 124 41
+tile h 101 41 110 41
+tile se 111 41
+tile floor 112 41 124 41
 tile v 125 41
 tile v 130 41
 tile floor 131 41 132 41
-tile v 133 41
-tile v 23 42
+tile h 133 41
+tile ne 134 41
+tile h 22 42 23 42
 tile floor 24 42 46 42
 tile v 47 42
-tile v 56 42
-tile floor 57 42 76 42
+tile v 55 42
+tile floor 56 42 76 42
 tile v 77 42
 tile v 100 42
 tile floor 101 42 124 42
@@ -339,53 +343,53 @@ tile h 125 42 129 42
 tile se 130 42
 tile floor 131 42 132 42
 tile sw 133 42
-tile ne 134 42
-tile v 23 43
+tile h 134 42
+tile h 22 43 23 43
 tile floor 24 43 46 43
 tile v 47 43
-tile v 56 43
-tile floor 57 43 76 43
+tile v 55 43
+tile floor 56 43 76 43
 tile v 77 43
 tile v 100 43
 tile floor 101 43 133 43
 tile v 134 43
-tile v 23 44
+tile h 22 44 23 44
 tile floor 24 44 33 44
 tile v 34 44
 tile floor 35 44 46 44
 tile v 47 44
-tile v 56 44
-tile floor 57 44 76 44
+tile v 55 44
+tile floor 56 44 76 44
 tile v 77 44
 tile v 100 44
 tile floor 101 44 124 44
 tile v 125 44
 tile floor 126 44 133 44
 tile v 134 44
-tile v 23 45
+tile h 22 45 23 45
 tile floor 24 45 33 45
 tile v 34 45
 tile floor 35 45 46 45
 tile v 47 45
-tile v 56 45
-tile floor 57 45 76 45
+tile v 55 45
+tile floor 56 45 76 45
 tile v 77 45
 tile v 100 45
 tile floor 101 45 124 45
 tile v 125 45
 tile floor 126 45 133 45
 tile v 134 45
-tile sw 23 46
-tile h 24 46 25 46
-tile ne 26 46
-tile floor 27 46 29 46
-tile nw 30 46
-tile h 31 46 33 46
+tile sw 22 46
+tile h 23 46 24 46
+tile ne 25 46
+tile floor 26 46 30 46
+tile nw 31 46
+tile h 32 46 33 46
 tile ne 34 46
 tile floor 35 46 46 46
 tile v 47 46
-tile v 56 46
-tile floor 57 46 70 46
+tile v 55 46
+tile floor 56 46 70 46
 tile nw 71 46
 tile h 72 46 73 46
 tile ne 74 46
@@ -396,14 +400,14 @@ tile floor 101 46 124 46
 tile v 125 46
 tile floor 126 46 133 46
 tile v 134 46
-tile sw 26 47
-tile h 27 47 29 47
-tile se 30 47
+tile sw 25 47
+tile h 26 47 30 47
+tile se 31 47
 tile v 34 47
 tile floor 35 47 46 47
 tile v 47 47
-tile v 56 47
-tile floor 57 47 70 47
+tile v 55 47
+tile floor 56 47 70 47
 tile v 71 47
 tile v 74 47
 tile floor 75 47 76 47
@@ -413,64 +417,69 @@ tile floor 101 47 124 47
 tile v 125 47
 tile floor 126 47 133 47
 tile v 134 47
+tile sw 26 48
+tile h 27 48 29 48
+tile se 30 48
 tile sw 34 48
 tile h 35 48 46 48
 tile se 47 48
-tile v 56 48
-tile floor 57 48 70 48
+tile v 55 48
+tile floor 56 48 70 48
 tile v 71 48
-tile h 74 48
-tile floor 75 48
-tile h 76 48 77 48
+tile v 74 48
+tile floor 75 48 76 48
+tile v 77 48
 tile v 100 48
 tile floor 101 48 124 48
 tile v 125 48
 tile floor 126 48 133 48
 tile v 134 48
-tile v 56 49
-tile floor 57 49 70 49
+tile v 55 49
+tile floor 56 49 70 49
 tile v 71 49
-tile v 74 49
-tile floor 75 49 76 49
-tile sw 77 49
-tile h 78 49 81 49
+tile h 74 49
+tile floor 75 49
+tile h 76 49 81 49
 tile ne 82 49
 tile v 100 49
 tile floor 101 49 124 49
 tile v 125 49
 tile floor 126 49 133 49
 tile v 134 49
-tile h 54 50 56 50
-tile floor 57 50 70 50
+tile nw 54 50
+tile h 55 50
+tile floor 56 50 70 50
 tile v 71 50
-tile h 73 50 74 50
+tile nw 73 50
+tile h 74 50
 tile floor 75 50 81 50
 tile v 82 50
-tile h 92 50
+tile nw 92 50
 tile ne 93 50
 tile v 100 50
 tile floor 101 50 124 50
 tile v 125 50
 tile floor 126 50 133 50
 tile v 134 50
-tile sw 55 51
-tile h 56 51
-tile floor 57 51 70 51
+tile sw 54 51
+tile h 55 51
+tile floor 56 51 70 51
 tile v 71 51
-tile v 74 51
-tile floor 75 51 81 51
+tile sw 73 51
+tile h 74 51 77 51
+tile floor 78 51 81 51
 tile v 82 51
-tile v 93 51
+tile h 92 51 93 51
 tile v 100 51
 tile floor 101 51 124 51
 tile v 125 51
 tile floor 126 51 133 51
 tile v 134 51
-tile v 56 52
-tile floor 57 52 70 52
+tile v 55 52
+tile floor 56 52 70 52
 tile v 71 52
-tile h 74 52 77 52
-tile floor 78 52 81 52
+tile v 74 52
+tile floor 75 52 81 52
 tile sw 82 52
 tile h 83 52 99 52
 tile se 100 52
@@ -478,16 +487,16 @@ tile floor 101 52 124 52
 tile v 125 52
 tile floor 126 52 133 52
 tile v 134 52
-tile v 56 53
-tile floor 57 53 70 53
+tile v 55 53
+tile floor 56 53 70 53
 tile v 71 53
 tile v 74 53
 tile floor 75 53 124 53
 tile v 125 53
 tile floor 126 53 133 53
 tile v 134 53
-tile v 56 54
-tile floor 57 54 70 54
+tile v 55 54
+tile floor 56 54 70 54
 tile v 71 54
 tile v 74 54
 tile floor 75 54 96 54
@@ -496,22 +505,31 @@ tile floor 98 54 124 54
 tile v 125 54
 tile floor 126 54 133 54
 tile v 134 54
-tile v 56 55
-tile floor 57 55 70 55
+tile v 55 55
+tile floor 56 55 70 55
 tile v 71 55
-tile sw 74 55
-tile h 75 55 99 55
+tile h 74 55 99 55
 tile ne 100 55
 tile floor 101 55 124 55
 tile v 125 55
 tile floor 126 55 133 55
 tile v 134 55
-tile sw 56 56
-tile h 57 56 70 56
-tile se 71 56
-tile sw 100 56
-tile h 101 56 133 56
-tile se 134 56
+tile sw 55 56
+tile ne 56 56
+tile floor 57 56 70 56
+tile v 71 56
+tile sw 74 56
+tile h 75 56 100 56
+tile floor 101 56 124 56
+tile v 125 56
+tile floor 126 56 133 56
+tile v 134 56
+tile sw 56 57
+tile h 57 57 70 57
+tile se 71 57
+tile sw 100 57
+tile h 101 57 133 57
+tile se 134 57
 door 49 34 v 2
 door 34 42 v 2
 door 131 42 h 2
@@ -520,21 +538,21 @@ door 26 27 h 3 name=barrier  # red on the map
 door 34 34 v 2 name=barrier  # red on the map
 section 26 5 8 22 F3 Corridor
 section 123 23 20 19 F3 Medical Supply Room
-obj light 133 29 radius=6 state=1 name=light
+obj light 133 29 radius=7 state=1 name=light
 section 57 26 13 4 F3 Elevator
-obj light 64 28 radius=4 state=1 name=light
+obj light 64 27 radius=4 state=1 name=light
 section 24 27 10 20 F3 Lounge
 obj light 28 37 radius=6 state=1 name=light
 section 49 27 6 9 F3 Alcove
 section 34 30 15 8 F3 Director's Office
 obj light 41 34 radius=5 state=1 name=light
-section 100 37 34 19 F3 Attic
-obj light 117 47 radius=8 state=1 name=light
+section 100 37 34 20 F3 Attic
+obj light 117 48 radius=8 state=1 name=light
 section 34 39 13 9 F3 Meeting Room
 obj light 40 43 radius=5 state=1 name=light
-section 57 41 43 15 F3 Attic Storage
-obj light 69 49 radius=8 state=1 name=light
-item 29 11 herb name=Green_Herb
+section 56 41 44 16 F3 Attic Storage
+obj light 68 49 radius=8 state=1 name=light
+item 28 11 herb name=Green_Herb
 item 127 46 herb name=Green_Herb
 obj file 79 50 name=Basement_Safe_Code
 obj file 132 54 name=Satiety_Suppression_Medical_Rec

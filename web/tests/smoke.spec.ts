@@ -473,6 +473,7 @@ test("aiming over the enemy snaps the reticle onto it, and the click throws", as
   await expect
     .poll(
       async () => {
+        await wasm(page, "web_test_enemy_place", (gx - 3) * 100 + 50, gy * 100 + 80);
         const ex = await wasm(page, "web_enemy_screen_x");
         const ey = await wasm(page, "web_enemy_screen_y");
         await page.mouse.move(box.x + ex + 3, box.y + ey - 3);
@@ -481,10 +482,14 @@ test("aiming over the enemy snaps the reticle onto it, and the click throws", as
       { timeout: 5000 },
     )
     .toBe(1);
+  // she spots Grace and closes in within a few frames: pin her back in place
+  // so the click lands on her and not on Grace's own (inert) dot
+  await wasm(page, "web_test_enemy_place", (gx - 3) * 100 + 50, gy * 100 + 80);
   const ex = await wasm(page, "web_enemy_screen_x");
   const ey = await wasm(page, "web_enemy_screen_y");
   await page.mouse.click(box.x + ex + 3, box.y + ey - 3);
-  expect(await wasm(page, "web_impact_age_ms")).toBeGreaterThanOrEqual(0);
+  // the click is consumed on the next frame: poll rather than read once
+  await expect.poll(() => wasm(page, "web_impact_age_ms")).toBeGreaterThanOrEqual(0);
   expect(await wasm(page, "web_test_aiming")).toBe(0);
 });
 
@@ -631,6 +636,7 @@ test("throwing on the move: Q aims while walking and the click throws (hitscan)"
   page,
 }) => {
   const box = await boot(page);
+  await wasm(page, "web_test_enemy_place", 11550, 4550); // enemy on floor 3: no random spawn interrupts
   expect(await wasm(page, "web_test_bottle_ready")).toBe(1);
   // walking east, Q enters aim without stopping her
   await page.keyboard.down("d");
@@ -647,7 +653,7 @@ test("throwing on the move: Q aims while walking and the click throws (hitscan)"
   await page.waitForTimeout(120);
   await page.mouse.click(box.x + gx + cell * 3, box.y + gy);
   await page.keyboard.up("d");
-  expect(await wasm(page, "web_impact_age_ms")).toBeGreaterThanOrEqual(0);
+  await expect.poll(() => wasm(page, "web_impact_age_ms")).toBeGreaterThanOrEqual(0);
   expect(await wasm(page, "web_test_aiming")).toBe(0);
 });
 
@@ -757,6 +763,8 @@ async function expectStickLayout(page: Page, maxMapFraction: number) {
 }
 
 async function twinStickThrow(page: Page, context: import("@playwright/test").BrowserContext) {
+  // park the enemy on floor 3 so a random spawn near Room 203 can't interrupt the throw
+  await page.evaluate(() => (window as any).Module?._web_test_enemy_place?.(11550, 4550));
   const { move, aim } = await expectStickLayout(page, 0.35);
   const mc = { x: move.x + move.width / 2, y: move.y + move.height / 2 };
   const ac = { x: aim.x + aim.width / 2, y: aim.y + aim.height / 2 };
@@ -886,6 +894,8 @@ test("phone aim stick: centre jitter and a dead-zone release cancel instead of t
 }) => {
   const { context, page } = await phonePage(browser, { width: 390, height: 844 });
   await page.evaluate(() => (window as any).Module?._web_test_bottle_ready?.());
+  // React polls the bottle state every 150 ms: wait until the aim stick is live
+  await expect(page.locator(".aim-stick")).not.toHaveAttribute("data-inactive", /.*/);
   const aim = await page.locator(".aim-stick").boundingBox();
   expect(aim).not.toBeNull();
   const c = { x: (aim?.x ?? 0) + (aim?.width ?? 0) / 2, y: (aim?.y ?? 0) + (aim?.height ?? 0) / 2 };
@@ -915,7 +925,11 @@ test("phone aim stick: drift up to the new dead zone neither aims nor throws", a
   browser,
 }) => {
   const { context, page } = await phonePage(browser, { width: 844, height: 390 });
+  // park the enemy on floor 3 so a random spawn near Room 203 can't interrupt the aim
+  await page.evaluate(() => (window as any).Module?._web_test_enemy_place?.(11550, 4550));
   await page.evaluate(() => (window as any).Module?._web_test_bottle_ready?.());
+  // React polls the bottle state every 150 ms: wait until the aim stick is live
+  await expect(page.locator(".aim-stick")).not.toHaveAttribute("data-inactive", /.*/);
   const aim = await page.locator(".aim-stick").boundingBox();
   expect(aim).not.toBeNull();
   const c = { x: (aim?.x ?? 0) + (aim?.width ?? 0) / 2, y: (aim?.y ?? 0) + (aim?.height ?? 0) / 2 };
@@ -923,7 +937,7 @@ test("phone aim stick: drift up to the new dead zone neither aims nor throws", a
   // on the shrunk landscape stick the dead zone is ~13px: drift 11px
   await touch("touchStart", [{ ...c, id: 1 }]);
   await touch("touchMove", [{ x: c.x + 11, y: c.y - 3, id: 1 }]);
-  await page.waitForTimeout(250); // under the 450ms hold-to-equip threshold
+  await page.waitForTimeout(100); // well under the 450ms hold-to-equip threshold, even at a slow frame rate
   expect(await page.evaluate(() => (window as any).Module?._web_test_aiming?.())).toBe(0);
   await touch("touchEnd", [{ x: c.x + 11, y: c.y - 3, id: 1 }]);
   await page.waitForTimeout(200);

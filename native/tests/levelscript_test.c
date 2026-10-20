@@ -85,6 +85,19 @@ int main(void) {
           "stairs link both ways");
     CHECK(grid_is_floor(22, 2), "a floor reached only by stairs is walkable");
 
+    level_init(&lv);
+    CHECK(run("size 20 10\nroom 0 0 19 9\nobj light 5 5 name=far\nobj light 9 4 name=near\n"
+              "setnear light 10 5 3 breakable=1\n") > 0, "setnear script runs");
+    CHECK(find(&lv, OBJ_LIGHT, 9, 4)->breakable && !find(&lv, OBJ_LIGHT, 5, 5)->breakable,
+          "setnear changes only the nearest object of its kind");
+    CHECK(run("setnear light 15 5 2 breakable=1\n") < 0, "setnear fails with nothing in range");
+
+    level_init(&lv);
+    CHECK(run("size 20 10\nsection 2 2 4 4 A\ncover 6 3\ncover 1 2\n") > 0, "cover script runs");
+    CHECK(lv.sections[0].x == 1 && lv.sections[0].y == 2 && lv.sections[0].w == 6 && lv.sections[0].h == 4,
+          "cover grows the neighbouring section to the cell");
+    CHECK(run("cover 15 8\n") < 0, "cover fails with no section next to the cell");
+
     char err[256];
     level_init(&lv);
     CHECK(levelscript_run(&lv, "size 10 10\nbogus 1 2\n", err, sizeof(err)) < 0 && strstr(err, "line 2"),
