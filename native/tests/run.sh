@@ -9,3 +9,6 @@ cc -std=c11 -O1 -Wall -Isrc -Ilibs -o .fibs/tests/throw_test tests/throw_test.c 
 .fibs/tests/throw_test src/level_01.json
 cc -std=c11 -O1 -Wall -Isrc -o .fibs/tests/grace_state_test tests/grace_state_test.c src/grace_state.c
 .fibs/tests/grace_state_test
+cc -std=c11 -O1 -Wall -Isrc -Ilibs -o .fibs/tests/levelscript_test tests/levelscript_test.c src/levelscript.c src/level.c src/grid.c
+.fibs/tests/levelscript_test
+cc -std=c11 -O1 -Wall -Isrc -Ilibs -o .fibs/tests/levelscript tools/levelscript.c src/levelscript.c src/level.c

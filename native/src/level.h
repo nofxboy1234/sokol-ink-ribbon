@@ -7,9 +7,11 @@ extern "C" {
 #endif
 
 #define LEVEL_MAX_WALLS 4096
-#define LEVEL_MAX_SECTIONS 64
+#define LEVEL_MAX_SECTIONS 128
 #define LEVEL_MAX_OBJECTS 1024
 #define LEVEL_MAX_NAME 32
+#define LEVEL_MAX_COLS 256
+#define LEVEL_MAX_ROWS 256
 
 typedef enum {
     OBJ_DOOR = 0,
@@ -26,6 +28,8 @@ typedef enum {
     OBJ_GOAL,
     OBJ_RECIPE,
     OBJ_CABINET,
+    // a w*h stairwell; stepping onto it moves Grace to the linked stairs
+    OBJ_STAIRS,
     OBJ_KIND_COUNT,
 } obj_kind_t;
 
@@ -75,6 +79,20 @@ typedef struct {
     int x0, y0, x1, y1;
 } wall_seg_t;
 
+// One cell of the tile map. Every tile except floor is solid; the four
+// corners and the two straight walls differ only in how they draw.
+typedef enum {
+    TILE_VOID = 0,
+    TILE_FLOOR,
+    TILE_CORNER_NW,
+    TILE_CORNER_NE,
+    TILE_CORNER_SW,
+    TILE_CORNER_SE,
+    TILE_WALL_H,
+    TILE_WALL_V,
+    TILE_KIND_COUNT,
+} tile_t;
+
 typedef struct {
     int x, y, w, h;
     char name[LEVEL_MAX_NAME];
@@ -108,6 +126,9 @@ typedef struct {
     char name[LEVEL_MAX_NAME];
     int cols, rows;
     int start_x, start_y;
+    // has_tiles: the tile map is the source of truth and walls are derived
+    int has_tiles;
+    uint8_t tiles[LEVEL_MAX_ROWS * LEVEL_MAX_COLS];
     int wall_count;
     wall_seg_t walls[LEVEL_MAX_WALLS];
     int section_count;
@@ -121,6 +142,19 @@ bool level_from_json(level_t* lv, const char* json);
 int level_to_json(const level_t* lv, char* out, int cap);
 
 const char* obj_kind_name(obj_kind_t kind);
+
+const obj_t* level_obj_by_id(const level_t* lv, int id);
+const obj_t* level_stairs_at(const level_t* lv, int x, int y);
+
+tile_t level_tile(const level_t* lv, int x, int y);
+void level_set_tile(level_t* lv, int x, int y, tile_t t);
+// Rebuild walls[] from the tile map: a wall edge wherever floor meets a
+// non-floor tile or the map border.
+void level_compile_tiles(level_t* lv);
+char tile_glyph(tile_t t);
+tile_t tile_from_glyph(char c);
+const char* tile_name(tile_t t);
+tile_t tile_from_name(const char* name);
 obj_kind_t obj_kind_from_name(const char* name);
 const char* item_name(item_t item);
 const char* item_display_name(int item);

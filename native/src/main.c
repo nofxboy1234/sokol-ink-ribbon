@@ -120,6 +120,7 @@ static struct {
     bool ui_captured;
     int last_steps;
     bool last_moving;
+    bool on_stairs;
     unsigned int revision;
     double elapsed;
     bool paused;
@@ -191,6 +192,32 @@ static void reveal_sections(void) {
 
 static void bump_revision(void) {
     app.revision++;
+}
+
+// Stepping onto a staircase moves Grace to the linked one. She has to step
+// off before the stairs fire again, so arriving does not bounce her back.
+static void take_stairs(void) {
+    int px, py;
+    player_cell(&px, &py);
+    const obj_t* s = level_stairs_at(grid_level(), px, py);
+    if (!s) {
+        app.on_stairs = false;
+        return;
+    }
+    if (app.on_stairs) {
+        return;
+    }
+    app.on_stairs = true;
+    const obj_t* dst = level_obj_by_id(grid_level(), s->link_id);
+    if (!dst) {
+        return;
+    }
+    player_set_cell(dst->x + dst->w / 2, dst->y + dst->h / 2);
+    app.route.count = 0;
+    camera_follow(player_x(), player_y());
+    camera_recentre();
+    reveal_sections();
+    bump_revision();
 }
 
 static void update_hover(void) {
@@ -974,6 +1001,7 @@ static void frame(void) {
             enemy_hit();
         }
         reveal_sections();
+        take_stairs();
 
         if (doors_update(dt)) {
             bump_revision();

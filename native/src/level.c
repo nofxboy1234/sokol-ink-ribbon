@@ -126,7 +126,7 @@ void level_init(level_t* lv) {
 const char* obj_kind_name(obj_kind_t kind) {
     static const char* names[OBJ_KIND_COUNT] = {
         "door", "item", "fusebox", "light", "switch", "typewriter", "file",
-        "safe", "obstacle", "start", "goal", "recipe", "cabinet",
+        "safe", "obstacle", "start", "goal", "recipe", "cabinet", "stairs",
     };
     return (kind >= 0 && kind < OBJ_KIND_COUNT) ? names[kind] : "door";
 }
@@ -251,6 +251,113 @@ void door_color_rgb(int state, float* r, float* g, float* b) {
         case DOOR_UNLOCKED: *r = 0.118f; *g = 1.0f; *b = 0.973f; break;
         default: *r = 0.616f; *g = 0.616f; *b = 0.616f; break;
     }
+}
+
+const obj_t* level_obj_by_id(const level_t* lv, int id) {
+    for (int i = 0; i < lv->obj_count; i++) {
+        if (lv->objs[i].id == id) return &lv->objs[i];
+    }
+    return NULL;
+}
+
+const obj_t* level_stairs_at(const level_t* lv, int x, int y) {
+    for (int i = 0; i < lv->obj_count; i++) {
+        const obj_t* o = &lv->objs[i];
+        if (o->kind == OBJ_STAIRS && x >= o->x && x < o->x + o->w && y >= o->y && y < o->y + o->h) return o;
+    }
+    return NULL;
+}
+
+static const char k_tile_glyphs[TILE_KIND_COUNT] = { ' ', '.', 'a', 'b', 'c', 'd', '-', '|' };
+static const char* k_tile_names[TILE_KIND_COUNT] = { "void", "floor", "nw", "ne", "sw", "se", "h", "v" };
+
+char tile_glyph(tile_t t) {
+    return (t >= 0 && t < TILE_KIND_COUNT) ? k_tile_glyphs[t] : ' ';
+}
+
+tile_t tile_from_glyph(char c) {
+    for (int i = 0; i < TILE_KIND_COUNT; i++) {
+        if (k_tile_glyphs[i] == c) return (tile_t)i;
+    }
+    return TILE_VOID;
+}
+
+const char* tile_name(tile_t t) {
+    return (t >= 0 && t < TILE_KIND_COUNT) ? k_tile_names[t] : "void";
+}
+
+tile_t tile_from_name(const char* name) {
+    for (int i = 0; i < TILE_KIND_COUNT; i++) {
+        if (strcmp(name, k_tile_names[i]) == 0) return (tile_t)i;
+    }
+    return (tile_t)-1;
+}
+
+tile_t level_tile(const level_t* lv, int x, int y) {
+    if (x < 0 || y < 0 || x >= lv->cols || y >= lv->rows || x >= LEVEL_MAX_COLS || y >= LEVEL_MAX_ROWS) {
+        return TILE_VOID;
+    }
+    return (tile_t)lv->tiles[y * LEVEL_MAX_COLS + x];
+}
+
+void level_set_tile(level_t* lv, int x, int y, tile_t t) {
+    if (x < 0 || y < 0 || x >= lv->cols || y >= lv->rows || x >= LEVEL_MAX_COLS || y >= LEVEL_MAX_ROWS) {
+        return;
+    }
+    lv->tiles[y * LEVEL_MAX_COLS + x] = (uint8_t)t;
+    lv->has_tiles = 1;
+}
+
+static bool is_floor(const level_t* lv, int x, int y) {
+    return level_tile(lv, x, y) == TILE_FLOOR;
+}
+
+static void add_wall(level_t* lv, int x0, int y0, int x1, int y1) {
+    if (lv->wall_count < LEVEL_MAX_WALLS) {
+        lv->walls[lv->wall_count++] = (wall_seg_t){ x0, y0, x1, y1 };
+    }
+}
+
+void level_compile_tiles(level_t* lv) {
+    lv->wall_count = 0;
+    for (int y = 0; y <= lv->rows; y++) {
+        int run = -1;
+        for (int x = 0; x <= lv->cols; x++) {
+            bool edge = x < lv->cols && is_floor(lv, x, y - 1) != is_floor(lv, x, y);
+            if (edge && run < 0) run = x;
+            if (!edge && run >= 0) {
+                add_wall(lv, run, y, x, y);
+                run = -1;
+            }
+        }
+    }
+    for (int x = 0; x <= lv->cols; x++) {
+        int run = -1;
+        for (int y = 0; y <= lv->rows; y++) {
+            bool edge = y < lv->rows && is_floor(lv, x - 1, y) != is_floor(lv, x, y);
+            if (edge && run < 0) run = y;
+            if (!edge && run >= 0) {
+                add_wall(lv, x, run, x, y);
+                run = -1;
+            }
+        }
+    }
+}
+
+static void parse_tiles(const char* js, const jsmntok_t* t, level_t* lv, int arr) {
+    if (t[arr].type != JSMN_ARRAY) {
+        return;
+    }
+    int i = arr + 1;
+    for (int y = 0; y < t[arr].size; y++) {
+        if (t[i].type == JSMN_STRING) {
+            for (int x = 0; x < t[i].end - t[i].start; x++) {
+                level_set_tile(lv, x, y, tile_from_glyph(js[t[i].start + x]));
+            }
+        }
+        i = tok_next(t, i);
+    }
+    lv->has_tiles = 1;
 }
 
 static void parse_walls(const char* js, const jsmntok_t* t, level_t* lv, int arr) {
@@ -391,10 +498,17 @@ bool level_from_json(level_t* lv, const char* json) {
         lv->start_x = arr_int(json, tokens, v, 0, 0);
         lv->start_y = arr_int(json, tokens, v, 1, 0);
     }
-    if ((v = obj_find(json, tokens, 0, "walls")) >= 0) parse_walls(json, tokens, lv, v);
+    if ((v = obj_find(json, tokens, 0, "tiles")) >= 0) {
+        parse_tiles(json, tokens, lv, v);
+    } else if ((v = obj_find(json, tokens, 0, "walls")) >= 0) {
+        parse_walls(json, tokens, lv, v);
+    }
     if ((v = obj_find(json, tokens, 0, "sections")) >= 0) parse_sections(json, tokens, lv, v);
     if ((v = obj_find(json, tokens, 0, "objects")) >= 0) parse_objects(json, tokens, lv, v);
     free(tokens);
+    if (lv->has_tiles) {
+        level_compile_tiles(lv);
+    }
 
     // Give every object a unique id and remap link references so links always
     // resolve to the object they were made against.
@@ -463,10 +577,21 @@ int level_to_json(const level_t* lv, char* out, int cap) {
     n = ap_str(out, cap, n, lv->name);
     n = ap(out, cap, n, ",\n  \"cols\": %d,\n  \"rows\": %d,\n", lv->cols, lv->rows);
     n = ap(out, cap, n, "  \"start\": [%d, %d],\n", lv->start_x, lv->start_y);
-    n = ap(out, cap, n, "  \"walls\": [");
-    for (int i = 0; i < lv->wall_count; i++) {
-        const wall_seg_t* w = &lv->walls[i];
-        n = ap(out, cap, n, "%s\n    [%d, %d, %d, %d]", i ? "," : "", w->x0, w->y0, w->x1, w->y1);
+    if (lv->has_tiles) {
+        n = ap(out, cap, n, "  \"tiles\": [");
+        for (int y = 0; y < lv->rows; y++) {
+            n = ap(out, cap, n, "%s\n    \"", y ? "," : "");
+            for (int x = 0; x < lv->cols; x++) {
+                n = ap(out, cap, n, "%c", tile_glyph(level_tile(lv, x, y)));
+            }
+            n = ap(out, cap, n, "\"");
+        }
+    } else {
+        n = ap(out, cap, n, "  \"walls\": [");
+        for (int i = 0; i < lv->wall_count; i++) {
+            const wall_seg_t* w = &lv->walls[i];
+            n = ap(out, cap, n, "%s\n    [%d, %d, %d, %d]", i ? "," : "", w->x0, w->y0, w->x1, w->y1);
+        }
     }
     n = ap(out, cap, n, "\n  ],\n  \"sections\": [");
     for (int i = 0; i < lv->section_count; i++) {
@@ -495,6 +620,8 @@ int level_to_json(const level_t* lv, char* out, int cap) {
                    o->radius, o->state, o->group_id, o->breakable ? "true" : "false");
         } else if (o->kind == OBJ_SWITCH) {
             n = ap(out, cap, n, ", \"group_id\": %d", o->group_id);
+        } else if (o->kind == OBJ_STAIRS) {
+            n = ap(out, cap, n, ", \"w\": %d, \"h\": %d", o->w, o->h);
         } else if (o->kind == OBJ_OBSTACLE) {
             n = ap(out, cap, n, ", \"w\": %d, \"h\": %d, \"climbable\": %s",
                    o->w, o->h, o->climbable ? "true" : "false");
