@@ -344,6 +344,71 @@ void level_compile_tiles(level_t* lv) {
     }
 }
 
+// One cell of a doorway along axis a in band r: floor, with floor on both
+// sides across the band.
+static bool fit_floor(const level_t* lv, bool h, int a, int r) {
+    return h ? is_floor(lv, a, r) : is_floor(lv, r, a);
+}
+
+static bool door_cell(const level_t* lv, bool h, int a, int r) {
+    return fit_floor(lv, h, a, r) && fit_floor(lv, h, a, r - 1) && fit_floor(lv, h, a, r + 1);
+}
+
+// The doorway through band r that contains a: its first cell and width.
+static bool fit_gap(const level_t* lv, bool h, int a, int r, int* lo_out, int* gap_out) {
+    if (!door_cell(lv, h, a, r)) return false;
+    int lo = a, hi = a;
+    while (door_cell(lv, h, lo - 1, r) && a - lo < DOOR_FIT_MAX_GAP) lo--;
+    while (door_cell(lv, h, hi + 1, r) && hi - a < DOOR_FIT_MAX_GAP) hi++;
+    // both ends must stop at a solid jamb cell in the band itself (a wall
+    // gap, or the two walls of a corridor a barrier closes off)
+    if (fit_floor(lv, h, lo - 1, r) || fit_floor(lv, h, hi + 1, r)) return false;
+    int gap = hi - lo + 1;
+    if (gap > DOOR_FIT_MAX_GAP) return false;
+    *lo_out = lo;
+    *gap_out = gap;
+    return true;
+}
+
+bool level_door_fit(const level_t* lv, int x, int y, int* ox, int* oy, int* horizontal, int* span) {
+    int best_gap = 0, best_off = 0;
+    bool found = false;
+    for (int hh = 1; hh >= 0; hh--) {
+        bool h = hh != 0;
+        int a = h ? x : y, r0 = h ? y : x;
+        static const int offs[3] = { 0, -1, 1 };
+        for (int k = 0; k < 3; k++) {
+            int lo, gap;
+            if (!fit_gap(lv, h, a, r0 + offs[k], &lo, &gap)) continue;
+            int off = offs[k] < 0 ? -offs[k] : offs[k];
+            if (!found || gap < best_gap || (gap == best_gap && off < best_off)) {
+                found = true;
+                best_gap = gap;
+                best_off = off;
+                *horizontal = hh;
+                *span = gap;
+                *ox = h ? lo : r0 + offs[k];
+                *oy = h ? r0 + offs[k] : lo;
+            }
+            break;
+        }
+    }
+    return found;
+}
+
+bool level_door_flush(const level_t* lv, const obj_t* d) {
+    int span = d->span > 0 ? d->span : 1;
+    // fit from every cell of the door: each must land on this exact door
+    for (int k = 0; k < span; k++) {
+        int cx = d->horizontal ? d->x + k : d->x;
+        int cy = d->horizontal ? d->y : d->y + k;
+        int fx, fy, fh, fs;
+        if (!level_door_fit(lv, cx, cy, &fx, &fy, &fh, &fs)) return false;
+        if (fx != d->x || fy != d->y || fh != (d->horizontal ? 1 : 0) || fs != span) return false;
+    }
+    return true;
+}
+
 static void parse_tiles(const char* js, const jsmntok_t* t, level_t* lv, int arr) {
     if (t[arr].type != JSMN_ARRAY) {
         return;

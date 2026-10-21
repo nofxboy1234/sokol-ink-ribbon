@@ -238,3 +238,27 @@ cd native
 `native/` itself is a fork of sokol-samples (it carries our `main` target and a
 small `box3d` compatibility shim in `fibs-scripts/box3d.ts`), so upstream
 sokol-samples changes are merged in manually rather than pulled.
+
+## Controls
+
+Desktop: WASD moves Grace; a middle-click while she walks makes her run until
+she stops (pressing it again while running does nothing). Q aims, Space
+interacts, Z is Quick Equip, P pauses, I opens the inventory.
+Touch: the left stick moves her, walking in the first half of its travel and
+running past half; the right stick aims, taps to interact and holds for
+Quick Equip.
+
+## Level editor
+
+`native/editor/editor.cc` (build with `./fibs build editor` in `native/`).
+Every edit runs a level-script command and is logged in the Script panel, so
+it can be replayed.
+
+- Select tool: click a tile or object to select it, drag to move it
+  (`movetile X Y NX NY`, `move ID X Y`), Del to remove it (`tile void X Y`,
+  `delete ID`). A removed tile is true void, drawn as the game draws it.
+- Door brush: click a doorway and the door snaps flush between the jambs
+  (`door X Y`). Normal doors are 2 cells wide; other gap widths become a
+  barrier of that width. On a solid wall it cuts a 2-cell door.
+- Hover any tool for a tooltip. `editor --idcheck` sweeps every panel for
+  Dear ImGui ID conflicts and exits 1 if it finds one.
