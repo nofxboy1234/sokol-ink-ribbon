@@ -128,6 +128,37 @@ int main(void) {
           "cover grows the neighbouring section to the cell");
     CHECK(run("cover 15 8\n") < 0, "cover fails with no section next to the cell");
 
+    // doors snap to the doorway between two rooms' shared wall
+    level_init(&lv);
+    CHECK(run("size 20 24\nroom 0 0 9 6 West\nroom 9 0 19 6 East\ntile floor 9 2 9 3\ndoor 9 3\n") == 5,
+          "fit door script runs");
+    door = find(&lv, OBJ_DOOR, 9, 2);
+    CHECK(door && !door->horizontal && door->span == 2 && level_door_flush(&lv, door),
+          "door with no orientation snaps flush into the 2-cell gap");
+    CHECK(run("room 0 12 19 22 Hall\ndoor 5 17\n") < 0, "door with no orientation fails in an open room");
+    CHECK(run("door 14 6 h\n") == 1 && find(&lv, OBJ_DOOR, 14, 6)->span == DOOR_SPAN,
+          "an oriented door with no span is a normal span-2 door");
+    CHECK(run("room 0 6 9 11 South\ntile floor 3 6 5 6\ndoor 4 6 name=barrier\n") == 3 &&
+              find(&lv, OBJ_DOOR, 3, 6) && find(&lv, OBJ_DOOR, 3, 6)->span == 3,
+          "a fitted barrier keeps the width of its gap");
+    if (!find(&lv, OBJ_DOOR, 3, 6)) {
+        printf("FAILED %d\n", failures);
+        return 1;
+    }
+    int barrier_id = find(&lv, OBJ_DOOR, 3, 6)->id;
+    char line[64];
+    CHECK(run("item 2 2 herb\n") == 1, "item for move");
+    int herb_id = find(&lv, OBJ_ITEM, 2, 2)->id;
+    snprintf(line, sizeof(line), "move %d 4 4\n", herb_id);
+    CHECK(run(line) == 1 && find(&lv, OBJ_ITEM, 4, 4) && !find(&lv, OBJ_ITEM, 2, 2), "move carries an object");
+    snprintf(line, sizeof(line), "delete %d\n", barrier_id);
+    int before = lv.obj_count;
+    CHECK(run(line) == 1 && lv.obj_count == before - 1 && !find(&lv, OBJ_DOOR, 3, 6), "delete removes one object");
+    CHECK(run("delete 9999\n") < 0, "delete of a missing id fails");
+    CHECK(run("movetile 0 0 1 1\n") == 1 && level_tile(&lv, 0, 0) == TILE_VOID &&
+              level_tile(&lv, 1, 1) == TILE_CORNER_NW,
+          "movetile carries the tile and leaves true void");
+
     char err[256];
     level_init(&lv);
     CHECK(levelscript_run(&lv, "size 10 10\nbogus 1 2\n", err, sizeof(err)) < 0 && strstr(err, "line 2"),

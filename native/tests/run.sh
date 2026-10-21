@@ -18,6 +18,8 @@ cc -std=c11 -O1 -Wall -Isrc -o .fibs/tests/stream_test tests/stream_test.c src/s
 cc -std=c11 -O1 -Wall -Isrc -Ilibs -o .fibs/tests/levelscript_test tests/levelscript_test.c src/levelscript.c src/level.c src/grid.c
 .fibs/tests/levelscript_test
 cc -std=c11 -O1 -Wall -Isrc -Ilibs -o .fibs/tests/levelscript tools/levelscript.c src/levelscript.c src/level.c
+cc -std=c11 -O1 -Wall -Isrc -Ilibs -o .fibs/tests/door_flush_test tests/door_flush_test.c src/level.c
+.fibs/tests/door_flush_test src/level_01.json
 # Playthrough: Grace's route reaches all of floors 1 and 2; on floor 3 only
 # the rooms behind the Warped Door (Leon's hatchet, jammed for her) stay
 # shut, with the one Med Injector in them. She buys all four Parlor prizes,

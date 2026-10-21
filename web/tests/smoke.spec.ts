@@ -21,7 +21,16 @@ declare global {
   }
 }
 
-// Realtime: hold a movement key (WASD) for a while; E latches run.
+// Realtime: hold a movement key (WASD) for a while; a middle-click latches run.
+// The Run latch: a middle-click on the canvas (auxclick, button 1).
+async function middleClick(page: Page) {
+  const box = await page.locator("canvas#canvas").boundingBox();
+  if (!box) throw new Error("canvas has no box");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 3);
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.up({ button: "middle" });
+}
+
 async function steer(page: Page, key: string, ms: number) {
   await page.keyboard.down(key);
   await page.waitForTimeout(ms);
@@ -108,7 +117,7 @@ test("the world is live while she waits, and the Pause menu freezes it", async (
   expect(await page.evaluate(() => window.Module?._run_elapsed_ms?.() ?? 0)).toBe(t1);
 });
 
-test("clicking Grace does nothing mid-move; WASD and the E run latch drive her", async ({ page }) => {
+test("clicking Grace does nothing mid-move; WASD and the middle-click run latch drive her", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => (window.Module?._grid_width?.() ?? 0) > 0, null, {
     timeout: 30_000,
@@ -120,10 +129,13 @@ test("clicking Grace does nothing mid-move; WASD and the E run latch drive her",
   await page.keyboard.down("d");
   await expect.poll(mode).toBe(1); // Walking
   await page.keyboard.press("e");
-  await expect.poll(mode).toBe(2); // Running (latched)
-  await page.keyboard.press("e");
   await page.waitForTimeout(200);
-  expect(await mode()).toBe(2); // E while running does not toggle off
+  expect(await mode()).toBe(1); // E is unbound: still Walking
+  await middleClick(page);
+  await expect.poll(mode).toBe(2); // Running (latched)
+  await middleClick(page);
+  await page.waitForTimeout(200);
+  expect(await mode()).toBe(2); // middle-click while running does not toggle off
 
   // click on her dot mid-run: her dot takes no input, she keeps running
   const at = await page.evaluate(() => ({
@@ -687,7 +699,7 @@ test("aiming caps a run to a walk; un-aiming restores the run latch", async ({ p
   await boot(page);
   expect(await wasm(page, "web_test_bottle_ready")).toBe(1);
   await page.keyboard.down("d");
-  await page.keyboard.press("e");
+  await middleClick(page);
   await expect.poll(() => wasm(page, "web_grace_mode")).toBe(2); // running
   await page.keyboard.press("q");
   await expect.poll(() => wasm(page, "web_grace_mode")).toBe(1); // capped to walk while aiming
@@ -1811,10 +1823,14 @@ test("map streaming: every chunk is loaded before it comes into view (doors, sta
   await wasm(page, "web_stream_reset");
   const trips = await streamTour(page);
   expect(trips.length).toBeGreaterThanOrEqual(2);
-  // on foot: run (E latch) around the start for a few seconds
+  // on foot: run (middle-click latch) around the start for a few seconds
   await wasm(page, "web_test_grace_at", 159, 68);
-  await page.keyboard.press("e");
-  for (const k of ["a", "s", "d", "w", "a"]) await steer(page, k, 700);
+  for (const k of ["a", "s", "d", "w", "a"]) {
+    await page.keyboard.down(k);
+    await middleClick(page);
+    await page.waitForTimeout(700);
+    await page.keyboard.up(k);
+  }
   expect(await wasm(page, "web_stream_violations")).toBe(0);
   expect(await wasm(page, "web_test_gl_full")).toBe(0);
   const fitPeak = await wasm(page, "web_test_gl_peak");
@@ -1828,4 +1844,37 @@ test("map streaming: every chunk is loaded before it comes into view (doors, sta
   expect(await wasm(page, "web_stream_peak_resident")).toBeLessThan(192);
   expect(await wasm(page, "web_stream_evictions")).toBeGreaterThan(0);
   expect(fitPeak).toBeLessThan(1 << 17);
+});
+
+test("Run latch: middle-click runs and clears on stop; E does nothing; no browser autoscroll", async ({ page }) => {
+  await boot(page);
+  const mode = () => wasm(page, "web_grace_mode");
+  // standing still: neither latches
+  await page.keyboard.press("e");
+  await middleClick(page);
+  expect(await wasm(page, "web_test_run_latch")).toBe(0);
+  // walking: E does nothing, middle-click runs
+  await page.keyboard.down("a");
+  await expect.poll(mode).toBe(1);
+  await page.keyboard.press("e");
+  await page.waitForTimeout(150);
+  expect(await wasm(page, "web_test_run_latch")).toBe(0);
+  expect(await mode()).toBe(1);
+  await middleClick(page);
+  await expect.poll(mode).toBe(2);
+  // stopping clears the latch: the next move walks again
+  await page.keyboard.up("a");
+  await expect.poll(mode).toBe(3); // Waiting
+  expect(await wasm(page, "web_test_run_latch")).toBe(0);
+  await page.keyboard.down("d");
+  await expect.poll(mode).toBe(1);
+  await page.keyboard.up("d");
+  // the page's middle-button mousedown is cancelled (no autoscroll)
+  const prevented = await page.evaluate(() => {
+    const c = document.getElementById("canvas")!;
+    const down = new MouseEvent("mousedown", { button: 1, bubbles: true, cancelable: true });
+    const aux = new MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true });
+    return [!c.dispatchEvent(down), !c.dispatchEvent(aux)];
+  });
+  expect(prevented).toEqual([true, true]);
 });

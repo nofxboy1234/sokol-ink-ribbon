@@ -136,7 +136,7 @@ static struct {
     // preventDefault -- so WASD/E/Q/X are read here, gated by app.paused so
     // typing in React overlays never moves her).
     bool key_w, key_a, key_s, key_d;
-    bool run_latch;          // E while walking: run until she stops
+    bool run_latch;          // middle-click while walking: run until she stops
     float stick_x, stick_y;  // analogue stick vector from React, -1..1
     bool stick_was_live;     // (legacy field, unused by the twin-stick aim)
     bool aiming;             // throw aim mode: mouse/aim-stick direction + reticle
@@ -1069,6 +1069,16 @@ void _dbgui_extra(void) {
     }
 }
 
+// Run latch (desktop): a middle-click while walking (or while a move key is
+// held, before the next frame lands) runs; while running it is a no-op (it
+// never toggles run off); stopping clears it (input_update). Touch runs by
+// pushing the move stick past half its travel instead.
+static void run_latch_press(void) {
+    if (app.grace == GRACE_WALKING || app.key_w || app.key_a || app.key_s || app.key_d) {
+        app.run_latch = true;
+    }
+}
+
 // Realtime movement input: WASD keys and/or the analogue stick become a
 // velocity on Grace. Releasing everything puts her in Waiting (the world
 // stays live, D1) and clears the run latch. While aiming, movement input
@@ -1271,15 +1281,6 @@ static void event(const sapp_event* e) {
                 case SAPP_KEYCODE_A: app.key_a = down; break;
                 case SAPP_KEYCODE_S: app.key_s = down; break;
                 case SAPP_KEYCODE_D: app.key_d = down; break;
-                case SAPP_KEYCODE_E:
-                    // run latch: pressing E while walking (or while a move
-                    // key is held, before the next frame lands) runs; while
-                    // running it is a no-op (it never toggles run off)
-                    if (down && !e->key_repeat &&
-                        (app.grace == GRACE_WALKING || app.key_w || app.key_a || app.key_s || app.key_d)) {
-                        app.run_latch = true;
-                    }
-                    break;
                 case SAPP_KEYCODE_Q:
                     if (down && !e->key_repeat) {
                         aim_enter();
@@ -1315,6 +1316,11 @@ static void event(const sapp_event* e) {
             app.touch_pointer = false;
             app.mouse_x = e->mouse_x;
             app.mouse_y = e->mouse_y;
+            return;
+        case SAPP_EVENTTYPE_MOUSE_DOWN:
+            if (e->mouse_button == SAPP_MOUSEBUTTON_MIDDLE) {
+                run_latch_press();
+            }
             return;
         case SAPP_EVENTTYPE_MOUSE_UP:
             app.mouse_x = e->mouse_x;
