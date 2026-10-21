@@ -21,8 +21,12 @@ bool doors_unlockable(const obj_t* o, int px, int py);
 void doors_unlock(int index);
 // Removes one key once no locked door or closed openable still takes it.
 void doors_drop_key_if_done(int item_type);
+// Grace has been near it (or worked it): only then does it show its lock
+// colour; until then every door draws grey, whatever its state.
+bool doors_is_discovered(int index);
+void doors_export_discovered(unsigned char* out);
+void doors_import_discovered(const unsigned char* seen);
 int doors_discovered_count(void);
-void doors_restore_from_level(void);
 
 int doors_pending_code(void);
 bool doors_try_code(int code);

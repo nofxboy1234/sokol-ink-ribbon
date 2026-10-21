@@ -255,7 +255,8 @@ static void take_stairs(void) {
     }
     // load the destination's map chunks before the jump, so no pop-in
     render_stream_prefetch_at((float)(dst->x + dst->w / 2) + 0.5f, (float)(dst->y + dst->h / 2) + 0.5f);
-    player_set_cell(dst->x + dst->w / 2, dst->y + dst->h / 2);
+    // keep her velocity and gait: only her position jumps
+    player_set_position((float)(dst->x + dst->w / 2) + 0.5f, (float)(dst->y + dst->h / 2) + 0.5f);
     app.route.count = 0;
     camera_follow(player_x(), player_y());
     camera_recentre();
@@ -623,30 +624,17 @@ static bool input_held(void) {
 }
 
 static bool interact_trigger(void) {
-    if (app.grace == GRACE_HURT || input_held() || player_climbing()) {
+    if (app.grace == GRACE_HURT || player_climbing()) {
         return false;
     }
-    player_stop();
-    int px, py;
-    player_cell(&px, &py);
-    static const int facing_dx[4] = { 0, 1, 0, -1 };
-    static const int facing_dy[4] = { -1, 0, 1, 0 };
-    int f = player_facing();
-    int cells[10][2];
-    int n = 0;
-    cells[n][0] = px + facing_dx[f]; cells[n][1] = py + facing_dy[f]; n++;
-    cells[n][0] = px; cells[n][1] = py; n++;
-    for (int dy = -1; dy <= 1; dy++) {
-        for (int dx = -1; dx <= 1; dx++) {
-            if (dx == 0 && dy == 0) continue;
-            cells[n][0] = px + dx; cells[n][1] = py + dy; n++;
-        }
+    // moving, she only picks things up and keeps going; standing, anything
+    bool moving = input_held();
+    if (!moving) {
+        player_stop();
     }
-    for (int i = 0; i < n; i++) {
-        if (doors_interact(cells[i][0], cells[i][1]) || interact_at(cells[i][0], cells[i][1])) {
-            bump_revision();
-            return true;
-        }
+    if (interact_nearby(moving)) {
+        bump_revision();
+        return true;
     }
     return false;
 }
@@ -678,6 +666,12 @@ static bool aim_enter(void) {
 
 static void aim_update(void) {
     if (!app.aiming) {
+        return;
+    }
+    if (!weapon_active()) {
+        app.aiming = false;  // the last bottle thrown, or the weapon put away
+        app.aim_from_stick = false;
+        bump_revision();
         return;
     }
     float stick_mag = sqrtf(app.aim_stick_x * app.aim_stick_x + app.aim_stick_y * app.aim_stick_y);
@@ -752,15 +746,14 @@ static bool aim_confirm(void) {
     app.impact_at = app.clock;
     app.impact_x = (int)floorf(ix);
     app.impact_y = (int)floorf(iy);
-    app.aiming = false;
-    app.aim_from_stick = false;
+    // aim stays up for the next shot or throw; it closes on Q, a dead-zone
+    // release of the aim stick, or when nothing throwable is left in hand
     app.aim_stick_live = false;
     app.aim_enemy = false;
     bump_revision();
     return true;
 }
 
-static const obj_t* hover_interactable(void);
 static void update_hover(void);
 
 // Grace's dot is not an input: clicking, right-clicking, tapping or
@@ -906,104 +899,48 @@ static void init(void) {
     };
 }
 
-// The interactable whose marker is under the mouse, used for the hover name
-// popup. Doors accept a click out to two cells, matching the X popup.
-static const obj_t* hover_interactable(void) {
-    if (app.hover_x < 0 || app.hover_y < 0) {
-        return NULL;
+// Prompts: every interactable Grace can work right now (items, typewriters,
+// Item Boxes and the rest within one cell, doors within two) that she can
+// see gets a label above it, with no hover needed so touch sees them too.
+// Black on white says what it is; black on red says why it won't work yet.
+// Drawn on the foreground draw list only, so they never take input.
+#define PROMPT_MAX 32
+static struct {
+    int count;
+    int obj[PROMPT_MAX];
+    bool alert[PROMPT_MAX];
+    char text[PROMPT_MAX][96];
+} prompts;
+
+static bool prompt_kind(const obj_t* o) {
+    switch (o->kind) {
+        case OBJ_ITEM: case OBJ_DOOR: case OBJ_SWITCH: case OBJ_TYPEWRITER: case OBJ_FUSEBOX:
+        case OBJ_FILE: case OBJ_SAFE: case OBJ_ITEMBOX: case OBJ_CABINET: case OBJ_MICROSCOPE:
+            return true;
+        default:
+            return o->kind == OBJ_OBSTACLE && o->openable;
     }
-    int px, py;
-    player_cell(&px, &py);
-    const level_t* lv = &app.level;
-    int hx = app.hover_x;
-    int hy = app.hover_y;
-    for (int i = lv->obj_count - 1; i >= 0; i--) {
-        const obj_t* o = &lv->objs[i];
-        if (o->kind != OBJ_ITEM && o->kind != OBJ_DOOR && o->kind != OBJ_SWITCH &&
-            o->kind != OBJ_TYPEWRITER && o->kind != OBJ_FUSEBOX &&
-            o->kind != OBJ_FILE && o->kind != OBJ_SAFE && o->kind != OBJ_ITEMBOX && o->kind != OBJ_CABINET &&
-            o->kind != OBJ_MICROSCOPE && !(o->kind == OBJ_OBSTACLE && o->openable)) {
-            continue;
-        }
-        if (!grid_is_revealed(o->x, o->y)) {
-            continue;
-        }
-        if (o->kind == OBJ_DOOR && o->state == DOOR_BROKEN) {
-            continue;
-        }
-        if (o->kind == OBJ_ITEM && items_taken(i)) {
-            continue;
-        }
-        if (o->kind == OBJ_ITEM && openable_covers_closed(o->x, o->y)) {
-            continue;
-        }
-        if (o->kind == OBJ_ITEM && !light_item_visible(i)) {
-            continue;
-        }
-        if ((o->kind == OBJ_OBSTACLE && o->openable) && o->open) {
-            continue;
-        }
-        bool covered = false;
-        if ((o->kind == OBJ_OBSTACLE && o->openable)) {
-            int w = o->w > 0 ? o->w : 1;
-            int h = o->h > 0 ? o->h : 1;
-            covered = hx >= o->x && hx < o->x + w && hy >= o->y && hy < o->y + h;
-        } else if (o->kind == OBJ_DOOR) {
-            int span = o->span > 0 ? o->span : 1;
-            covered = o->horizontal
-                ? (hy >= o->y - 1 && hy <= o->y && hx >= o->x && hx < o->x + span)
-                : (hx >= o->x - 1 && hx <= o->x && hy >= o->y && hy < o->y + span);
-        } else {
-            covered = (o->x == hx && o->y == hy);
-        }
-        if (!covered) {
-            continue;
-        }
-        int reach = o->kind == OBJ_DOOR ? 2 : 1;
-        return interact_distance(i) <= reach ? o : NULL;
-    }
-    return NULL;
 }
 
-// Item labels: every item Grace could pick up right now (within the
-// one-cell reach Space and the hover popup use) that she can see gets its
-// name above it, white with a black border. Drawn on the foreground draw
-// list only, so they never take input. Same visibility rules as the hover.
-#define ITEM_LABEL_REACH 1
-static int item_labels_shown;
-static char item_label_last[64];
-
-static bool item_label_visible(int i) {
+static bool prompt_visible(int i) {
     const obj_t* o = &app.level.objs[i];
-    return o->kind == OBJ_ITEM && grid_is_revealed(o->x, o->y) && !items_taken(i) &&
-           !openable_covers_closed(o->x, o->y) && light_item_visible(i) &&
-           interact_distance(i) <= ITEM_LABEL_REACH;
+    if (!prompt_kind(o) || !grid_is_revealed(o->x, o->y)) return false;
+    if (o->kind == OBJ_ITEM &&
+        (items_taken(i) || openable_covers_closed(o->x, o->y) || !light_item_visible(i))) return false;
+    if (o->kind == OBJ_OBSTACLE && o->open) return false;
+    if (o->kind == OBJ_DOOR) {
+        // an unlocked door just opens as she walks through: nothing to say
+        if (o->state == DOOR_BROKEN || o->state == DOOR_UNLOCKED || !doors_is_discovered(i)) return false;
+        return interact_distance(i) <= 2;
+    }
+    return interact_distance(i) <= 1;
 }
 
-static void draw_item_labels(void) {
-    item_labels_shown = 0;
-    if (app.paused || app.dead || level_complete()) {
-        return;
-    }
-    for (int i = 0; i < app.level.obj_count; i++) {
-        if (!item_label_visible(i)) {
-            continue;
-        }
-        const obj_t* o = &app.level.objs[i];
-        float sx, sy;
-        camera_cell_to_screen((float)o->x + 0.5f, (float)o->y, &sx, &sy);
-        const char* name = item_display_name(o->item_type);
-        game_label(name, sx, sy - 6.0f);  // same pixel space as the hover popup
-        snprintf(item_label_last, sizeof item_label_last, "%s", name);
-        item_labels_shown++;
-    }
-}
-
-// Why a locked door won't open: the hover popup's red text.
+// Why a locked door won't open: the prompt's red text.
 static const char* door_lock_text(const obj_t* o) {
     static char buf[160];
     if (o->lock == LOCK_JAMMED) return "It's jammed shut";
-    if (o->lock == LOCK_OTHER_SIDE) return "Locked from the other side";
+    if (o->lock == LOCK_OTHER_SIDE) return o->bolt ? "Bolted from the other side" : "Locked from the other side";
     int keys[3] = { doors_key_type(o), o->key2_id, o->key3_id };
     int n = snprintf(buf, sizeof(buf), "Needs");
     for (int k = 0; k < 3; k++) {
@@ -1014,59 +951,96 @@ static const char* door_lock_text(const obj_t* o) {
     return keys[0] > 0 ? buf : "Locked";
 }
 
-// Extra dear-imgui UI drawn inside the dbgui frame (the hover tooltip).
-void _dbgui_extra(void) {
-    draw_item_labels();
-    const obj_t* hl = hover_interactable();
-    if (hl) {
-        const char* name = hl->name[0] ? hl->name : obj_kind_name(hl->kind);
-        if (hl->kind == OBJ_ITEM) {
-            name = item_display_name(hl->item_type);
-        } else if (hl->kind == OBJ_DOOR) {
-            if (hl->state == DOOR_UNLOCKED) {
-                name = hl->open ? "close" : "open";
-            } else if (hl->state == DOOR_LOCKED) {
-                int px, py;
-                player_cell(&px, &py);
-                name = doors_unlockable(hl, px, py) ? "unlock" : door_lock_text(hl);
-            } else {
-                name = "open";
+// The prompt's text for object o, and whether it is an alert (red).
+static bool prompt_text(const obj_t* o, char* out, size_t cap) {
+    int px, py;
+    player_cell(&px, &py);
+    switch (o->kind) {
+        case OBJ_ITEM: {
+            const char* name = item_display_name(o->item_type);
+            if (item_category(o->item_type) == ICAT_BLOOD) {
+                int qty = o->qty > 0 ? o->qty : 1;
+                if (!inventory_has(ITEM_BLOOD_COLLECTOR)) {
+                    snprintf(out, cap, "%s (%d): needs the Blood Collector", name, qty);
+                    return true;
+                }
+                snprintf(out, cap, "%s (%d)", name, qty);
+                return false;
             }
+            snprintf(out, cap, "%s", name);
+            return !gear_counted(o->item_type) && inventory_count() >= inventory_capacity();
         }
-        if (hl->kind == OBJ_ITEM && item_category(hl->item_type) == ICAT_BLOOD &&
-            !inventory_has(ITEM_BLOOD_COLLECTOR)) {
-            name = "Needs the Blood Collector";
-        }
-        static char what[96];
-        bool short_coins = false, needs_item = false;
-        if (hl->kind == OBJ_CABINET) {
-            int cost = hl->code > 0 ? hl->code : 1;
-            short_coins = !hl->state && gear_count(ITEM_COIN) < cost;
-            if (hl->state) {
-                snprintf(what, sizeof what, "Empty");
-            } else {
-                snprintf(what, sizeof what, "%s: %d Antique Coins",
-                         hl->qty > 0 ? item_display_name(hl->item_type) : "+4 slots", cost);
+        case OBJ_DOOR:
+            if (doors_unlockable(o, px, py)) {
+                snprintf(out, cap, "unlock");
+                return false;
             }
-            name = what;
-        } else if (hl->kind == OBJ_ITEMBOX) {
-            name = "Item Box";
-        } else if (hl->kind == OBJ_SAFE && !hl->open && hl->key_id > 0) {
-            needs_item = !doors_has_key(hl->key_id);
-            snprintf(what, sizeof what, needs_item ? "Needs the %s" : "Open with the %s",
-                     item_display_name(hl->key_id));
-            name = what;
+            snprintf(out, cap, "%s", door_lock_text(o));
+            return true;
+        case OBJ_TYPEWRITER:
+            if (!inventory_has(ITEM_INK_RIBBON)) {
+                snprintf(out, cap, "Typewriter: needs an Ink Ribbon");
+                return true;
+            }
+            snprintf(out, cap, "Typewriter");
+            return false;
+        case OBJ_ITEMBOX:
+            snprintf(out, cap, "Item Box");
+            return false;
+        case OBJ_CABINET: {
+            int cost = o->code > 0 ? o->code : 1;
+            if (o->state) {
+                snprintf(out, cap, "Empty");
+                return false;
+            }
+            snprintf(out, cap, "%s: %d Antique Coins", o->qty > 0 ? item_display_name(o->item_type) : "+4 slots", cost);
+            return gear_count(ITEM_COIN) < cost;
         }
-        int px, py;
-        player_cell(&px, &py);
-        bool alert = (hl->kind == OBJ_ITEM && !gear_counted(hl->item_type) &&
-                      inventory_count() >= inventory_capacity()) ||
-                     (hl->kind == OBJ_ITEM && item_category(hl->item_type) == ICAT_BLOOD &&
-                      !inventory_has(ITEM_BLOOD_COLLECTOR)) ||
-                     (hl->kind == OBJ_DOOR && hl->state == DOOR_LOCKED && !doors_unlockable(hl, px, py)) ||
-                     (hl->kind == OBJ_TYPEWRITER && !inventory_has(ITEM_INK_RIBBON)) || short_coins || needs_item;
-        game_tooltip(name, app.mouse_x + 14.0f, app.mouse_y + 14.0f, alert);
+        case OBJ_SAFE:
+            if (!o->open && o->key_id > 0) {
+                bool needs = !doors_has_key(o->key_id);
+                snprintf(out, cap, needs ? "Needs the %s" : "Open with the %s", item_display_name(o->key_id));
+                return needs;
+            }
+            break;
+        default:
+            break;
     }
+    snprintf(out, cap, "%s", o->name[0] ? o->name : obj_kind_name(o->kind));
+    return false;
+}
+
+static void draw_prompts(void) {
+    prompts.count = 0;
+    if (app.paused || app.dead || level_complete()) {
+        return;
+    }
+    for (int i = 0; i < app.level.obj_count && prompts.count < PROMPT_MAX; i++) {
+        if (!prompt_visible(i)) {
+            continue;
+        }
+        const obj_t* o = &app.level.objs[i];
+        int k = prompts.count++;
+        prompts.obj[k] = i;
+        prompts.alert[k] = prompt_text(o, prompts.text[k], sizeof prompts.text[k]);
+        // above the object: a rect's top centre, or the door slab's midpoint
+        float mx = (float)o->x + 0.5f, my = (float)o->y;
+        if (o->kind == OBJ_OBSTACLE) {
+            mx = (float)o->x + 0.5f * (float)(o->w > 0 ? o->w : 1);
+        } else if (o->kind == OBJ_DOOR) {
+            int span = o->span > 0 ? o->span : 1;
+            mx = o->horizontal ? (float)o->x + span * 0.5f : (float)o->x;
+            my = o->horizontal ? (float)o->y - 0.5f : (float)o->y;
+        }
+        float sx, sy;
+        camera_cell_to_screen(mx, my, &sx, &sy);
+        game_label(prompts.text[k], sx, sy - 6.0f, prompts.alert[k]);
+    }
+}
+
+// Extra dear-imgui UI drawn inside the dbgui frame.
+void _dbgui_extra(void) {
+    draw_prompts();
 }
 
 // Run latch (desktop): a middle-click while walking (or while a move key is
@@ -1262,6 +1236,16 @@ static void click_at(void) {
     handle_click();
 }
 
+// Focus lost (another window, a hidden tab, a cancelled touch): key-ups and
+// pointer-ups never arrive, so drop every held input or she keeps walking.
+static void input_release(void) {
+    app.key_w = app.key_a = app.key_s = app.key_d = false;
+    app.run_latch = false;
+    app.stick_x = app.stick_y = 0.0f;
+    app.aim_stick_x = app.aim_stick_y = 0.0f;
+    app.aim_stick_live = false;
+}
+
 static void event(const sapp_event* e) {
     if (_dbgui_event_with_retval(e)) {
         return;
@@ -1311,6 +1295,10 @@ static void event(const sapp_event* e) {
         case SAPP_EVENTTYPE_RESIZED:
             camera_set_viewport(sapp_width(), sapp_height());
             render_stream_prefetch();  // a bigger window sees more map: load it first
+            return;
+        case SAPP_EVENTTYPE_UNFOCUSED:
+        case SAPP_EVENTTYPE_SUSPENDED:
+            input_release();
             return;
         case SAPP_EVENTTYPE_MOUSE_MOVE:
             app.touch_pointer = false;
@@ -1856,13 +1844,40 @@ TEST_EXPORT int web_test_door(int nth) {
     return -1;
 }
 
-// Tests: how many item labels the last frame drew, and the last one's text.
+// Tests: how many prompts the last frame drew, the last one's text, and
+// the prompt over the object at a cell (text, and 1 when it is red).
 TEST_EXPORT int web_test_item_labels(void) {
-    return item_labels_shown;
+    return prompts.count;
 }
 
 TEST_EXPORT const char* web_test_item_label(void) {
-    return item_label_last;
+    return prompts.count ? prompts.text[prompts.count - 1] : "";
+}
+
+static int prompt_at(int x, int y) {
+    for (int k = 0; k < prompts.count; k++) {
+        const obj_t* o = &app.level.objs[prompts.obj[k]];
+        if (o->x == x && o->y == y) return k;
+    }
+    return -1;
+}
+
+TEST_EXPORT const char* web_test_prompt_at(int x, int y) {
+    int k = prompt_at(x, y);
+    return k < 0 ? "" : prompts.text[k];
+}
+
+TEST_EXPORT int web_test_prompt_alert_at(int x, int y) {
+    int k = prompt_at(x, y);
+    return k < 0 ? -1 : prompts.alert[k];
+}
+
+TEST_EXPORT int web_test_door_discovered(int x, int y) {
+    for (int i = 0; i < app.level.obj_count; i++) {
+        const obj_t* o = &app.level.objs[i];
+        if (o->kind == OBJ_DOOR && o->x == x && o->y == y) return doors_is_discovered(i) ? 1 : 0;
+    }
+    return -1;
 }
 
 TEST_EXPORT int web_test_ui_wants_mouse(void) {
@@ -1907,16 +1922,22 @@ WEB_EXPORT void web_aim_input(float x, float y) {
     app.aim_stick_y = y;
     if (x == 0.0f && y == 0.0f) {
         if (app.aim_stick_live && app.aiming) {
-            aim_confirm();  // release throws (a grey stub aim refuses inside)
+            aim_confirm();  // release throws or fires; aim stays up for the next
+            app.aim_from_stick = app.aiming;
         } else if (app.aim_from_stick && app.aiming) {
             app.aiming = false;  // dead-zone release cancels
+            app.aim_from_stick = false;
             bump_revision();
         }
         app.aim_stick_live = false;
-        app.aim_from_stick = false;
     } else {
         app.aim_stick_live = false;  // back inside the dead zone
     }
+}
+
+// React calls this on window blur / a hidden tab (touch sticks included).
+WEB_EXPORT void web_input_release(void) {
+    input_release();
 }
 
 WEB_EXPORT int web_aim_toggle(void) {

@@ -205,6 +205,7 @@ typedef struct {
     int key2_id;   // door: a second item it also needs (Moon + Sun Quartz)
     int key3_id;   // door: a third (Star Quartz)
     int side;      // door with LOCK_OTHER_SIDE: +1 opens from row y / column x, -1 from y-1 / x-1
+    int bolt;      // door with LOCK_OTHER_SIDE: a slide bolt on the side it opens from (drawn)
     char name[LEVEL_MAX_NAME];
 } obj_t;
 

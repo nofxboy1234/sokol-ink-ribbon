@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { createModuleOptions } from "./wasmBridge";
+import { createModuleOptions, onFocusLost, releaseInput } from "./wasmBridge";
 
 let wasmStarted = false;
 // The canvas is created once and re-parented on navigation: a webgl canvas
@@ -48,6 +48,7 @@ export function MapCanvas() {
       event.preventDefault();
     };
     window.addEventListener("keydown", onKey);
+    const stopFocusWatch = onFocusLost(releaseInput);
 
     // sokol measures the canvas CSS box at startup and on window resize, so
     // re-measure when the pane changes size. Observe the host, not the canvas:
@@ -72,6 +73,7 @@ export function MapCanvas() {
     return () => {
       observer.disconnect();
       window.removeEventListener("keydown", onKey);
+      stopFocusWatch();
     };
   }, []);
 

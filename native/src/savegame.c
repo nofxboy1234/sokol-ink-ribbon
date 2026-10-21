@@ -60,6 +60,7 @@ typedef struct {
     int hp, hp_max;
     int box_count;
     int box[INV_BOX_MAX];
+    unsigned char door_seen[LEVEL_MAX_OBJECTS];
 } save_slot_t;
 
 static save_slot_t g_slots[SAVE_SLOTS];
@@ -114,6 +115,7 @@ bool savegame_save(int slot, double elapsed_ms) {
     s->hp_max = health_max();
     s->box_count = inventory_box_count();
     for (int i = 0; i < s->box_count; i++) s->box[i] = inventory_box_item(i);
+    doors_export_discovered(s->door_seen);
     return true;
 }
 
@@ -137,7 +139,7 @@ bool savegame_load(int slot, double* elapsed_ms) {
     health_set(s->health);
     interact_restore(s->lighter, s->saves, s->goal, s->file_count, s->file_obj, s->version >= 5 && s->complete);
     player_set_cell(s->px, s->py);
-    doors_restore_from_level();
+    doors_import_discovered(s->door_seen);
     bool v2 = s->version >= 2;
     bool keep_empty = s->version >= 3;
     bool equipped = v2 && s->equipped && (keep_empty || inventory_has(ITEM_BOTTLE));

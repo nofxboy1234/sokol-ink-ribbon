@@ -48,7 +48,7 @@ async function fireWest(page: Page, box: { x: number; y: number }) {
   const cell = await wasm(page, "web_cell_css_px");
   const gx = await wasm(page, "player_cell_x");
   const gy = await wasm(page, "player_cell_y");
-  await page.keyboard.press("q");
+  if (!(await wasm(page, "web_test_aiming"))) await page.keyboard.press("q"); // aim stays up between shots
   await expect.poll(() => wasm(page, "web_test_aiming")).toBe(1);
   // place the enemy only now, so it has no time to reach and hurt her
   await wasm(page, "web_test_enemy_place", (gx - 3) * 100 + 50, gy * 100 + 50);
