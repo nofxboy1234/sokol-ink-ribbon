@@ -423,6 +423,29 @@ int main(int argc, char** argv) {
     CHECK(health_max() == HEALTH_BASE_MAX + 1 && health_hp() == HEALTH_BASE_MAX, "and health %d of %d", health_hp(), health_max());
     CHECK(inventory_box_count() == 1 && inventory_box_item(0) == ITEM_HERB, "and the Item Box");
 
+    // --- the interact press: a failed or spent pickup never swallows it ---
+    // The Medication Room: the West Wing Keycard at 70,211 with Infected
+    // Blood beside it at 71,212. Without the Blood Collector the blood
+    // can't be taken, and before the fix pressing next to it did nothing.
+    reset();
+    items_init();
+    int card = -1, blood = -1;
+    for (int i = 0; i < level.obj_count; i++) {
+        const obj_t* o = &level.objs[i];
+        if (o->kind == OBJ_ITEM && o->item_type == ITEM_WEST_WING_KEYCARD && o->x == 70 && o->y == 211) card = i;
+        if (o->kind == OBJ_ITEM && item_category(o->item_type) == ICAT_BLOOD && o->x == 71 && o->y == 212) blood = i;
+    }
+    CHECK(card >= 0 && blood >= 0, "the Medication Room holds the West Wing Keycard at 70,211 and blood at 71,212");
+    player_set_cell(71, 212);
+    CHECK(!interact_at(71, 212), "blood she can't carry is not an interaction");
+    CHECK(interact_nearby(false) && items_taken(card) && inventory_has(ITEM_WEST_WING_KEYCARD),
+          "standing on the blood, the press takes the keycard beside it");
+    CHECK(!interact_at(70, 211), "a taken item is not an interaction either");
+    items_init();
+    inventory_init();
+    player_set_cell(70, 212);
+    CHECK(interact_nearby(true) && items_taken(card), "moving (items only), the press still picks it up");
+
     printf("%s: %d failure(s)\n", failures ? "FAIL" : "OK", failures);
     return failures ? 1 : 0;
 }

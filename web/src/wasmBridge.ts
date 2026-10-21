@@ -51,6 +51,7 @@ export type EmscriptenModule = {
   _web_enemy_screen_y?: () => number;
   _web_aim_enemy?: () => number;
   _web_stick_input?: (x: number, y: number) => void;
+  _web_input_release?: () => void;
   _web_aim_input?: (x: number, y: number) => void;
   _web_aim_toggle?: () => number;
   _web_aiming?: () => number;
@@ -444,6 +445,25 @@ export function equipBottle(on: boolean): boolean {
 // Analogue stick vector (-1..1); (0,0) is release.
 export function stickInput(x: number, y: number): void {
   module()?._web_stick_input?.(x, y);
+}
+
+// Focus lost: drop every held key and stick vector without firing.
+export function releaseInput(): void {
+  module()?._web_input_release?.();
+}
+
+// Fired when the page loses focus or hides: key-ups and pointer-ups that
+// happen elsewhere never reach us, so held input must be dropped.
+export function onFocusLost(handler: () => void): () => void {
+  const onVisibility = () => {
+    if (document.visibilityState === "hidden") handler();
+  };
+  window.addEventListener("blur", handler);
+  document.addEventListener("visibilitychange", onVisibility);
+  return () => {
+    window.removeEventListener("blur", handler);
+    document.removeEventListener("visibilitychange", onVisibility);
+  };
 }
 
 // Aim stick vector (-1..1); (0,0) is release (throws/cancels in C).

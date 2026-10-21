@@ -73,6 +73,16 @@ int main(void) {
               "cut voids its cells and drops the objects, sections and links inside it");
     }
     {
+        // a one-sided door's bolt: set by script, kept through JSON
+        char e[256];
+        CHECK(levelscript_run(&lv, "set 9 2 lock=other_side state=locked side=-1 bolt=1\n", e, sizeof(e)) == 1,
+              "bolt is a door property");
+        level_to_json(&lv, json, sizeof(json));
+        const obj_t* d = level_from_json(&back, json) ? find(&back, OBJ_DOOR, 9, 2) : NULL;
+        CHECK(d && d->lock == LOCK_OTHER_SIDE && d->side == -1 && d->bolt == 1, "the bolt and its side round-trip");
+        levelscript_run(&lv, "set 9 2 lock=none state=unlocked side=0 bolt=0\n", e, sizeof(e));
+    }
+    {
         // one Player Spawn per level: a second one moves it; spawns round-trip
         CHECK(run("obj player_spawn 3 4\nobj player_spawn 5 2\nobj enemy_spawn 14 3\n") == 3, "spawn objects place");
         int spawns = 0;
