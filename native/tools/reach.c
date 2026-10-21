@@ -190,6 +190,15 @@ static bool round_step(int round, FILE* log) {
                 if (log && (c == ICAT_KEY || c == ICAT_TOOL || c == ICAT_GUN || c == ICAT_MELEE || c == ICAT_POUCH))
                     fprintf(log, "  round %d: take %-28s at %3d,%3d (F%d)\n", round, item_display_name(o->item_type), o->x, o->y, floor_of(o->y));
             }
+        } else if (o->kind == OBJ_FILE && !interact_file_found(i) && rect_touchable(o, &fx, &fy)) {
+            // she reads every file she reaches (a code file opens its safe)
+            player_set_cell(fx, fy);
+            interact_at(o->x, o->y);
+            if (interact_file_found(i)) {
+                changed = true;
+                if (log && strstr(o->name, "Safe Code"))
+                    fprintf(log, "  round %d: read %-28s at %3d,%3d (F%d)\n", round, o->name, o->x, o->y, floor_of(o->y));
+            }
         } else if (((o->kind == OBJ_OBSTACLE && o->openable) || o->kind == OBJ_SAFE || o->kind == OBJ_MICROSCOPE ||
                     o->kind == OBJ_FUSEBOX) && rect_touchable(o, &fx, &fy)) {
             if (o->kind == OBJ_MICROSCOPE) {
@@ -203,7 +212,7 @@ static bool round_step(int round, FILE* log) {
             player_set_cell(fx, fy);
             bool was_open = o->open;
             bool done = interact_at(o->x, o->y);
-            if (o->kind == OBJ_SAFE && interact_pending_safe() == i) {
+            if (o->kind == OBJ_SAFE && o->link_id == 0 && interact_pending_safe() == i) {
                 done = interact_try_safe_code(o->code);  // the code is in a file she has read
             }
             if (done && (o->open != was_open || o->kind == OBJ_FUSEBOX)) {

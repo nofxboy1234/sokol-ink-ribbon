@@ -148,5 +148,5 @@ erase 123 184
 item 124 184 coin qty=3 name=Antique_Coin_(3)  # F1 inside the Examination Room Safe
 erase 118 198
 item 118 199 coin qty=2 name=Antique_Coin_(2)  # F1 inside the Waiting Room Safe
-set 118 199 open=1  # the Waiting Room Safe stands open
+setnear safe 118 199 0 open=1  # the Waiting Room Safe stands open
 item 118 198 coin name=Antique_Coin  # F1 Polygon Antique Coin (3)

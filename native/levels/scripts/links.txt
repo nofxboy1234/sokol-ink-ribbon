@@ -30,12 +30,23 @@ link F3_attic_W_stairs F2_hall_W_stairs
 obj stairs 93 53 w=2 h=2 name=F3_attic_E_stairs
 obj stairs 100 93 w=2 h=2 name=F2_hall_E_stairs link=F3_attic_E_stairs
 link F3_attic_E_stairs F2_hall_E_stairs
+# The Central Hall's two straight flights (Polygon map: drawn on floor 1 at
+# x 81-84 / 98-101, y 180-187 and again on floor 2 at the same spot in the
+# F2 Central Hall, x 81-83 / 98-100, y 92-100). Their F2 tops are already
+# the attic stairs' feet, so the F1<->F2 ends sit at the flights' bottoms.
+obj stairs 81 180 w=4 h=2 name=F1_hall_W_stairs
+obj stairs 81 97 w=3 h=2 name=F2_hall_W_down link=F1_hall_W_stairs
+link F1_hall_W_stairs F2_hall_W_down
+obj stairs 98 180 w=4 h=2 name=F1_hall_E_stairs
+obj stairs 99 97 w=2 h=2 name=F2_hall_E_down link=F1_hall_E_stairs
+link F1_hall_E_stairs F2_hall_E_down
 
 # Grace wakes in Room 203, at its label on the map.
 # The Player Spawn: Grace wakes in Room 203. One per level.
 obj player_spawn 159 68
-# The enemy spawns 10-18 path cells from her start, as it always has.
-obj enemy_spawn 159 68 radius=18 name=enemy_spawn
+# The enemy spawns exactly here: Room 203's south end, about 11 path cells
+# from Grace (the old random spawn put it 10-18 cells away).
+obj enemy_spawn 162 79 name=enemy_spawn
 # Room 201's lamp reaches the Fuse locker and the Lighter.
 setnear light 109 79 3 radius=7
 # The Nurses' Station lamp is the one the enemy can smash.
@@ -43,13 +54,11 @@ setnear light 142 93 6 breakable=1
 # The Fuse sits in a locker the Screwdriver (Nurses' Station) opens.
 obj obstacle 103 76 openable=1 name=fuse_locker link=Screwdriver
 # The Rehabilitation Ward vestibule: the cyan door takes the Cherub Key.
-# In the game the ward's door is bolted and only Leon's chainsaw cuts it
-# (guides4gamers "Rehabilitation Ward Door", IGN, Rectify Gaming). This map
-# has no stairs from the F2 central hall down to the F1 one, so the ward is
-# Grace's only way from the F1 landing (141,240) into the Central Hall: it
-# stays a plain door here. The fuse powers only the F2 gate (progression.txt).
+# The ward's own door is bolted and only Leon's chainsaw cuts it
+# (guides4gamers "Rehabilitation Ward Door", Eurogamer, IGN, Rectify
+# Gaming): shut for Grace for good. The fuse powers only the F2 gate.
 setnear door 126 224 2 state=locked link=Cherub_Key name=cherub_door
-setnear door 132 223 2 state=unlocked name=Rehabilitation_Ward_Door
+setnear door 132 223 2 lock=jammed name=Rehabilitation_Ward_Door
 setnear door 162 179 2 name=security_door
 
 # Furniture Grace can hide behind or climb. Polygon's map has no furniture

@@ -1125,8 +1125,39 @@ test("spawn objects: Grace starts at the one Player Spawn, the enemy comes from 
   expect([ps.x, ps.y]).toEqual([159, 68]);
   expect(await wasm(page, "web_test_find_object", 9, 1)).toBe(-1); // only one
   const es = await findObject(page, 16, 0); // OBJ_ENEMY_SPAWN
-  expect([es.x, es.y]).toEqual([159, 68]);
+  expect([es.x, es.y]).toEqual([162, 79]);
   expect(await wasm(page, "web_enemy_hp")).toBeGreaterThan(0);
+  // it spawns exactly on the Enemy Spawn
+  expect(Math.floor(await wasm(page, "web_enemy_px"))).toBe(162);
+  expect(Math.floor(await wasm(page, "web_enemy_py"))).toBe(79);
+});
+
+test("the Examination Room Safe stays locked until its code file is in Files, then opens", async ({ page }) => {
+  await boot(page);
+  await wasm(page, "web_test_enemy_place", 11550, 4550); // enemy on floor 3, out of the way
+  const SAFE = 7, FILE = 6;
+  expect(await wasm(page, "web_test_obj_open", SAFE, 124, 184)).toBe(0); // the safe, shut
+  expect(await wasm(page, "web_test_obj_open", FILE, 148, 115)).toBe(0); // its code file exists here
+  await wasm(page, "web_test_grace_at", 123, 184);
+  await page.waitForTimeout(150);
+  await wasm(page, "web_test_interact", 124, 184);
+  expect(await wasm(page, "web_test_obj_open", SAFE, 124, 184)).toBe(0); // no file: locked
+  await expect(page.getByRole("dialog", { name: "Enter code" })).toHaveCount(0); // and no dial
+  await wasm(page, "web_test_grace_at", 148, 115);
+  await page.waitForTimeout(150);
+  await wasm(page, "web_test_interact", 148, 115);
+  await page.getByRole("button", { name: "Inventory", exact: true }).click();
+  await page.getByRole("button", { name: "FILES", exact: true }).click();
+  await expect(page.locator(".file-name", { hasText: "Examination Room Safe Code" })).toBeVisible();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/files_menu_exam_safe_code.png` });
+  await page.getByRole("dialog", { name: "Inventory" }).getByRole("button", { name: "Close" }).click();
+  await wasm(page, "web_test_grace_at", 123, 184);
+  await page.waitForTimeout(300);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/exam_safe_before.png` });
+  await wasm(page, "web_test_interact", 124, 184);
+  expect(await wasm(page, "web_test_obj_open", SAFE, 124, 184)).toBe(1);
+  await page.waitForTimeout(300);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/exam_safe_open.png` });
 });
 
 test("climbing: Space climbs on after the delay, and Space climbs off again", async ({ page }) => {

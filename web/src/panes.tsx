@@ -653,7 +653,7 @@ export function Files() {
         {files.map((file) => (
           <li key={file.name} className="file">
             <span className="file-name">{file.name}</span>
-            <span className="file-code">= {file.code}</span>
+            {file.code > 0 && <span className="file-code">= {file.code}</span>}
           </li>
         ))}
       </ul>

@@ -330,7 +330,7 @@ def main(base_path, markers_path, out_dir):
             loose = max(0, qty - inside)
             out_fix.append(f"item {safe['x']} {safe['y']} coin qty={inside} name=Antique_Coin_({inside})  # F{floor_of(safe['y'])} inside the {safe['name']}")
             if safe["name"] in SAFES_OPEN:
-                out_fix.append(f"set {safe['x']} {safe['y']} open=1  # the {safe['name']} stands open")
+                out_fix.append(f"setnear safe {safe['x']} {safe['y']} 0 open=1  # the {safe['name']} stands open")
         if loose > 0:
             q = f" qty={loose}" if loose > 1 else ""
             out_fix.append(f"item {c[0]} {c[1]} coin{q} name=Antique_Coin  # F{floor_of(c[1])} Polygon {mk['title']}")

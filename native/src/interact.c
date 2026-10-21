@@ -200,6 +200,16 @@ bool interact_at(int x, int y) {
             }
             return true;
         }
+        if (o->kind == OBJ_SAFE && !o->open && o->link_id > 0) {
+            // no dial: the safe opens once she has picked up its code file
+            // (the file it links to); until then it stays locked
+            for (int k = 0; k < in.level->obj_count; k++) {
+                if (in.level->objs[k].id == o->link_id && in.level->objs[k].kind == OBJ_FILE && file_found(k)) {
+                    o->open = 1;
+                }
+            }
+            return true;
+        }
         if (o->kind == OBJ_SAFE && !o->open) {
             in.pending_safe = i;  // React opens the keypad; interact_try_safe_code checks it
             return true;
@@ -349,6 +359,10 @@ bool lighter_on(void) {
 void lighter_toggle(void) {
     in.lighter = !in.lighter;
     light_update();
+}
+
+bool interact_file_found(int obj_index) {
+    return file_found(obj_index);
 }
 
 int files_found(void) {

@@ -34,5 +34,8 @@ test "$(sed -n '/^Pickups she never reaches/,/^$/p' $R | grep -c '^  ')" -eq 1 |
 grep -q '^  Med Injector  *at  46, 34 (F3)' $R || fail "unexpected unreached pickup"
 grep -q 'Requiem: received past the gate' $R || fail "no Requiem past the gate"
 grep -q 'Parlor cabinets bought: 4 of 4' $R || fail "Parlor cabinets"
+grep -q 'Antique Coins in the level: 23 ' $R || fail "not 23 Antique Coins"
+grep -q '^  Rehabilitation Ward Door at 132,223 (F1): jammed' $R || fail "the Rehabilitation Ward door is not bolted shut"
+grep -q 'read Examination Room Safe Code' $R && grep -q 'open Examination Room Safe' $R || fail "Examination Room Safe not opened by its file"
 grep -q "^Way out: Security Managers Office at 178,179 reached" $R || fail "the Security Manager's Office is not reached"
 echo "reach: floors 1-2 100%, F3 Warped Door rooms shut (Leon's), Requiem past the gate, way out reached"

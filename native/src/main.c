@@ -166,7 +166,7 @@ static const obj_t* level_enemy_spawn(void) {
 // Spawn the enemy from the level's enemy spawn object; none: no enemy.
 static void spawn_level_enemy(void) {
     const obj_t* s = level_enemy_spawn();
-    if (s) enemy_spawn(s->x, s->y, (int)s->radius);
+    if (s) enemy_spawn(s->x, s->y);
     else enemy_clear();
 }
 
@@ -1625,6 +1625,15 @@ TEST_EXPORT int web_test_throw_at(int x, int y) {
 }
 
 // Tests: use a switch (or other interactable) at a cell.
+// Tests: 1 if an object of this kind at (x, y) is open, 0 if shut, -1 if none.
+TEST_EXPORT int web_test_obj_open(int kind, int x, int y) {
+    for (int i = 0; i < app.level.obj_count; i++) {
+        const obj_t* o = &app.level.objs[i];
+        if ((int)o->kind == kind && o->x == x && o->y == y) return o->open ? 1 : 0;
+    }
+    return -1;
+}
+
 TEST_EXPORT int web_test_interact(int x, int y) {
     bool used = interact_at(x, y);
     bump_revision();

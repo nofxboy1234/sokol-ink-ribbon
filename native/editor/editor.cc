@@ -360,7 +360,6 @@ static void add_object(int kind, int x, int y) {
         ed.level.start_x = x;
         ed.level.start_y = y;
     }
-    if (kind == OBJ_ENEMY_SPAWN) o->radius = 0.0f;  // exactly here unless given a radius
     ed.selected = ed.level.obj_count - 1;
     ed.dirty = true;
 }
@@ -747,16 +746,8 @@ static void draw_map(void) {
             float size = scale * 0.6f;
             fill_circle(cx, cy, scale * 0.51f, PAL_PURPLE, 1.0f);  // Grace's dot
         } else if (o->kind == OBJ_ENEMY_SPAWN) {
-            // the enemy's dark red dot, and a dashed ring round where it may
-            // spawn (a ring, not a fill: the editor draws without blending)
-            if (o->radius > 0.0f) {
-                float er = o->radius * scale;
-                for (int seg = 0; seg < 64; seg += 2) {
-                    float a0 = (float)seg / 64.0f * 6.2831853f, a1 = (float)(seg + 1) / 64.0f * 6.2831853f;
-                    draw_line(cx + cosf(a0) * er, cy + sinf(a0) * er, cx + cosf(a1) * er, cy + sinf(a1) * er,
-                              ed.selected == i ? 3.0f : 2.0f, 0.62f, 0.05f, 0.05f, 1.0f);
-                }
-            }
+            // the enemy's dark red dot, ringed in ink: it spawns exactly here
+            fill_circle(cx, cy, scale * 0.62f, PAL_INK, 1.0f);
             fill_circle(cx, cy, scale * 0.51f, 0.62f, 0.05f, 0.05f, 1.0f);
         } else {
             float r = 0.6f, g = 0.6f, b = 0.6f;
@@ -1070,9 +1061,8 @@ static void ui_properties(void) {
         } else if (o->kind == OBJ_START) {
             ImGui::TextDisabled("Player Spawn: Grace starts here (one per level)");
         } else if (o->kind == OBJ_ENEMY_SPAWN) {
-            changed |= ImGui::SliderFloat("spawn radius", &o->radius, 0.0f, 30.0f, "%.0f cells");
-            ImGui::TextDisabled("0: spawns exactly here; else a random floor cell");
-            ImGui::TextDisabled("within that many path cells. No spawn: no enemy.");
+            ImGui::TextDisabled("Enemy Spawn: the enemy spawns exactly here.");
+            ImGui::TextDisabled("No Enemy Spawn in the level: no enemy.");
         } else if (o->kind == OBJ_GOAL) {
             const char* items[ITEM_COUNT];
             for (int i = 0; i < ITEM_COUNT; i++) items[i] = item_name((item_t)i);

@@ -34,3 +34,15 @@ set 17 160 lock=key key=wrench
 # chapter this door stays shut for good.
 set 26 27 lock=jammed
 
+
+# Safes open with their code file, no dial (Dylan): once Grace has picked up
+# the file (guides4gamers "Examination Room Safe Code", File 15/41, on F2;
+# "Bar & Lounge Safe Code", File 21/41) it is in her Files and the safe opens.
+setnear safe 124 184 0 link=Examination_Room_Safe_Code
+setnear safe 47 68 0 link=Bar_&_Lounge_Safe_Code
+
+# The two Antique Coins Polygon's map has no marker for (Polygon coin guide
+# #1 and #10; 23 in all): on top of the Nurses' Station locker, and the
+# Parlor roulette table's prize (no betting: it sits on the table).
+item 145 95 coin name=Antique_Coin_(Nurses_Station_locker)
+item 63 194 coin name=Antique_Coin_(Parlor_roulette)

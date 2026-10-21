@@ -776,10 +776,9 @@ int level_to_json(const level_t* lv, char* out, int cap) {
         } else if (o->kind == OBJ_FILE || o->kind == OBJ_SAFE) {
             n = ap(out, cap, n, ", \"code\": %d", o->code);
             if (o->kind == OBJ_SAFE && o->key_id > 0) n = ap(out, cap, n, ", \"key_id\": %d", o->key_id);
+            if (o->kind == OBJ_SAFE && o->open) n = ap(out, cap, n, ", \"open\": true");
         } else if (o->kind == OBJ_GOAL && o->qty > 0) {
             n = ap(out, cap, n, ", \"item\": \"%s\", \"qty\": %d", item_name((item_t)o->item_type), o->qty);
-        } else if (o->kind == OBJ_ENEMY_SPAWN) {
-            n = ap(out, cap, n, ", \"radius\": %.0f", o->radius);
         } else if (o->kind == OBJ_CABINET) {
             // price in coins, and what it sells (qty 0: the old +4 slots)
             n = ap(out, cap, n, ", \"code\": %d", o->code);

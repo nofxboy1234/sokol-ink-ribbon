@@ -226,11 +226,19 @@ static void enter(enemy_state_t state) {
     }
 }
 
+static void spawn_near(int x, int y, int radius);
+
 void enemy_init(int avoid_x, int avoid_y) {
-    enemy_spawn(avoid_x, avoid_y, ENEMY_SPAWN_MAX);
+    spawn_near(avoid_x, avoid_y, ENEMY_SPAWN_MAX);
 }
 
-void enemy_spawn(int x, int y, int radius) {
+void enemy_spawn(int x, int y) {
+    spawn_near(x, y, 0);
+}
+
+// radius 0: exactly at (x, y); else a random floor cell ENEMY_SPAWN_MIN..
+// radius path cells away (an old save's respawn, away from Grace)
+static void spawn_near(int x, int y, int radius) {
     e.rng = (unsigned int)time(NULL) * 2654435761u + 1u;
     int avoid_x = x, avoid_y = y;
     e.x = (float)x + 0.5f;
@@ -264,7 +272,7 @@ void enemy_spawn(int x, int y, int radius) {
 
 void enemy_clear(void) {
     // no enemy in the level: it exists only as a dead, invisible body
-    enemy_spawn(0, 0, 0);
+    enemy_spawn(0, 0);
     e.hp = 0.0f;
     e.fade = 0.0f;
     enter(ENEMY_DEAD);

@@ -669,13 +669,53 @@ int main(int argc, char** argv) {
         }
         CHECK(pspawns == 1 && ps->x == 159 && ps->y == 68 && level.start_x == 159 && level.start_y == 68,
               "one Player Spawn object, at 159,68 in Room 203, and Grace starts on it");
-        CHECK(espawns == 1 && es->x == 159 && es->y == 68 && (int)es->radius == ENEMY_SPAWN_RADIUS,
-              "one Enemy Spawn at Grace's start with the old random-spawn radius");
-        enemy_spawn(es->x, es->y, 0);
-        CHECK(enemy_alive(), "an enemy spawn spawns the enemy");
+        CHECK(espawns == 1 && es->x == 162 && es->y == 79 && grid_is_floor(es->x, es->y),
+              "one Enemy Spawn, on the floor at Room 203's south end (162,79)");
+        enemy_spawn(es->x, es->y);
+        CHECK(enemy_alive() && (int)enemy_x() == 162 && (int)enemy_y() == 79, "the enemy spawns exactly on its Enemy Spawn");
         enemy_clear();
         CHECK(!enemy_alive(), "no enemy spawn: no enemy");
         CHECK(long_doors * 2 > doors, "doors: most doors span their map bar (%d of %d are 2+ cells)", long_doors, doors);
+    }
+
+    // --- round 4: Central Hall stairs, code-file safe, 23 coins
+    {
+        const obj_t *f1w = NULL, *f2w = NULL, *f1e = NULL, *f2e = NULL, *safe = NULL, *code = NULL;
+        int coins = 0;
+        for (int i = 0; i < level.obj_count; i++) {
+            const obj_t* o = &level.objs[i];
+            if (o->kind == OBJ_STAIRS && o->x == 81 && o->y == 180) f1w = o;
+            if (o->kind == OBJ_STAIRS && o->x == 81 && o->y == 97) f2w = o;
+            if (o->kind == OBJ_STAIRS && o->x == 98 && o->y == 180) f1e = o;
+            if (o->kind == OBJ_STAIRS && o->x == 99 && o->y == 97) f2e = o;
+            if (o->kind == OBJ_SAFE && o->x == 124 && o->y == 184) safe = o;
+            if (o->kind == OBJ_FILE && o->x == 148 && o->y == 115) code = o;
+            if (o->kind == OBJ_ITEM && o->item_type == ITEM_COIN) coins += o->qty > 0 ? o->qty : 1;
+        }
+        CHECK(f1w && f2w && f1w->link_id == f2w->id && f2w->link_id == f1w->id &&
+                  f1e && f2e && f1e->link_id == f2e->id && f2e->link_id == f1e->id,
+              "the Central Hall flights link floor 1 (81,180 / 98,180) and floor 2 (81,97 / 99,97)");
+        CHECK(coins == 23, "23 Antique Coins in the level (%d)", coins);
+        CHECK(safe && code && safe->link_id == code->id && !safe->open,
+              "the Examination Room Safe (124,184) is shut and tied to its code file (148,115)");
+        interact_init(); items_import(NULL, 0);
+        obj_t* sm = (obj_t*)safe;
+        for (int d = 0; d < 4; d++) {
+            static const int n4[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            if (grid_is_floor(sm->x + n4[d][0], sm->y + n4[d][1])) { player_set_cell(sm->x + n4[d][0], sm->y + n4[d][1]); break; }
+        }
+        int sx0, sy0; player_cell(&sx0, &sy0);
+        interact_at(sm->x, sm->y);
+        CHECK(!sm->open && interact_pending_safe() < 0, "without the file the safe stays locked, and no dial opens");
+        player_set_cell(code->x, code->y);
+        interact_at(code->x, code->y);
+        CHECK(files_found() >= 1 && strcmp(file_name_at(files_found() - 1), "Examination Room Safe Code") == 0,
+              "picking up the code file lists it under Files");
+        player_set_cell(sx0, sy0);
+        interact_at(sm->x, sm->y);
+        CHECK(sm->open, "with the file read, the safe opens");
+        sm->open = 0;
+        interact_init();
     }
 
     // --- pass 2: perimeter containment and reveal-section coverage.
@@ -764,6 +804,7 @@ int main(int argc, char** argv) {
         interact_at(fusebox->x, fusebox->y);
         CHECK(goal_met() && gate->state == DOOR_BROKEN && !inventory_has(ITEM_FUSE), "fuse inserted: gate powered open");
         CHECK(ward->state != DOOR_BROKEN, "the fuse leaves the Rehabilitation Ward door alone");
+        CHECK(ward->lock == LOCK_JAMMED, "the Rehabilitation Ward door is bolted for Grace (Leon's chainsaw)");
         gear_init();
         player_set_cell(goal->x, goal->y);
         CHECK(!interact_check_complete() && !level_complete() && inventory_has(ITEM_GUN_REQUIEM) &&

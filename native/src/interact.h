@@ -26,6 +26,8 @@ bool lighter_on(void);
 void lighter_toggle(void);
 
 int files_found(void);
+// True once she has picked up the file object at this index.
+bool interact_file_found(int obj_index);
 const char* file_name_at(int index);
 int file_code_at(int index);
 
