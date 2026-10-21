@@ -685,17 +685,37 @@ int main(int argc, char** argv) {
         for (int i = 0; i < level.obj_count; i++) {
             const obj_t* o = &level.objs[i];
             if (o->kind == OBJ_STAIRS && o->x == 81 && o->y == 180) f1w = o;
-            if (o->kind == OBJ_STAIRS && o->x == 81 && o->y == 97) f2w = o;
+            if (o->kind == OBJ_STAIRS && o->x == 81 && o->y == 93) f2w = o;
             if (o->kind == OBJ_STAIRS && o->x == 98 && o->y == 180) f1e = o;
-            if (o->kind == OBJ_STAIRS && o->x == 99 && o->y == 97) f2e = o;
+            if (o->kind == OBJ_STAIRS && o->x == 100 && o->y == 93) f2e = o;
             if (o->kind == OBJ_SAFE && o->x == 124 && o->y == 184) safe = o;
             if (o->kind == OBJ_FILE && o->x == 148 && o->y == 115) code = o;
             if (o->kind == OBJ_ITEM && o->item_type == ITEM_COIN) coins += o->qty > 0 ? o->qty : 1;
         }
         CHECK(f1w && f2w && f1w->link_id == f2w->id && f2w->link_id == f1w->id &&
                   f1e && f2e && f1e->link_id == f2e->id && f2e->link_id == f1e->id,
-              "the Central Hall flights link floor 1 (81,180 / 98,180) and floor 2 (81,97 / 99,97)");
+              "the Central Hall flights link floor 1 (81,180 / 98,180) and floor 2 at the flights' tops (81,93 / 100,93)");
         CHECK(coins == 23, "23 Antique Coins in the level (%d)", coins);
+        // the attic storage is cut: no cells, objects, sections or stairs
+        // there, nothing links into it, and the Attic Door stays bolted
+        int left = 0, dangling = 0, f3stairs = 0;
+        for (int y = 40; y <= 57; y++)
+            for (int x = 55; x <= 99; x++) left += level_tile(&level, x, y) != TILE_VOID;
+        for (int i = 0; i < level.obj_count; i++) {
+            const obj_t* o = &level.objs[i];
+            if (o->x >= 55 && o->x <= 99 && o->y >= 40 && o->y <= 57) left++;
+            if (o->link_id > 0 && !level_obj_by_id(&level, o->link_id)) dangling++;
+            if (o->kind == OBJ_STAIRS && o->y < 60) f3stairs++;
+        }
+        for (int i = 0; i < level.section_count; i++)
+            if (strcmp(level.sections[i].name, "F3 Attic Storage") == 0) left++;
+        CHECK(left == 0 && dangling == 0, "the attic storage is gone with nothing pointing into it (%d left, %d dangling links)", left, dangling);
+        CHECK(f3stairs == 1, "floor 3 keeps only its west stairs (%d stairs on F3)", f3stairs);
+        bool attic_door = false;
+        for (int i = 0; i < level.obj_count; i++)
+            if (level.objs[i].kind == OBJ_DOOR && level.objs[i].x == 100 && level.objs[i].y == 53) attic_door = true;
+        CHECK(!attic_door && level_tile(&level, 100, 53) == TILE_WALL_V && level_tile(&level, 100, 54) == TILE_WALL_V,
+              "the Attic Door (100,53) is walled over: Grace never opens it");
         CHECK(safe && code && safe->link_id == code->id && !safe->open,
               "the Examination Room Safe (124,184) is shut and tied to its code file (148,115)");
         interact_init(); items_import(NULL, 0);

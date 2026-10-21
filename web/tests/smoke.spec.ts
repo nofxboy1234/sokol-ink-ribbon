@@ -1576,15 +1576,22 @@ test("stairs carry Grace between floors", async ({ page }) => {
   expect(Math.abs((await wasm(page, "player_cell_x")) - (top.x + 1))).toBeLessThanOrEqual(1);
 });
 
-test("the Central Hall flights lead up to the floor 3 attic", async ({ page }) => {
+test("the Central Hall flights join floor 2 (at their tops) to floor 1; nothing leads to the attic", async ({ page }) => {
   await boot(page);
   await wasm(page, "web_test_enemy_place", 2850, 3550); // floor 3 Lounge
-  const attic = await findObject(page, 13, 10); // OBJ_STAIRS
-  const hall = await findObject(page, 13, 11);
-  expect([attic.x, attic.y, hall.x, hall.y]).toEqual([78, 52, 81, 93]);
-  await wasm(page, "web_test_grace_at", hall.x + 1, hall.y);
-  await expect.poll(() => wasm(page, "player_cell_y"), { timeout: 3000 }).toBeLessThan(56);
-  expect(await wasm(page, "player_cell_x")).toBeGreaterThanOrEqual(attic.x);
+  // every stairs object, by coordinates: none left in the attic storage
+  const stairs: Array<{ x: number; y: number }> = [];
+  for (let n = 0; ; n++) {
+    const v = await wasm(page, "web_test_find_object", 13, n); // OBJ_STAIRS
+    if (v < 0) break;
+    stairs.push({ x: (v >> 16) & 0xffff, y: (v >> 8) & 0xff });
+  }
+  expect(stairs.filter((s) => s.y < 60)).toEqual([{ x: 32, y: 5 }]); // only F3's west stairs
+  expect(stairs).toContainEqual({ x: 81, y: 93 }); // F2 west flight, top
+  expect(stairs).toContainEqual({ x: 100, y: 93 }); // F2 east flight, top
+  await wasm(page, "web_test_grace_at", 82, 93);
+  await expect.poll(() => wasm(page, "player_cell_y"), { timeout: 3000 }).toBeGreaterThanOrEqual(178);
+  expect(Math.abs((await wasm(page, "player_cell_x")) - 82)).toBeLessThanOrEqual(2);
 });
 
 test("Grace walks in rooms across floor 2 (Central Hall, Bar & Lounge, Room 203)", async ({

@@ -57,6 +57,22 @@ int main(void) {
           "set changes the object on a cell");
     CHECK(lv.section_count == 2 && strcmp(lv.sections[1].name, "East Room") == 0, "named rooms become sections");
     {
+        // cut: void the cells, drop the objects and sections inside, clear links into it
+        level_t cl;
+        level_init(&cl);
+        char e[256];
+        int n = levelscript_run(&cl, "size 30 12\nroom 0 0 9 6 Keep\nroom 12 0 20 6 Gone\n"
+                                     "obj stairs 2 2 name=up\nobj stairs 14 2 name=down link=up\nlink up down\n"
+                                     "cut 11 0 21 7\n", e, sizeof(e));
+        bool tiles_gone = true;
+        for (int y = 0; y <= 7; y++)
+            for (int x = 11; x <= 21; x++) tiles_gone &= level_tile(&cl, x, y) == TILE_VOID;
+        const obj_t* up = find(&cl, OBJ_STAIRS, 2, 2);
+        CHECK(n == 7 && tiles_gone && !find(&cl, OBJ_STAIRS, 14, 2) && up && up->link_id == 0 &&
+                  cl.section_count == 1 && strcmp(cl.sections[0].name, "Keep") == 0,
+              "cut voids its cells and drops the objects, sections and links inside it");
+    }
+    {
         // one Player Spawn per level: a second one moves it; spawns round-trip
         CHECK(run("obj player_spawn 3 4\nobj player_spawn 5 2\nobj enemy_spawn 14 3\n") == 3, "spawn objects place");
         int spawns = 0;

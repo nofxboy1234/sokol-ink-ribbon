@@ -17,8 +17,8 @@ REACH=../.fibs/tests/reach
 OUT=../src/level_01.json
 S=scripts
 BASE="$S/care_center.txt $S/floor1.txt $S/floor2.txt $S/floor3.txt $S/fixes.txt $S/align.txt $S/hollow.txt $S/links.txt"
-ALL="$BASE $S/items.txt $S/locks.txt $S/lock_sides.txt $S/progression.txt"
-for f in align hollow items locks lock_sides progression; do [ -f "$S/$f.txt" ] || : > "$S/$f.txt"; done
+ALL="$BASE $S/items.txt $S/locks.txt $S/lock_sides.txt $S/progression.txt $S/cuts.txt"
+for f in align hollow items locks lock_sides progression cuts; do [ -f "$S/$f.txt" ] || : > "$S/$f.txt"; done
 for a in "$@"; do
     case "$a" in --trace) TRACE=1 ;; --align) ALIGN=1 ;; --markers) PLACE=1 ;; esac
 done

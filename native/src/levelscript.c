@@ -389,6 +389,32 @@ static int run_line(ctx_t* c, int argc, char** argv) {
             copy[j] = store[j];
         }
         if (apply_props(c, best, copy, 5, argc)) return -1;
+    } else if (strcmp(cmd, "cut") == 0) {
+        // cut X0 Y0 X1 Y1: remove a part of the map. Its cells become void,
+        // every object anchored in it goes, every section inside it goes,
+        // and links to the removed objects are cleared (nothing dangles).
+        if (argc != 5 || need_ints(c, argv, 1, 4, a)) return argc != 5 ? fail(c, "cut X0 Y0 X1 Y1") : -1;
+        int x0 = a[0] + ox, y0 = a[1] + oy, x1 = a[2] + ox, y1 = a[3] + oy;
+        order(&x0, &x1);
+        order(&y0, &y1);
+        fill(lv, x0, y0, x1, y1, TILE_VOID);
+        int gone[LEVEL_MAX_OBJECTS], ngone = 0, w = 0;
+        for (int i = 0; i < lv->obj_count; i++) {
+            const obj_t* o = &lv->objs[i];
+            if (o->x >= x0 && o->x <= x1 && o->y >= y0 && o->y <= y1) gone[ngone++] = o->id;
+            else lv->objs[w++] = lv->objs[i];
+        }
+        lv->obj_count = w;
+        for (int i = 0; i < lv->obj_count; i++)
+            for (int k = 0; k < ngone; k++)
+                if (lv->objs[i].link_id == gone[k]) lv->objs[i].link_id = 0;
+        w = 0;
+        for (int i = 0; i < lv->section_count; i++) {
+            const section_t* s = &lv->sections[i];
+            bool inside = s->x >= x0 && s->y >= y0 && s->x + s->w - 1 <= x1 && s->y + s->h - 1 <= y1;
+            if (!inside) lv->sections[w++] = lv->sections[i];
+        }
+        lv->section_count = w;
     } else if (strcmp(cmd, "erase") == 0) {
         // erase X Y: remove every object anchored on that cell
         if (argc != 3 || need_ints(c, argv, 1, 2, a)) return argc != 3 ? fail(c, "erase X Y") : -1;
