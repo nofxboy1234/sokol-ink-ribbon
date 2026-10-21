@@ -152,6 +152,7 @@ static int apply_props(ctx_t* c, obj_t* o, char** argv, int first, int argc) {
         else if (strcmp(k, "code") == 0) o->code = n;
         else if (strcmp(k, "qty") == 0) o->qty = n;
         else if (strcmp(k, "side") == 0) o->side = n;
+        else if (strcmp(k, "bolt") == 0) o->bolt = n;
         else return fail(c, "unknown property '%s'", k);
     }
     return 0;

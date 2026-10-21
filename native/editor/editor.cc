@@ -766,6 +766,15 @@ static void draw_map(void) {
                     fill_rect(cx + th * 0.5f, cy - span * 0.5f, edge, span, 0.118f, 0.118f, 0.118f, 1.0f);
                 }
             }
+            if (o->lock == LOCK_OTHER_SIDE && o->bolt && o->side != 0) {
+                // the bolt, on the side it opens from (as in the game)
+                float d = scale * 0.6f * (float)o->side, bt = scale * 0.16f;
+                if (o->horizontal) {
+                    fill_rect(cx - span * 0.225f, cy + d - bt * 0.5f, span * 0.45f, bt, PAL_INK, 1.0f);
+                } else {
+                    fill_rect(cx + d - bt * 0.5f, cy - span * 0.225f, bt, span * 0.45f, PAL_INK, 1.0f);
+                }
+            }
         } else if (o->kind == OBJ_LIGHT) {
             // its light radius, as a plain circle (the game also stops light at walls)
             float lr = (o->radius > 0.0f ? o->radius : LIGHT_DEFAULT_RADIUS) * scale;
@@ -1100,6 +1109,11 @@ static void ui_properties(void) {
                 const char* sides[2] = { "before (y-1 / x-1)", "after (y / x)" };
                 if (ImGui::Combo("opens from", &side, sides, 2)) {
                     o->side = side ? 1 : -1;
+                    changed = true;
+                }
+                bool bolt = o->bolt != 0;
+                if (ImGui::Checkbox("bolt", &bolt)) {
+                    o->bolt = bolt ? 1 : 0;
                     changed = true;
                 }
             } else if (o->lock == LOCK_NONE) {

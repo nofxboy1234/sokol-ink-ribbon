@@ -134,6 +134,42 @@ bool interact_cell_reachable(int x, int y) {
     return via_x || via_y;
 }
 
+// Pick up the first item on this cell she can carry. Same reach and
+// visibility rules as interact_at.
+static bool pickup_at(int x, int y) {
+    if (!interact_cell_reachable(x, y)) return false;
+    for (int i = 0; i < in.level->obj_count; i++) {
+        const obj_t* o = &in.level->objs[i];
+        if (o->kind != OBJ_ITEM || o->x != x || o->y != y || items_taken(i)) continue;
+        if (openable_covers_closed(o->x, o->y) || !light_item_visible(i) || interact_distance(i) > 1) continue;
+        if (items_take(i)) return true;
+    }
+    return false;
+}
+
+bool interact_nearby(bool items_only) {
+    int px, py;
+    player_cell(&px, &py);
+    static const int facing_dx[4] = { 0, 1, 0, -1 };
+    static const int facing_dy[4] = { -1, 0, 1, 0 };
+    int f = player_facing();
+    int cells[10][2];
+    int n = 0;
+    cells[n][0] = px + facing_dx[f]; cells[n][1] = py + facing_dy[f]; n++;
+    cells[n][0] = px; cells[n][1] = py; n++;
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            if (dx == 0 && dy == 0) continue;
+            cells[n][0] = px + dx; cells[n][1] = py + dy; n++;
+        }
+    }
+    for (int i = 0; i < n; i++) {
+        int x = cells[i][0], y = cells[i][1];
+        if (pickup_at(x, y) || (!items_only && (doors_interact(x, y) || interact_at(x, y)))) return true;
+    }
+    return false;
+}
+
 bool interact_at(int x, int y) {
     if (!interact_cell_reachable(x, y)) {
         return false;  // through a wall or a shut blocking door: nothing
@@ -149,7 +185,7 @@ bool interact_at(int x, int y) {
         if (!covered) {
             continue;
         }
-        if (o->kind == OBJ_ITEM && openable_covers_closed(o->x, o->y)) {
+        if (o->kind == OBJ_ITEM && (items_taken(i) || openable_covers_closed(o->x, o->y))) {
             continue;
         }
         if (o->kind == OBJ_ITEM && !light_item_visible(i)) {
@@ -159,9 +195,10 @@ bool interact_at(int x, int y) {
             continue;
         }
         if (o->kind == OBJ_ITEM) {
-            // picking an item up only happens on an explicit click
-            items_take(i);
-            return true;
+            // a taken item, or one she can't carry, must not swallow the
+            // press: a later object or cell may still take it
+            if (items_take(i)) return true;
+            continue;
         }
         if ((o->kind == OBJ_OBSTACLE && o->openable) && !o->open) {
             if (o->lock == LOCK_JAMMED) {

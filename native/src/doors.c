@@ -371,20 +371,23 @@ bool doors_update(float dt) {
     return changed;
 }
 
+bool doors_is_discovered(int index) {
+    return index >= 0 && index < LEVEL_MAX_OBJECTS && dr.discovered[index];
+}
+
+void doors_export_discovered(unsigned char* out) {
+    memcpy(out, dr.discovered, LEVEL_MAX_OBJECTS);
+}
+
+void doors_import_discovered(const unsigned char* seen) {
+    dr.discovered_count = 0;
+    for (int i = 0; i < LEVEL_MAX_OBJECTS; i++) {
+        dr.discovered[i] = seen[i] ? 1 : 0;
+        dr.discovered_count += dr.discovered[i];
+    }
+}
+
 int doors_discovered_count(void) {
     return dr.discovered_count;
 }
 
-// After loading a save, mark doors whose state is already known as discovered.
-void doors_restore_from_level(void) {
-    level_t* lv = dr.level;
-    dr.discovered_count = 0;
-    for (int i = 0; i < lv->obj_count; i++) {
-        obj_t* o = &lv->objs[i];
-        dr.discovered[i] = 0;
-        if (o->kind == OBJ_DOOR && o->state != DOOR_UNKNOWN) {
-            dr.discovered[i] = 1;
-            dr.discovered_count++;
-        }
-    }
-}

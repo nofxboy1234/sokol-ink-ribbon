@@ -2,6 +2,7 @@
 #include "camera.h"
 #include "enemy.h"
 #include "grid.h"
+#include "doors.h"
 #include "interact.h"
 #include "items.h"
 #include "level.h"
@@ -266,17 +267,23 @@ static void item_color(int item, float* cr, float* cg, float* cb) {
     item_color_rgb(item, cr, cg, cb);
 }
 
-static void door_color(const obj_t* o, float* cr, float* cg, float* cb) {
-    door_color_rgb(o->state, cr, cg, cb);
-    if (o->state == DOOR_LOCKED && o->lock == LOCK_JAMMED) {
+// Until Grace has been near a door it draws grey (unknown), whatever its
+// real state; once discovered it shows locked or unlocked.
+static int door_shown_state(int index, const obj_t* o) {
+    return doors_is_discovered(index) ? o->state : DOOR_UNKNOWN;
+}
+
+static void door_color(int index, const obj_t* o, float* cr, float* cg, float* cb) {
+    door_color_rgb(door_shown_state(index, o), cr, cg, cb);
+    if (door_shown_state(index, o) == DOOR_LOCKED && o->lock == LOCK_JAMMED) {
         *cr = *cg = *cb = 0.38f;  // warped or blocked: never opens for Grace
     }
 }
 
 // A locked door shows what opens it: a chip in the key's colour, or a
 // small bar on the side it opens from.
-static void door_lock_mark(const obj_t* o, float lx, float ly, float spanpx, float scale) {
-    if (o->state != DOOR_LOCKED || o->open) return;
+static void door_lock_mark(int index, const obj_t* o, float lx, float ly, float spanpx, float scale) {
+    if (door_shown_state(index, o) != DOOR_LOCKED || o->open) return;
     float mx = o->horizontal ? lx + spanpx * 0.5f : lx;
     float my = o->horizontal ? ly : ly + spanpx * 0.5f;
     float r = scale * 0.22f;
@@ -285,6 +292,20 @@ static void door_lock_mark(const obj_t* o, float lx, float ly, float spanpx, flo
         item_color_rgb(o->key_id, &cr, &cg, &cb);
         fill_rect(mx - r, my - r, r * 2.0f, r * 2.0f, C_INK_R);
         fill_rect(mx - r * 0.7f, my - r * 0.7f, r * 1.4f, r * 1.4f, cr, cg, cb, 1.0f);
+    } else if (o->lock == LOCK_OTHER_SIDE && o->side != 0 && o->bolt) {
+        // a slide bolt on the side it opens from, toward the slab's far end
+        // (clear of the X): a bar along the slab and a knob standing off it
+        float along = spanpx * 0.3f, off = scale * 0.62f * (float)o->side;
+        float len = scale * 0.7f, th = scale * 0.2f, knob = scale * 0.3f;
+        if (o->horizontal) {
+            float bx = mx + along, by = ly + off;
+            fill_rect(bx - len * 0.5f, by - th * 0.5f, len, th, C_INK_R);
+            fill_rect(bx - th * 0.5f, o->side > 0 ? by : by - knob, th, knob, C_INK_R);
+        } else {
+            float bx = lx + off, by = my + along;
+            fill_rect(bx - th * 0.5f, by - len * 0.5f, th, len, C_INK_R);
+            fill_rect(o->side > 0 ? bx : bx - knob, by - th * 0.5f, knob, th, C_INK_R);
+        }
     } else if (o->lock == LOCK_OTHER_SIDE && o->side != 0) {
         float d = scale * 0.55f * (float)o->side;
         float ox = o->horizontal ? 0.0f : d, oy = o->horizontal ? d : 0.0f;
@@ -329,7 +350,7 @@ static void draw_objects_pass(int item_pass) {
         switch (o->kind) {
             case OBJ_DOOR: {
                 float cr, cg, cb;
-                door_color(o, &cr, &cg, &cb);
+                door_color(i, o, &cr, &cg, &cb);
                 // pixel-align the door and use whole-pixel widths so the thin
                 // borders don't flicker while the follow camera interpolates
                 float spanpx = floorf(scale * (o->span > 0 ? o->span : 1) + 0.5f);
@@ -355,7 +376,7 @@ static void draw_objects_pass(int item_pass) {
                         fill_rect(lx + th * 0.5f, ly, edge, spanpx, C_INK_R);
                     }
                 }
-                door_lock_mark(o, lx, ly, spanpx, scale);
+                door_lock_mark(i, o, lx, ly, spanpx, scale);
                 break;
             }
             case OBJ_ITEM: {

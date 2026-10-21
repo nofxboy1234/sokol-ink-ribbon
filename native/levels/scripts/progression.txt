@@ -46,3 +46,16 @@ setnear safe 47 68 0 link=Bar_&_Lounge_Safe_Code
 # Parlor roulette table's prize (no betting: it sits on the table).
 item 145 95 coin name=Antique_Coin_(Nurses_Station_locker)
 item 63 194 coin name=Antique_Coin_(Parlor_roulette)
+
+# One-sided doors with a slide bolt on the side they open from. Evil
+# Resource's room links mark each "Requires unlocking from the other side":
+# Landing 2F -> Kitchenette (36,82, opened from the Kitchenette) and South
+# West Corridor -> West Corridor (72,182; Prima and Deltia's Gaming: "the
+# door on the right is locked from the other side"; Game8 step 6: unlock it
+# to open a path from the West Wing entrance). East Wing Lobby -> Waiting
+# Room is the Waiting Room's western door (Polygon East Wing walkthrough:
+# unlock it "to make a shortcut back to the Central Hall"), so it opens from
+# the Waiting Room.
+set 36 82 bolt=1
+set 72 182 bolt=1
+set 117 195 lock=other_side state=locked side=1 bolt=1 name=Locked_Door

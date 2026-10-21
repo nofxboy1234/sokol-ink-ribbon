@@ -3,6 +3,7 @@ import {
   aimDeadZone,
   aimInput,
   interactTrigger,
+  onFocusLost,
   quickSelect,
   quickToggle,
   radialSlot,
@@ -140,6 +141,18 @@ function useStickVector(
     }
     onVector(v.x, v.y);
   };
+
+  // Focus lost mid-drag: the pointer-up goes elsewhere. Drop the drag
+  // without emitting a release, which on the aim stick would fire.
+  useEffect(
+    () =>
+      onFocusLost(() => {
+        if (drag.current?.holdTimer) clearTimeout(drag.current.holdTimer);
+        drag.current = null;
+        setKnob({ x: 0, y: 0, active: false });
+      }),
+    [],
+  );
 
   const onUp = (event: React.PointerEvent) => {
     if (!drag.current || event.pointerId !== drag.current.id) return;

@@ -631,6 +631,7 @@ static void parse_objects(const char* js, const jsmntok_t* t, level_t* lv, int a
             if ((v = obj_find(js, t, i, "key2_id")) >= 0) o->key2_id = tok_int(js, &t[v], 0);
             if ((v = obj_find(js, t, i, "key3_id")) >= 0) o->key3_id = tok_int(js, &t[v], 0);
             if ((v = obj_find(js, t, i, "side")) >= 0) o->side = tok_int(js, &t[v], 0);
+            if ((v = obj_find(js, t, i, "bolt")) >= 0) o->bolt = tok_int(js, &t[v], 0);
             if ((v = obj_find(js, t, i, "lock")) >= 0) {
                 char lock[LEVEL_MAX_NAME] = "none";
                 tok_str(js, &t[v], lock, LEVEL_MAX_NAME);
@@ -820,6 +821,9 @@ int level_to_json(const level_t* lv, char* out, int cap) {
             if (o->lock != LOCK_NONE) {
                 n = ap(out, cap, n, ", \"lock\": \"%s\", \"key2_id\": %d, \"key3_id\": %d, \"side\": %d",
                        door_lock_name(o->lock), o->key2_id, o->key3_id, o->side);
+            }
+            if (o->lock == LOCK_OTHER_SIDE && o->bolt) {
+                n = ap(out, cap, n, ", \"bolt\": 1");
             }
         } else if (o->kind == OBJ_ITEM) {
             n = ap(out, cap, n, ", \"item\": \"%s\"", item_name((item_t)o->item_type));
