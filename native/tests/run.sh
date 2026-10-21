@@ -30,10 +30,8 @@ grep -q '  floor 1: .*(100.0%)' $R || fail "floor 1 not 100%"
 grep -q '  floor 2: .*(100.0%)' $R || fail "floor 2 not 100%"
 test "$(sed -n '/^Sections with floor/,/^$/p' $R | grep -c '^  F')" -eq 4 || fail "unexpected unreached sections"
 test "$(sed -n '/^Sections with floor/,/^$/p' $R | grep -vc "^  F3 \(Lounge\|Alcove\|Director's Office\|Meeting Room\) \|^Sections\|^$")" -eq 0 || fail "unreached section outside the Warped Door rooms"
-# unreached pickups: the Med Injector behind the Warped Door, and the ones
-# in the Attic / Medical Supply Room (x >= 100 on F3), sealed behind the
-# the Attic's walled-over door (Leon's Attic Door) now the storage is gone
-test "$(sed -n '/^Pickups she never reaches/,/^$/p' $R | grep '^  ' | grep -v '^  Med Injector  *at  46, 34 (F3)' | grep -vc 'at 1[0-4][0-9], *[0-5][0-9] (F3)')" -eq 0 || fail "unexpected unreached pickup"
+# the only unreached pickup: the Med Injector behind the Warped Door
+test "$(sed -n '/^Pickups she never reaches/,/^$/p' $R | grep -c '^  ')" -eq 1 || fail "unexpected unreached pickup"
 grep -q '^  Med Injector  *at  46, 34 (F3)' $R || fail "the Warped Door Med Injector is reachable"
 ! grep -q 'Basement Safe Code' $R || fail "the attic storage's Basement Safe Code is still in the level"
 grep -q 'Requiem: received past the gate' $R || fail "no Requiem past the gate"

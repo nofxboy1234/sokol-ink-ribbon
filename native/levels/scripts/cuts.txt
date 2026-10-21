@@ -5,10 +5,9 @@
 # its rooms, walls, the Warped Closet with the Basement Safe Code, the light,
 # the attic stairs and the "F3 Attic Storage" reveal section.
 cut 55 40 99 57
-# The Attic Door (guides4gamers "Attic Door": it opens only after Leon beats
-# Chunk) was the Attic's west door at 100,53, into this corridor. Grace never
-# gets through it, and with the corridor gone it would open onto nothing, so
-# the Attic's wall closes over it: shut for her for good. The Attic and the
-# Medical Supply Room beyond have no other way in.
-erase 100 53
-tile v 100 53 100 54
+# The Attic and the Medical Supply Room (Dylan, round 6): with the storage
+# gone they had no way in (the Attic Door, Leon's, was their only door on
+# Grace's side). Their floor, walls, pickups and the "F3 Attic" and "F3
+# Medical Supply Room" reveal sections go. Nothing on floor 3 is left east
+# of the west wing, so no wall faces the void.
+cut 100 20 145 59

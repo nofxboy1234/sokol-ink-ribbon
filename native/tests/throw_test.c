@@ -711,11 +711,15 @@ int main(int argc, char** argv) {
             if (strcmp(level.sections[i].name, "F3 Attic Storage") == 0) left++;
         CHECK(left == 0 && dangling == 0, "the attic storage is gone with nothing pointing into it (%d left, %d dangling links)", left, dangling);
         CHECK(f3stairs == 1, "floor 3 keeps only its west stairs (%d stairs on F3)", f3stairs);
-        bool attic_door = false;
+        // round 6: the sealed Attic and Medical Supply Room are cut too
+        int east = 0;
+        for (int y = 0; y < 60; y++)
+            for (int x = 100; x < level.cols; x++) east += level_tile(&level, x, y) != TILE_VOID;
         for (int i = 0; i < level.obj_count; i++)
-            if (level.objs[i].kind == OBJ_DOOR && level.objs[i].x == 100 && level.objs[i].y == 53) attic_door = true;
-        CHECK(!attic_door && level_tile(&level, 100, 53) == TILE_WALL_V && level_tile(&level, 100, 54) == TILE_WALL_V,
-              "the Attic Door (100,53) is walled over: Grace never opens it");
+            if (level.objs[i].x >= 100 && level.objs[i].y < 60) east++;
+        for (int i = 0; i < level.section_count; i++)
+            if (strcmp(level.sections[i].name, "F3 Attic") == 0 || strcmp(level.sections[i].name, "F3 Medical Supply Room") == 0) east++;
+        CHECK(east == 0, "the Attic and Medical Supply Room are gone: floor 3 east of x 100 is empty (%d left)", east);
         CHECK(safe && code && safe->link_id == code->id && !safe->open,
               "the Examination Room Safe (124,184) is shut and tied to its code file (148,115)");
         interact_init(); items_import(NULL, 0);
