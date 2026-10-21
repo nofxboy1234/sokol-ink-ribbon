@@ -356,6 +356,53 @@ button.recipe:disabled {
   position: relative;
 }
 
+.glyph-triangle {
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.glyph-diamond {
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+.glyph-plus {
+  clip-path: polygon(35% 0, 65% 0, 65% 35%, 100% 35%, 100% 65%, 65% 65%, 65% 100%, 35% 100%, 35% 65%, 0 65%, 0 35%, 35% 35%);
+}
+
+.glyph-frame {
+  border: 3px solid var(--ink);
+  background: transparent;
+}
+
+.gun-slot-item {
+  display: grid;
+  place-items: center;
+}
+
+.gear-line {
+  margin: 6px 0 0;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.key-ring {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.key-ring-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.key-ring-item .glyph {
+  width: 12px;
+  height: 12px;
+}
+
 .glyph-hole {
   position: absolute;
   inset: 28%;
@@ -832,6 +879,12 @@ button.recipe[aria-disabled="true"] {
   background: #0008ff;
 }
 
+.grace-gear {
+  width: 42%;
+  height: 42%;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
 .grace-status-badge {
   position: absolute;
   right: -4px;
@@ -966,7 +1019,8 @@ button.recipe[aria-disabled="true"] {
 .pause-menu,
 .save-menu,
 .inventory-panel,
-.keypad {
+.keypad,
+.item-box {
   pointer-events: auto;
 }
 
@@ -1099,4 +1153,66 @@ button.recipe[aria-disabled="true"] {
 .shortcut-hint {
   opacity: 0.55;
   font-size: 11px;
+}
+
+/* Reload: top right of the map while a gun is in hand (desktop: R) */
+.grace-reload {
+  position: absolute;
+  right: 10px;
+  top: 46px;
+  min-width: 64px;
+  min-height: 44px;
+  padding: 4px 8px;
+  display: grid;
+  place-items: center;
+  gap: 0;
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+.grace-reload:disabled {
+  opacity: 0.55;
+}
+.grace-reload-count {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+/* Item Box: bag on the left, box on the right */
+.item-box {
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  padding: 12px;
+  width: min(560px, 94vw);
+  max-height: 86vh;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+}
+.item-box-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.item-box-head {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.item-box-list {
+  display: grid;
+  gap: 4px;
+  max-height: 52vh;
+  overflow: auto;
+}
+.item-box-entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  min-height: 40px;
 }

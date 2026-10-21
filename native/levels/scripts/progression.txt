@@ -1,0 +1,48 @@
+# Progression fixes found by the reachability tool (tools/reach.c). Runs last.
+#
+# The Fuse from Room 201's fuse box powers the gate out of the east patient
+# wing (Prima and rogue.site: Grace takes the Fuse back to the gate and it
+# opens). The map's only way west from Room 203's wing is the plain Locked
+# Door at 79,107, so that door is the gate and its fuse box sits beside it.
+set 79 107 lock=none state=locked name=gate
+obj fusebox 80 109 name=fusebox
+# Past the gate Leon hands Grace his Requiem (IGN Leon walkthrough: "the
+# large gate that you tried to escape through as Grace ... pass on his
+# Requiem revolver to Grace"). One round loaded; the game goes on.
+obj goal 77 107 item=gun_requiem qty=1 name=Requiem_handover
+
+# The way out: Grace reaches the Security Manager's Office in the East
+# Wing's Isolation Ward (VGC, Evil Resource, GameSpot; Level 2 Wristband).
+obj goal 178 179 name=Security_Managers_Office
+
+# The F2 south-east stairs drop Grace into a walled landing on floor 1 whose
+# only way on is the map's Locked Door at 141,240. Grace has to come
+# through it from the landing (it is how her side of the Care Center joins
+# the Elevator corridor and the Medication Room, where the West Wing
+# Keycard is), so it opens from the landing side.
+set 141 240 side=1
+
+# Cold Storage: its handle is gone and Grace turns the bolt with the
+# Wrench from the Custodian's Office (Prima, Evil Resource "Wrench",
+# gfinity). The map marks its door as a Broken Door; the Artificial Heart
+# is inside, so the Wrench opens it.
+set 17 160 lock=key key=wrench
+
+# Floor 3's west rooms (Lounge, Director's Office, Meeting Room) sit behind a
+# Warped Door. Only Leon's hatchet breaks warped wood (Evil Resource,
+# PC Gamer), and Grace never gets a hatchet or the Chainsaw, so in her
+# chapter this door stays shut for good.
+set 26 27 lock=jammed
+
+
+# Safes open with their code file, no dial (Dylan): once Grace has picked up
+# the file (guides4gamers "Examination Room Safe Code", File 15/41, on F2;
+# "Bar & Lounge Safe Code", File 21/41) it is in her Files and the safe opens.
+setnear safe 124 184 0 link=Examination_Room_Safe_Code
+setnear safe 47 68 0 link=Bar_&_Lounge_Safe_Code
+
+# The two Antique Coins Polygon's map has no marker for (Polygon coin guide
+# #1 and #10; 23 in all): on top of the Nurses' Station locker, and the
+# Parlor roulette table's prize (no betting: it sits on the table).
+item 145 95 coin name=Antique_Coin_(Nurses_Station_locker)
+item 63 194 coin name=Antique_Coin_(Parlor_roulette)

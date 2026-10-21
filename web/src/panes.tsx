@@ -5,10 +5,11 @@ import {
   applyInventoryItem,
   clearInventorySlot,
   craftRecipe,
-  equipBottle,
+  equipItem,
   gameReset,
+  itemActionBits,
   itemAppearance,
-  itemCount,
+  itemText,
   loadGame,
   moveInventorySlot,
   readFiles,
@@ -20,6 +21,11 @@ import {
   saveTimeMs,
   saveUsed,
   pendingSafe,
+  itemboxStore,
+  itemboxTake,
+  readItembox,
+  takeItembox,
+  setPaused,
   pendingCodeDoor,
   trySafeCode,
   tryDoorCode,
@@ -43,13 +49,6 @@ export function RunPanel() {
   const elapsed = useElapsed();
   const { levelComplete } = useGameState();
   const [status, setStatus] = useState("");
-  const count = itemCount();
-  if (count > 0 && (ITEM_TEXT.length !== count || ITEM_ACTIONS.length !== count)) {
-    throw new Error(
-      `item copy length text ${ITEM_TEXT.length} actions ${ITEM_ACTIONS.length} catalog ${count}`,
-    );
-  }
-
   // A run saves itself when she walks past the powered gate to the goal.
   useEffect(() => {
     if (!levelComplete) {
@@ -93,48 +92,19 @@ export function RunPanel() {
 const HEALTH_LABELS = ["FINE", "CAUTION", "DANGER"];
 const HEALTH_COLORS = ["var(--green)", "var(--orange)", "var(--red)"];
 
-const ITEM_TEXT = [
-  "A clear glass bottle. It could hold a mixed herb.",
-  "A worn coin stamped with a crest. It has no spendable value here.",
-  "A fresh green herb. Used on its own it restores one level of health (Danger to Caution, Caution to Fine).",
-  "A typewriter ribbon. Saving at a typewriter spends one.",
-  "A small flat-head screwdriver. It pries panels and tightens fittings.",
-  "A prepared dose in a glass syringe. It restores Grace to full health.",
-  "A glass cartridge fuse. The basement fuse box will take it.",
-  "A pocket lighter. It sits in the top slot of Quick Equip; pick it there to light it or put it out.",
-  "A key topped with a small cherub. It opens a matching lock.",
-  "This is a combination of 2 Green Herbs. It restores Grace to full health.",
-];
-
 type ItemAction = "Move" | "Use" | "Equip" | "Unequip" | "Discard";
 
-// The Empty Bottle (0) also gets Equip or Unequip; see actionsFor.
-const ITEM_ACTIONS: ItemAction[][] = [
-  ["Move", "Discard"],
-  ["Move", "Discard"],
-  ["Move", "Use", "Discard"],
-  ["Move", "Discard"],
-  ["Move"],
-  ["Move", "Use", "Discard"],
-  ["Move"],
-  [],
-  ["Move"],
-  ["Move", "Use", "Discard"],
-];
-
-// The only equipable item in this level is the Empty Bottle.
-function actionsFor(item: number, bottleEquipped: boolean): ItemAction[] {
-  const base = ITEM_ACTIONS[item] ?? [];
-  if (item !== ITEM_BOTTLE) {
-    return base;
-  }
-  return [base[0], bottleEquipped ? "Unequip" : "Equip", ...base.slice(1)].filter(
-    (action): action is ItemAction => action !== undefined,
-  );
+// Actions come from the C item catalog (web_item_actions): 1 Move, 2 Use,
+// 4 Equip, 8 Discard. Equip flips to Unequip on the equipped item.
+function actionsFor(item: number, equippedItem: number): ItemAction[] {
+  const bits = itemActionBits(item);
+  const out: ItemAction[] = [];
+  if (bits & 1) out.push("Move");
+  if (bits & 4) out.push(item === equippedItem ? "Unequip" : "Equip");
+  if (bits & 2) out.push("Use");
+  if (bits & 8) out.push("Discard");
+  return out;
 }
-
-const STEROID_CHARGES = 0;
-const STABILIZER_CHARGES = 0;
 
 function ItemGlyph({ appearance }: { appearance: ItemAppearance }) {
   const { color, shape } = appearance;
@@ -150,6 +120,18 @@ function ItemGlyph({ appearance }: { appearance: ItemAppearance }) {
         <span className="glyph-hole" />
       </span>
     );
+  }
+  if (shape === 4) {
+    return <span className="glyph glyph-triangle" style={{ background: color }} />;
+  }
+  if (shape === 5) {
+    return <span className="glyph glyph-diamond" style={{ background: color }} />;
+  }
+  if (shape === 6) {
+    return <span className="glyph glyph-plus" style={{ background: color }} />;
+  }
+  if (shape === 7) {
+    return <span className="glyph glyph-frame" style={{ borderColor: color }} />;
   }
   return <span className="glyph glyph-circle" style={{ background: color }} />;
 }
@@ -188,7 +170,8 @@ export function Inventory({
   // unchanged: click selects, right-click / long-press opens the menu.
   acceptRef?: { current: ((el: HTMLElement) => boolean) | null };
 } = {}) {
-  const { inventory, health, bottleEquipped, bottleEmpty } = useGameState();
+  const { inventory, health, bottleEquipped, bottleEmpty, equippedItem, keyItems, gear } =
+    useGameState();
   const [selected, setSelected] = useState(-1);
   const [movingFrom, setMovingFrom] = useState(-1);
   const [menu, setMenu] = useState<{ index: number; x: number; y: number } | null>(null);
@@ -231,7 +214,7 @@ export function Inventory({
   const selectedItem = selected >= 0 ? inventory[selected] : -1;
   const selectedLook = selectedItem >= 0 ? itemAppearance(selectedItem) : null;
   const menuItem = menu ? inventory[menu.index] : -1;
-  const menuActions = menuItem >= 0 ? actionsFor(menuItem, bottleEquipped) : [];
+  const menuActions = menuItem >= 0 ? actionsFor(menuItem, equippedItem) : [];
 
   const onSlotClick = (index: number) => {
     if (press.current?.fired) {
@@ -255,7 +238,7 @@ export function Inventory({
       return;
     }
     const item = inventory[index] ?? -1;
-    if (item < 0 || actionsFor(item, bottleEquipped).length === 0) {
+    if (item < 0 || actionsFor(item, equippedItem).length === 0) {
       setMenu(null);
       return;
     }
@@ -363,7 +346,7 @@ export function Inventory({
       return;
     }
     if (action === "Equip" || action === "Unequip") {
-      equipBottle(action === "Equip");
+      equipItem(inventory[index], action === "Equip");
       return;
     }
     if (action === "Discard") {
@@ -390,7 +373,7 @@ export function Inventory({
               data-filled={item >= 0}
               data-selected={selected === index}
               data-moving={movingFrom === index}
-              data-equipped={item === ITEM_BOTTLE && bottleEquipped}
+              data-equipped={item >= 0 && item === equippedItem}
               title={look ? look.label : ""}
               onClick={() => onSlotClick(index)}
               onContextMenu={(event) => onSlotMenu(event, index)}
@@ -410,12 +393,22 @@ export function Inventory({
         {selectedLook && (
           <>
             <h3>{selectedLook.label}</h3>
-            <p>{ITEM_TEXT[selectedItem]}</p>
+            <p>{itemText(selectedItem)}</p>
           </>
         )}
       </div>
       <div className="equip-row">
-        <div className="gun-slot" title="No gun equipped" />
+        {equippedItem >= 0 && equippedItem !== ITEM_BOTTLE ? (
+          <div
+            className="gun-slot gun-slot-item"
+            data-equipped-item={equippedItem}
+            title={`${itemAppearance(equippedItem).label} · equipped`}
+          >
+            <ItemGlyph appearance={itemAppearance(equippedItem)} />
+          </div>
+        ) : (
+          <div className="gun-slot" title="No weapon equipped" />
+        )}
         <div className="quick-slots">
           {bottleEquipped ? (
             <div
@@ -436,13 +429,13 @@ export function Inventory({
             <ChargePips
               label="Steroids Injector. Increases health."
               icon="#f2ff00"
-              filled={STEROID_CHARGES}
+              filled={gear.steroids}
               fill="#f2ff00"
             />
             <ChargePips
               label="Stabilizer Injector. Increases gun damage and handling."
               icon="#66d5f4"
-              filled={STABILIZER_CHARGES}
+              filled={gear.stabilizer}
               fill="#66d5f4"
             />
           </div>
@@ -453,6 +446,25 @@ export function Inventory({
           <div className="status-label">{HEALTH_LABELS[health] ?? HEALTH_LABELS[0]}</div>
         </div>
       </div>
+      <p className="gear-line" data-testid="gear-line">
+        Health {gear.hp}/{gear.hpMax}
+        {gear.loaded >= 0 ? ` · Loaded ${gear.loaded}/${gear.mag}${gear.reloading ? " (reloading)" : ""}` : ""} · Handgun{" "}
+        {gear.handgunAmmo} · 12.7mm {gear.magnumAmmo} · Blood{" "}
+        {gear.bloodCap > 0 ? `${gear.blood}/${gear.bloodCap}` : "—"} · Scrap {gear.scrap} · Coins {gear.coins}
+      </p>
+      {keyItems.length > 0 && (
+        <div className="key-ring" data-testid="key-ring">
+          {keyItems.map((item) => {
+            const look = itemAppearance(item);
+            return (
+              <span key={item} className="key-ring-item" title={`${look.label}: ${itemText(item)}`}>
+                <ItemGlyph appearance={look} />
+                <span>{look.label}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
       {movingFrom >= 0 && (
         <button type="button" className="move-catch" onClick={() => setMovingFrom(-1)} />
       )}
@@ -641,7 +653,7 @@ export function Files() {
         {files.map((file) => (
           <li key={file.name} className="file">
             <span className="file-name">{file.name}</span>
-            <span className="file-code">= {file.code}</span>
+            {file.code > 0 && <span className="file-code">= {file.code}</span>}
           </li>
         ))}
       </ul>
@@ -765,6 +777,80 @@ function SaveLoadSlots({ onClose }: { onClose: () => void }) {
         <button type="button" className="pause-item" data-menu-item onClick={onClose}>
           Close
         </button>
+      </div>
+    </div>
+  );
+}
+
+// The Item Box (RE's storage trunk): opens when Grace uses one in the
+// level. Tap a bag item to store it, a box item to take it back.
+export function ItemBox() {
+  const { inventory, capacity, dead } = useGameState();
+  const navRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [, setTick] = useState(0);
+  useMenuNav(navRef, open && !dead, () => setOpen(false));
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (takeItembox()) setOpen(true);
+    }, 150);
+    return () => clearInterval(id);
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    setPaused(true);  // the world waits while she sorts the box
+    return () => setPaused(false);
+  }, [open]);
+  if (!open || dead) return null;
+  const box = readItembox();
+  const refresh = () => setTick((t) => t + 1);
+  return (
+    <div className="pause-overlay">
+      <div ref={navRef} className="item-box" role="dialog" aria-label="Item Box">
+        <div className="save-title">Item Box</div>
+        <div className="item-box-cols">
+          <div>
+            <div className="item-box-head">Bag</div>
+            <div className="item-box-list" data-testid="itembox-bag">
+              {inventory.slice(0, capacity).map((item, slot) =>
+                item >= 0 ? (
+                  <button
+                    key={slot}
+                    type="button"
+                    className="pause-item item-box-entry"
+                    data-menu-item
+                    data-item={item}
+                    title={`Store ${itemAppearance(item).label}`}
+                    onClick={() => { itemboxStore(slot); refresh(); }}
+                  >
+                    <ItemGlyph appearance={itemAppearance(item)} />
+                    <span>{itemAppearance(item).label}</span>
+                  </button>
+                ) : null,
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="item-box-head">Box ({box.length})</div>
+            <div className="item-box-list" data-testid="itembox-box">
+              {box.map((item, index) => (
+                <button
+                  key={`${index}-${item}`}
+                  type="button"
+                  className="pause-item item-box-entry"
+                  data-menu-item
+                  data-item={item}
+                  title={`Take ${itemAppearance(item).label}`}
+                  onClick={() => { itemboxTake(index); refresh(); }}
+                >
+                  <ItemGlyph appearance={itemAppearance(item)} />
+                  <span>{itemAppearance(item).label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <button type="button" className="pause-item" data-menu-item onClick={() => setOpen(false)}>Close</button>
       </div>
     </div>
   );

@@ -56,6 +56,36 @@ int main(void) {
               find(&lv, OBJ_DOOR, 9, 2)->state == DOOR_UNLOCKED && strcmp(find(&lv, OBJ_DOOR, 9, 2)->name, "gate") == 0,
           "set changes the object on a cell");
     CHECK(lv.section_count == 2 && strcmp(lv.sections[1].name, "East Room") == 0, "named rooms become sections");
+    {
+        // cut: void the cells, drop the objects and sections inside, clear links into it
+        level_t cl;
+        level_init(&cl);
+        char e[256];
+        int n = levelscript_run(&cl, "size 30 12\nroom 0 0 9 6 Keep\nroom 12 0 20 6 Gone\n"
+                                     "obj stairs 2 2 name=up\nobj stairs 14 2 name=down link=up\nlink up down\n"
+                                     "cut 11 0 21 7\n", e, sizeof(e));
+        bool tiles_gone = true;
+        for (int y = 0; y <= 7; y++)
+            for (int x = 11; x <= 21; x++) tiles_gone &= level_tile(&cl, x, y) == TILE_VOID;
+        const obj_t* up = find(&cl, OBJ_STAIRS, 2, 2);
+        CHECK(n == 7 && tiles_gone && !find(&cl, OBJ_STAIRS, 14, 2) && up && up->link_id == 0 &&
+                  cl.section_count == 1 && strcmp(cl.sections[0].name, "Keep") == 0,
+              "cut voids its cells and drops the objects, sections and links inside it");
+    }
+    {
+        // one Player Spawn per level: a second one moves it; spawns round-trip
+        CHECK(run("obj player_spawn 3 4\nobj player_spawn 5 2\nobj enemy_spawn 14 3\n") == 3, "spawn objects place");
+        int spawns = 0;
+        for (int i = 0; i < lv.obj_count; i++) spawns += lv.objs[i].kind == OBJ_START;
+        CHECK(spawns == 1 && find(&lv, OBJ_START, 5, 2) && lv.start_x == 5 && lv.start_y == 2,
+              "a second Player Spawn moves the one Grace starts at");
+        const obj_t* es = find(&lv, OBJ_ENEMY_SPAWN, 14, 3);
+        CHECK(es != NULL, "enemy spawn placed at its cell");
+        level_to_json(&lv, json, sizeof(json));
+        CHECK(level_from_json(&back, json) && find(&back, OBJ_START, 5, 2) && back.start_x == 5 &&
+                  find(&back, OBJ_ENEMY_SPAWN, 14, 3),
+              "spawns survive a JSON round trip");
+    }
 
     grid_init(&lv);
     CHECK(grid_is_floor(2, 2) && grid_is_floor(15, 3), "both rooms walkable through the door gap");

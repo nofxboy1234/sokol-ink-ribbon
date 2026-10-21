@@ -26,6 +26,8 @@ bool lighter_on(void);
 void lighter_toggle(void);
 
 int files_found(void);
+// True once she has picked up the file object at this index.
+bool interact_file_found(int obj_index);
 const char* file_name_at(int index);
 int file_code_at(int index);
 
@@ -39,6 +41,8 @@ bool interact_check_complete(void);
 
 // Save/load state.
 bool interact_take_save_menu(void);
+// True once after she opens an Item Box (the UI shows it).
+bool interact_take_itembox(void);
 void interact_export(bool* lighter, int* saves, bool* goal, int* file_count, int* file_obj, bool* complete);
 void interact_restore(bool lighter, int saves, bool goal, int file_count, const int* file_obj, bool complete);
 

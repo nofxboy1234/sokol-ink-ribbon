@@ -1,12 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   GraceMode,
+  ITEM_BOTTLE,
+  itemAppearance,
   quickSelect,
   radialSlot,
   readGrace,
   readRadialDirection,
   graceDead,
   type GraceView,
+  reloadGun,
 } from "./wasmBridge";
 import { useGameState } from "./GameState";
 
@@ -288,6 +291,18 @@ export function GraceActions() {
         onClick: () => quickSelect(0),
       };
     }
+    if (i === 1 && grace.equippedItem >= 0 && grace.equippedItem !== ITEM_BOTTLE) {
+      const look = itemAppearance(grace.equippedItem);
+      return {
+        label: look.label,
+        icon: (
+          <span className="grace-gear" aria-hidden="true" style={{ background: look.color }} />
+        ),
+        pressed: grace.weaponActive,
+        title: grace.weaponActive ? `${look.label} · active` : `${look.label} · make active`,
+        onClick: () => quickSelect(1),
+      };
+    }
     if (i === 1 && grace.bottleEquipped) {
       return grace.bottleEmpty
         ? {
@@ -319,8 +334,23 @@ export function GraceActions() {
       ? `Grace: Paused, last ${STATUS[grace.last]?.label ?? "Waiting"}`
       : `Grace: ${status.label}`;
 
+  const gun = grace.loaded >= 0 && grace.mag > 0;
   return (
     <div ref={hostRef} className="grace-actions">
+      {grace.live && gun && (
+        <button
+          type="button"
+          className="grace-reload"
+          data-testid="reload"
+          disabled={grace.reloading || grace.loaded >= grace.mag}
+          title={grace.reloading ? "Reloading" : "Reload (R)"}
+          onClick={() => reloadGun()}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <span className="grace-reload-count">{grace.loaded}/{grace.mag}</span>
+          <span>{grace.reloading ? "Reloading" : "Reload"}</span>
+        </button>
+      )}
       {grace.live && (
         <div
           className="grace-status"

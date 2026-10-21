@@ -15,6 +15,7 @@
 #include "doors.h"
 #include "enemy.h"
 #include "grid.h"
+#include "gear.h"
 #include "health.h"
 #include "interact.h"
 #include "inventory.h"
@@ -154,6 +155,21 @@ static struct {
     int gl_peak;       // most vertices any frame used (tests)
 } app;
 
+// The level's enemy spawn object (the first: the game has one enemy), or
+// NULL when the level has none.
+static const obj_t* level_enemy_spawn(void) {
+    for (int i = 0; i < app.level.obj_count; i++)
+        if (app.level.objs[i].kind == OBJ_ENEMY_SPAWN) return &app.level.objs[i];
+    return NULL;
+}
+
+// Spawn the enemy from the level's enemy spawn object; none: no enemy.
+static void spawn_level_enemy(void) {
+    const obj_t* s = level_enemy_spawn();
+    if (s) enemy_spawn(s->x, s->y);
+    else enemy_clear();
+}
+
 // Map streaming (stream.h) draws only the chunks in view, so the per-frame
 // vertex count follows the window, not how much of the hospital is revealed.
 // Measured peak over every door + every staircase: 49,334 vertices at the
@@ -166,6 +182,16 @@ static struct {
 #define TOUCH_SLOP_PX 14.0f
 
 #define HEALTH_DANGER 2
+
+// The bottle (throw.c) or a gun, knife or grenade (gear.c): whichever sits
+// in Quick Equip's East slot and is active aims and fires the same way.
+static bool weapon_active(void) {
+    return throw_active() || gear_active();
+}
+
+static float weapon_range(void) {
+    return gear_active() ? gear_range() : THROW_RANGE_CELLS;
+}
 // How far Grace's footsteps carry, in cells; standing still is silent.
 #define GRACE_NOISE_WALK 4.0f
 #define GRACE_NOISE_RUN 8.0f
@@ -414,8 +440,17 @@ static bool throw_confirm(void) {
     player_cell(&px, &py);
     throw_stance_t stance = grace_stance();
     throw_result_t result;
-    bool ok = app.aim_enemy ? throw_resolve_at_enemy(px, py, app.setup_x, app.setup_y, stance, &result)
-                            : throw_resolve(px, py, app.setup_x, app.setup_y, stance, &result);
+    bool ok;
+    if (gear_active()) {
+        float gx = player_x(), gy = player_y();
+        float dx = (float)app.setup_x + 0.5f - gx, dy = (float)app.setup_y + 0.5f - gy;
+        float len = sqrtf(dx * dx + dy * dy);
+        gear_shot_t shot;
+        ok = len > 0.05f && throw_allowed(stance) && gear_fire(gx, gy, dx / len, dy / len, len, &shot);
+    } else {
+        ok = app.aim_enemy ? throw_resolve_at_enemy(px, py, app.setup_x, app.setup_y, stance, &result)
+                           : throw_resolve(px, py, app.setup_x, app.setup_y, stance, &result);
+    }
     if (!ok) {
         return false;
     }
@@ -512,7 +547,7 @@ static bool grace_do(grace_action_t action) {
             bump_revision();
             return true;
         case GRACE_ACT_THROW:
-            if (app.grace != GRACE_PAUSED || app.setup != SETUP_NONE || !throw_active() ||
+            if (app.grace != GRACE_PAUSED || app.setup != SETUP_NONE || !weapon_active() ||
                 !grace_can(GS_THROW) || !throw_allowed(grace_stance())) {
                 return false;
             }
@@ -627,7 +662,7 @@ static bool aim_enter(void) {
         bump_revision();
         return true;  // Q again cancels
     }
-    if (!throw_active() || player_climbing() || app.grace == GRACE_HURT || app.grace == GRACE_PAUSED) {
+    if (!weapon_active() || player_climbing() || app.grace == GRACE_HURT || app.grace == GRACE_PAUSED) {
         return false;
     }
     app.aiming = true;
@@ -650,7 +685,7 @@ static void aim_update(void) {
         // the aim stick: direction sets the line, push distance the length
         app.aim_dir_x = app.aim_stick_x / stick_mag;
         app.aim_dir_y = app.aim_stick_y / stick_mag;
-        app.aim_len = (stick_mag > 1.0f ? 1.0f : stick_mag) * THROW_RANGE_CELLS;
+        app.aim_len = (stick_mag > 1.0f ? 1.0f : stick_mag) * weapon_range();
     } else if (app.aim_stick_x == 0.0f && app.aim_stick_y == 0.0f && !app.touch_pointer) {
         float wx, wy;
         camera_screen_to_world(app.mouse_x, app.mouse_y, &wx, &wy);
@@ -659,7 +694,7 @@ static void aim_update(void) {
         if (len >= 0.05f) {
             app.aim_dir_x = dx / len;
             app.aim_dir_y = dy / len;
-            app.aim_len = len > THROW_RANGE_CELLS ? THROW_RANGE_CELLS : len;
+            app.aim_len = len > weapon_range() ? weapon_range() : len;
         }
     }
     app.aim_wx = player_x() + app.aim_dir_x * app.aim_len;
@@ -667,7 +702,7 @@ static void aim_update(void) {
     app.aim_enemy = false;
     // snap onto the enemy when the reticle passes close to it: the aim
     // direction bends to its centre, and the hitscan confirms the line
-    if (grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
+    if (enemy_alive() && grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
         float ex = enemy_x() - app.aim_wx, ey = enemy_y() - app.aim_wy;
         if (ex * ex + ey * ey <= 0.75f * 0.75f) {
             float edx = enemy_x() - player_x(), edy = enemy_y() - player_y();
@@ -687,7 +722,7 @@ static void aim_update(void) {
 static bool aim_ok_now(void) {
     // a throw always lands somewhere (floor or blocker smash); only a
     // stub of an aim -- released inside the dead zone -- is refused
-    return app.aiming && throw_active() && app.aim_len >= 0.5f;
+    return app.aiming && weapon_active() && app.aim_len >= 0.5f;
 }
 
 // Throw along the aim ray: proper hitscan (see throw.c). The stance is
@@ -702,8 +737,16 @@ static bool aim_confirm(void) {
                                                              : THROW_STANCE_WALK;
     throw_result_t result;
     float ix = 0.0f, iy = 0.0f;
-    if (!throw_resolve_ray(player_x(), player_y(), app.aim_dir_x, app.aim_dir_y, app.aim_len,
-                           stance, &result, &ix, &iy)) {
+    if (gear_active()) {
+        gear_shot_t shot;
+        if (stance == THROW_STANCE_RUN ||
+            !gear_fire(player_x(), player_y(), app.aim_dir_x, app.aim_dir_y, app.aim_len, &shot)) {
+            return false;
+        }
+        ix = shot.x;
+        iy = shot.y;
+    } else if (!throw_resolve_ray(player_x(), player_y(), app.aim_dir_x, app.aim_dir_y, app.aim_len,
+                                  stance, &result, &ix, &iy)) {
         return false;
     }
     app.impact_at = app.clock;
@@ -757,11 +800,14 @@ static void handle_click(void) {
 // A hit worsens Grace's health one step. A hit while in Danger sends her back
 // to the last save point (or the start) at full health.
 static void grace_hurt(void) {
-    int health = health_state();
-    if (health >= HEALTH_DANGER) {
-        app.dead = true;  // a hit in Danger kills her; the timer stops (frame skips the world)
-    } else {
-        health_set(health + 1);
+    // each hit costs a point (Steroids raise her maximum); the last one
+    // kills her (the timer stops) unless the Eye Spy Charm saves her once
+    if (health_hurt()) {
+        if (gear_survive_fatal()) {
+            health_heal(1);
+        } else {
+            app.dead = true;
+        }
     }
     app.grace_flash_until = app.clock + GRACE_FLASH_SECONDS;
     app.grace_stress_until = app.clock + GRACE_STRESS_SECONDS;
@@ -815,7 +861,8 @@ static void init(void) {
     health_init();
     savegame_init();
     throw_init();
-    enemy_init(app.level.start_x, app.level.start_y);
+    gear_init();
+    spawn_level_enemy();
     app.respawn_x = app.level.start_x;
     app.respawn_y = app.level.start_y;
     camera_init();
@@ -874,7 +921,8 @@ static const obj_t* hover_interactable(void) {
         const obj_t* o = &lv->objs[i];
         if (o->kind != OBJ_ITEM && o->kind != OBJ_DOOR && o->kind != OBJ_SWITCH &&
             o->kind != OBJ_TYPEWRITER && o->kind != OBJ_FUSEBOX &&
-            o->kind != OBJ_FILE && o->kind != OBJ_SAFE && !(o->kind == OBJ_OBSTACLE && o->openable)) {
+            o->kind != OBJ_FILE && o->kind != OBJ_SAFE && o->kind != OBJ_ITEMBOX && o->kind != OBJ_CABINET &&
+            o->kind != OBJ_MICROSCOPE && !(o->kind == OBJ_OBSTACLE && o->openable)) {
             continue;
         }
         if (!grid_is_revealed(o->x, o->y)) {
@@ -951,6 +999,21 @@ static void draw_item_labels(void) {
     }
 }
 
+// Why a locked door won't open: the hover popup's red text.
+static const char* door_lock_text(const obj_t* o) {
+    static char buf[160];
+    if (o->lock == LOCK_JAMMED) return "It's jammed shut";
+    if (o->lock == LOCK_OTHER_SIDE) return "Locked from the other side";
+    int keys[3] = { doors_key_type(o), o->key2_id, o->key3_id };
+    int n = snprintf(buf, sizeof(buf), "Needs");
+    for (int k = 0; k < 3; k++) {
+        if (keys[k] > 0 && n < (int)sizeof(buf)) {
+            n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s %s", k ? " +" : "", item_display_name(keys[k]));
+        }
+    }
+    return keys[0] > 0 ? buf : "Locked";
+}
+
 // Extra dear-imgui UI drawn inside the dbgui frame (the hover tooltip).
 void _dbgui_extra(void) {
     draw_item_labels();
@@ -963,13 +1026,45 @@ void _dbgui_extra(void) {
             if (hl->state == DOOR_UNLOCKED) {
                 name = hl->open ? "close" : "open";
             } else if (hl->state == DOOR_LOCKED) {
-                name = "unlock";
+                int px, py;
+                player_cell(&px, &py);
+                name = doors_unlockable(hl, px, py) ? "unlock" : door_lock_text(hl);
             } else {
                 name = "open";
             }
         }
-        bool alert = (hl->kind == OBJ_ITEM && inventory_count() >= INV_SLOTS) ||
-                     (hl->kind == OBJ_TYPEWRITER && !inventory_has(ITEM_INK_RIBBON));
+        if (hl->kind == OBJ_ITEM && item_category(hl->item_type) == ICAT_BLOOD &&
+            !inventory_has(ITEM_BLOOD_COLLECTOR)) {
+            name = "Needs the Blood Collector";
+        }
+        static char what[96];
+        bool short_coins = false, needs_item = false;
+        if (hl->kind == OBJ_CABINET) {
+            int cost = hl->code > 0 ? hl->code : 1;
+            short_coins = !hl->state && gear_count(ITEM_COIN) < cost;
+            if (hl->state) {
+                snprintf(what, sizeof what, "Empty");
+            } else {
+                snprintf(what, sizeof what, "%s: %d Antique Coins",
+                         hl->qty > 0 ? item_display_name(hl->item_type) : "+4 slots", cost);
+            }
+            name = what;
+        } else if (hl->kind == OBJ_ITEMBOX) {
+            name = "Item Box";
+        } else if (hl->kind == OBJ_SAFE && !hl->open && hl->key_id > 0) {
+            needs_item = !doors_has_key(hl->key_id);
+            snprintf(what, sizeof what, needs_item ? "Needs the %s" : "Open with the %s",
+                     item_display_name(hl->key_id));
+            name = what;
+        }
+        int px, py;
+        player_cell(&px, &py);
+        bool alert = (hl->kind == OBJ_ITEM && !gear_counted(hl->item_type) &&
+                      inventory_count() >= inventory_capacity()) ||
+                     (hl->kind == OBJ_ITEM && item_category(hl->item_type) == ICAT_BLOOD &&
+                      !inventory_has(ITEM_BLOOD_COLLECTOR)) ||
+                     (hl->kind == OBJ_DOOR && hl->state == DOOR_LOCKED && !doors_unlockable(hl, px, py)) ||
+                     (hl->kind == OBJ_TYPEWRITER && !inventory_has(ITEM_INK_RIBBON)) || short_coins || needs_item;
         game_tooltip(name, app.mouse_x + 14.0f, app.mouse_y + 14.0f, alert);
     }
 }
@@ -1064,6 +1159,7 @@ static void frame(void) {
         }
         player_note_time((int)(app.elapsed * 1000.0));
         player_update(dt);
+        if (gear_update(dt)) { bump_revision(); }  // a reload finished
         if (interact_check_complete()) { bump_revision(); }
         float noise = !player_is_moving() ? 0.0f
             : player_move_mode() == PLAYER_RUN ? GRACE_NOISE_RUN : GRACE_NOISE_WALK;
@@ -1201,6 +1297,11 @@ static void event(const sapp_event* e) {
                 case SAPP_KEYCODE_Z:
                     if (down && !e->key_repeat) {
                         quick_toggle();
+                    }
+                    break;
+                case SAPP_KEYCODE_R:
+                    if (down && !e->key_repeat && !app.paused && !app.dead && gear_reload()) {
+                        bump_revision();
                     }
                     break;
                 default: break;
@@ -1375,16 +1476,11 @@ WEB_EXPORT int health_value(void) {
     return health_state();
 }
 
-// Green Herb heals one step (Danger -> Caution -> Fine); a Mixed Herb (G+G)
-// and a Med Injector heal fully.
+// Use from the inventory: heals, Transfusion Bags, doses (gear.c).
 WEB_EXPORT int web_inventory_use(int index) {
-    int item = inventory_slot(index);
-    int heal = item == ITEM_HERB ? 1 : (item == ITEM_MIXED_HERB || item == ITEM_INJECTOR) ? HEALTH_DANGER : 0;
-    int health = health_state();
-    if (heal == 0 || health == 0 || !inventory_clear_slot(index)) {
+    if (!gear_use_slot(index)) {
         return 0;
     }
-    health_set(health - heal);
     bump_revision();
     return 1;
 }
@@ -1438,6 +1534,14 @@ WEB_EXPORT int web_quick_select(int slot) {
     if (app.quick_open && slot == 0 && inventory_has(ITEM_LIGHTER)) {
         // the Lighter (North) toggles in place; Quick Equip stays open
         lighter_toggle();
+        bump_revision();
+        return 1;
+    }
+    if (app.quick_open && slot == 1 && gear_equipped() >= 0) {
+        if (!gear_set_active(!gear_active())) {
+            return 0;
+        }
+        app.quick_open = false;
         bump_revision();
         return 1;
     }
@@ -1527,6 +1631,15 @@ TEST_EXPORT int web_test_throw_at(int x, int y) {
 }
 
 // Tests: use a switch (or other interactable) at a cell.
+// Tests: 1 if an object of this kind at (x, y) is open, 0 if shut, -1 if none.
+TEST_EXPORT int web_test_obj_open(int kind, int x, int y) {
+    for (int i = 0; i < app.level.obj_count; i++) {
+        const obj_t* o = &app.level.objs[i];
+        if ((int)o->kind == kind && o->x == x && o->y == y) return o->open ? 1 : 0;
+    }
+    return -1;
+}
+
 TEST_EXPORT int web_test_interact(int x, int y) {
     bool used = interact_at(x, y);
     bump_revision();
@@ -1571,7 +1684,7 @@ TEST_EXPORT int web_cell_floor(int x, int y) {
 
 WEB_EXPORT int web_throw_allowed(void) {
     // twin-stick: she can throw on the move too (aiming caps her to a walk)
-    return throw_active() && app.grace != GRACE_HURT ? 1 : 0;
+    return weapon_active() && app.grace != GRACE_HURT ? 1 : 0;
 }
 
 TEST_EXPORT float web_enemy_flash(void) {
@@ -1667,7 +1780,15 @@ TEST_EXPORT int web_test_find_door(int mode) {
 }
 
 TEST_EXPORT int web_test_give(int item) {
-    if (item < 0 || item >= ITEM_COUNT || !inventory_add(item)) {
+    if (item < 0 || item >= ITEM_COUNT || !gear_pickup(item, 1)) {
+        return 0;
+    }
+    bump_revision();
+    return 1;
+}
+
+TEST_EXPORT int web_test_give_qty(int item, int qty) {
+    if (item < 0 || item >= ITEM_COUNT || !gear_pickup(item, qty)) {
         return 0;
     }
     bump_revision();
@@ -2034,6 +2155,129 @@ WEB_EXPORT int web_item_icon(int item) {
     return item_icon_shape(item);
 }
 
+WEB_EXPORT const char* web_item_text(int item) {
+    return item_text(item);
+}
+
+// Inventory actions as bits: 1 Move, 2 Use, 4 Equip, 8 Discard.
+WEB_EXPORT int web_item_actions(int item) {
+    switch (item_category(item)) {
+        case ICAT_HEAL:
+        case ICAT_CONSUMABLE: return 1 | 2 | 8;
+        case ICAT_GUN:
+        case ICAT_MELEE:
+        case ICAT_THROWABLE: return 1 | 4 | 8;
+        case ICAT_TOOL: return item == ITEM_LIGHTER ? 0 : 1;
+        case ICAT_CHARM: return 1 | 8;
+        default: return item == ITEM_COIN || item == ITEM_INK_RIBBON || item == ITEM_LOCKPICK ? 1 | 8 : 1;
+    }
+}
+
+// The item in Quick Equip's East slot (the bottle or gear), or -1.
+WEB_EXPORT int web_equipped_item(void) {
+    if (gear_equipped() >= 0) return gear_equipped();
+    return throw_equipped() ? ITEM_BOTTLE : -1;
+}
+
+// Reload the equipped gun (R on desktop, the Reload button on a phone).
+WEB_EXPORT int web_reload(void) {
+    if (app.paused || app.dead || !gear_reload()) return 0;
+    bump_revision();
+    return 1;
+}
+
+WEB_EXPORT int web_enemy_alive(void) {
+    return enemy_alive() ? 1 : 0;
+}
+
+TEST_EXPORT float web_enemy_hp(void) {
+    return enemy_hp();
+}
+
+TEST_EXPORT void web_test_gear_seed(int seed) {
+    gear_seed((unsigned int)seed);
+}
+
+// The Item Box: open (once) after she used a box; contents for the UI.
+WEB_EXPORT int web_take_itembox(void) {
+    return interact_take_itembox() ? 1 : 0;
+}
+
+WEB_EXPORT int web_itembox_count(void) {
+    return inventory_box_count();
+}
+
+WEB_EXPORT int web_itembox_item(int index) {
+    return inventory_box_item(index);
+}
+
+WEB_EXPORT int web_itembox_store(int slot) {
+    if (inventory_slot(slot) == gear_equipped()) gear_unequip();
+    if (inventory_slot(slot) == ITEM_BOTTLE && inventory_count_of(ITEM_BOTTLE) == 1) throw_set_equipped(false);
+    if (!inventory_box_store(slot)) return 0;
+    bump_revision();
+    return 1;
+}
+
+WEB_EXPORT int web_itembox_take(int index) {
+    if (!inventory_box_take(index)) return 0;
+    bump_revision();
+    return 1;
+}
+
+WEB_EXPORT int web_weapon_active(void) {
+    return weapon_active() ? 1 : 0;
+}
+
+// Equip (on) or unequip (off) a weapon item from the inventory.
+WEB_EXPORT int web_equip_item(int item, int on) {
+    bool ok;
+    if (item == ITEM_BOTTLE) {
+        ok = throw_set_equipped(on != 0);
+    } else if (on) {
+        ok = gear_equip(item);
+    } else {
+        gear_unequip();
+        ok = true;
+    }
+    if (ok) bump_revision();
+    return ok ? 1 : 0;
+}
+
+// Key ring: tools and key items kept outside the slots.
+WEB_EXPORT int web_key_count(void) {
+    return inventory_key_count();
+}
+
+WEB_EXPORT int web_key_item(int index) {
+    return inventory_key(index);
+}
+
+// Counted gear for the HUD: 0 handgun / 1 12.7mm reserve, 3 blood, 4 blood
+// limit, 5 scrap, 6 rare metal, 7 steroid doses, 8 stabilizer doses,
+// 9 Mr. Raccoons, 10 health, 11 max health, 12 rounds loaded in the
+// equipped gun (-1 none), 13 its magazine size, 14 reloading.
+WEB_EXPORT int web_gear_stat(int which) {
+    switch (which) {
+        case 0: case 1: return gear_ammo(which);
+        case 2: return 0;  // (shotgun shells: Leon's, gone)
+        case 3: return gear_blood();
+        case 4: return gear_blood_cap();
+        case 5: return gear_count(ITEM_SCRAP);
+        case 6: return gear_count(ITEM_RARE_METAL);
+        case 7: return gear_doses_steroids();
+        case 8: return gear_doses_stabilizer();
+        case 9: return gear_collectibles();
+        case 10: return health_hp();
+        case 11: return health_max();
+        case 12: return gear_loaded(gear_equipped());
+        case 13: { const weapon_t* w = gear_weapon(gear_equipped()); return w ? w->mag : 0; }
+        case 14: return gear_reloading() ? 1 : 0;
+        case 15: return gear_count(ITEM_COIN);
+        default: return 0;
+    }
+}
+
 WEB_EXPORT int craft_recipe(int index) {
     if (craft(index)) {
         bump_revision();
@@ -2069,7 +2313,8 @@ WEB_EXPORT void game_reset(void) {
     interact_init();
     health_init();
     throw_init();
-    enemy_init(app.level.start_x, app.level.start_y);
+    gear_init();
+    spawn_level_enemy();
     app.respawn_x = app.level.start_x;
     app.respawn_y = app.level.start_y;
     camera_set_follow(true);
@@ -2134,7 +2379,8 @@ WEB_EXPORT int load_game(int slot) {
         app.elapsed = e / 1000.0;
         player_cell(&app.respawn_x, &app.respawn_y);
         if (!savegame_has_enemy(slot)) {
-            enemy_init(app.respawn_x, app.respawn_y);  // an old slot: respawn it away from her
+            if (level_enemy_spawn()) enemy_init(app.respawn_x, app.respawn_y);  // an old slot: respawn it away from her
+            else enemy_clear();
         }
         player_stop();
         app.grace = GRACE_PAUSED;

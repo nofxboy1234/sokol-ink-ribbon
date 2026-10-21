@@ -1103,10 +1103,14 @@ test("a hit in Danger kills Grace and stops the timer", async ({ page }) => {
   expect(await wasm(page, "web_grace_dead")).toBe(1);
 });
 
-test("the fuse chain: gate stays shut without the fuse, opens with it, goal past it", async ({ page }) => {
+test("the fuse chain: gate stays shut without the fuse, opens with it, Requiem past it, office ends the game", async ({ page }) => {
   await boot(page);
   const fusebox = await findObject(page, 2, 0); // OBJ_FUSEBOX
-  const goal = await findObject(page, 10, 0); // OBJ_GOAL
+  expect([fusebox.x, fusebox.y]).toEqual([80, 109]);
+  const goal = await findObject(page, 10, 0); // OBJ_GOAL: the Requiem handover past the F2 gate
+  expect([goal.x, goal.y]).toEqual([77, 107]);
+  const office = await findObject(page, 10, 1); // OBJ_GOAL: the Security Manager's Office
+  expect([office.x, office.y]).toEqual([178, 179]);
   await page.evaluate(
     ([fx2, fy2]) => window.Module?._web_test_grace_at?.(fx2, fy2),
     [fusebox.x, fusebox.y - 1] as const,
@@ -1121,7 +1125,51 @@ test("the fuse chain: gate stays shut without the fuse, opens with it, goal past
     ([gx2, gy2]) => window.Module?._web_test_grace_at?.(gx2, gy2),
     [goal.x, goal.y] as const,
   );
+  await expect.poll(() => wasm(page, "web_inventory_has", 25)).toBe(1); // ITEM_GUN_REQUIEM
+  expect(await wasm(page, "web_level_complete")).toBe(0);
+  await wasm(page, "web_test_grace_at", office.x, office.y);
   await expect.poll(() => wasm(page, "web_level_complete")).toBe(1);
+});
+
+test("spawn objects: Grace starts at the one Player Spawn, the enemy comes from its Enemy Spawn", async ({ page }) => {
+  await boot(page);
+  const ps = await findObject(page, 9, 0); // OBJ_START, the Player Spawn
+  expect([ps.x, ps.y]).toEqual([159, 68]);
+  expect(await wasm(page, "web_test_find_object", 9, 1)).toBe(-1); // only one
+  const es = await findObject(page, 16, 0); // OBJ_ENEMY_SPAWN
+  expect([es.x, es.y]).toEqual([162, 79]);
+  expect(await wasm(page, "web_enemy_hp")).toBeGreaterThan(0);
+  // it spawns exactly on the Enemy Spawn
+  expect(Math.floor(await wasm(page, "web_enemy_px"))).toBe(162);
+  expect(Math.floor(await wasm(page, "web_enemy_py"))).toBe(79);
+});
+
+test("the Examination Room Safe stays locked until its code file is in Files, then opens", async ({ page }) => {
+  await boot(page);
+  await wasm(page, "web_test_enemy_place", 11550, 4550); // enemy on floor 3, out of the way
+  const SAFE = 7, FILE = 6;
+  expect(await wasm(page, "web_test_obj_open", SAFE, 124, 184)).toBe(0); // the safe, shut
+  expect(await wasm(page, "web_test_obj_open", FILE, 148, 115)).toBe(0); // its code file exists here
+  await wasm(page, "web_test_grace_at", 123, 184);
+  await page.waitForTimeout(150);
+  await wasm(page, "web_test_interact", 124, 184);
+  expect(await wasm(page, "web_test_obj_open", SAFE, 124, 184)).toBe(0); // no file: locked
+  await expect(page.getByRole("dialog", { name: "Enter code" })).toHaveCount(0); // and no dial
+  await wasm(page, "web_test_grace_at", 148, 115);
+  await page.waitForTimeout(150);
+  await wasm(page, "web_test_interact", 148, 115);
+  await page.getByRole("button", { name: "Inventory", exact: true }).click();
+  await page.getByRole("button", { name: "FILES", exact: true }).click();
+  await expect(page.locator(".file-name", { hasText: "Examination Room Safe Code" })).toBeVisible();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/files_menu_exam_safe_code.png` });
+  await page.getByRole("dialog", { name: "Inventory" }).getByRole("button", { name: "Close" }).click();
+  await wasm(page, "web_test_grace_at", 123, 184);
+  await page.waitForTimeout(300);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/exam_safe_before.png` });
+  await wasm(page, "web_test_interact", 124, 184);
+  expect(await wasm(page, "web_test_obj_open", SAFE, 124, 184)).toBe(1);
+  await page.waitForTimeout(300);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/exam_safe_open.png` });
 });
 
 test("climbing: Space climbs on after the delay, and Space climbs off again", async ({ page }) => {
@@ -1493,7 +1541,7 @@ test("key chain: screwdriver and Cherub Key open the way to the fuse, gate and g
     await page.waitForTimeout(200);
   }
   expect(await collected()).toBe(before + 1);
-  // the fusebox by the gate powers it open; the goal is past it
+  // the fusebox by the F2 gate powers it open; Leon's Requiem is past it
   const fusebox = await findObject(page, 2, 0);
   await wasm(page, "web_test_grace_at", fusebox.x, fusebox.y - 1);
   await page.waitForTimeout(150);
@@ -1501,14 +1549,19 @@ test("key chain: screwdriver and Cherub Key open the way to the fuse, gate and g
   await expect.poll(() => wasm(page, "web_goal_met")).toBe(1);
   const goal = await findObject(page, 10, 0);
   await wasm(page, "web_test_grace_at", goal.x, goal.y);
+  await expect.poll(() => wasm(page, "web_inventory_has", 25)).toBe(1);
+  expect(await wasm(page, "web_level_complete")).toBe(0);
+  const office = await findObject(page, 10, 1);
+  await wasm(page, "web_test_grace_at", office.x, office.y);
   await expect.poll(() => wasm(page, "web_level_complete")).toBe(1);
 });
 
 test("the security gates, security door and staircases are sealed", async ({ page }) => {
   await boot(page);
   await wasm(page, "web_test_enemy_place", 11550, 4550); // enemy on floor 3 (she never takes the stairs)
-  // the striped gate in the Rehabilitation Ward stays shut without the fuse
+  // the gate right of the F2 Central Hall stays shut without the fuse
   const gd = await findDoor(page, 2);
+  expect([gd.x, gd.y]).toEqual([79, 107]);
   const gate = approach({ ...gd, y: gd.extra ? gd.y : gd.y + 1 });
   await wasm(page, "web_test_grace_at", gate.x, gate.y);
   await page.waitForTimeout(200);
@@ -1535,15 +1588,22 @@ test("stairs carry Grace between floors", async ({ page }) => {
   expect(Math.abs((await wasm(page, "player_cell_x")) - (top.x + 1))).toBeLessThanOrEqual(1);
 });
 
-test("the Central Hall flights lead up to the floor 3 attic", async ({ page }) => {
+test("the Central Hall flights join floor 2 (at their tops) to floor 1; nothing leads to the attic", async ({ page }) => {
   await boot(page);
   await wasm(page, "web_test_enemy_place", 2850, 3550); // floor 3 Lounge
-  const attic = await findObject(page, 13, 10); // OBJ_STAIRS
-  const hall = await findObject(page, 13, 11);
-  expect([attic.x, attic.y, hall.x, hall.y]).toEqual([78, 52, 81, 93]);
-  await wasm(page, "web_test_grace_at", hall.x + 1, hall.y);
-  await expect.poll(() => wasm(page, "player_cell_y"), { timeout: 3000 }).toBeLessThan(56);
-  expect(await wasm(page, "player_cell_x")).toBeGreaterThanOrEqual(attic.x);
+  // every stairs object, by coordinates: none left in the attic storage
+  const stairs: Array<{ x: number; y: number }> = [];
+  for (let n = 0; ; n++) {
+    const v = await wasm(page, "web_test_find_object", 13, n); // OBJ_STAIRS
+    if (v < 0) break;
+    stairs.push({ x: (v >> 16) & 0xffff, y: (v >> 8) & 0xff });
+  }
+  expect(stairs.filter((s) => s.y < 60)).toEqual([{ x: 32, y: 5 }]); // only F3's west stairs
+  expect(stairs).toContainEqual({ x: 81, y: 93 }); // F2 west flight, top
+  expect(stairs).toContainEqual({ x: 100, y: 93 }); // F2 east flight, top
+  await wasm(page, "web_test_grace_at", 82, 93);
+  await expect.poll(() => wasm(page, "player_cell_y"), { timeout: 3000 }).toBeGreaterThanOrEqual(178);
+  expect(Math.abs((await wasm(page, "player_cell_x")) - 82)).toBeLessThanOrEqual(2);
 });
 
 test("Grace walks in rooms across floor 2 (Central Hall, Bar & Lounge, Room 203)", async ({

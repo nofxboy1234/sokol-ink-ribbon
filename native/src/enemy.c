@@ -95,6 +95,8 @@ static struct {
     int impact_x, impact_y;  // the bottle being investigated
     bool at_impact;          // reached it, now looking around
     float light_travel;      // cells walked since the last lamp-smash roll
+    float hp;                // health left (0: dead)
+    float fade;              // seconds of fading left once dead
 } e;
 
 _Static_assert(sizeof(e) <= ENEMY_SAVE_BYTES, "enemy save size");
@@ -207,6 +209,7 @@ static void enter(enemy_state_t state) {
             break;
         case ENEMY_STUNNED:
         case ENEMY_WAIT:
+        case ENEMY_DEAD:
             e.path.count = 0;
             break;
         case ENEMY_INVESTIGATE:
@@ -223,17 +226,32 @@ static void enter(enemy_state_t state) {
     }
 }
 
+static void spawn_near(int x, int y, int radius);
+
 void enemy_init(int avoid_x, int avoid_y) {
+    spawn_near(avoid_x, avoid_y, ENEMY_SPAWN_MAX);
+}
+
+void enemy_spawn(int x, int y) {
+    spawn_near(x, y, 0);
+}
+
+// radius 0: exactly at (x, y); else a random floor cell ENEMY_SPAWN_MIN..
+// radius path cells away (an old save's respawn, away from Grace)
+static void spawn_near(int x, int y, int radius) {
     e.rng = (unsigned int)time(NULL) * 2654435761u + 1u;
-    e.x = (float)avoid_x + 0.5f;
-    e.y = (float)avoid_y + 0.5f;
+    int avoid_x = x, avoid_y = y;
+    e.x = (float)x + 0.5f;
+    e.y = (float)y + 0.5f;
     e.path.count = 0;
     e.index = 0;
-    for (int attempt = 0; attempt < 400; attempt++) {
-        int tx = avoid_x + (int)(rnd() % 37u) - 18;
-        int ty = avoid_y + (int)(rnd() % 37u) - 18;
-        if (grid_is_floor(tx, ty) && pathfind_within(avoid_x, avoid_y, tx, ty, ENEMY_SPAWN_MAX, false, &scratch) &&
-            scratch.count - 1 >= ENEMY_SPAWN_MIN) {
+    int span = radius * 2 + 1;
+    int min = radius < ENEMY_SPAWN_MIN ? radius / 2 : ENEMY_SPAWN_MIN;
+    for (int attempt = 0; radius > 0 && attempt < 400; attempt++) {
+        int tx = avoid_x + (int)(rnd() % (unsigned)span) - radius;
+        int ty = avoid_y + (int)(rnd() % (unsigned)span) - radius;
+        if (grid_is_floor(tx, ty) && pathfind_within(avoid_x, avoid_y, tx, ty, radius, false, &scratch) &&
+            scratch.count - 1 >= min) {
             e.x = (float)tx + 0.5f;
             e.y = (float)ty + 0.5f;
             break;
@@ -247,7 +265,17 @@ void enemy_init(int avoid_x, int avoid_y) {
     e.flash = 0.0f;
     e.angry = 0.0f;
     e.grace_lit = true;
+    e.hp = ENEMY_HP;
+    e.fade = 0.0f;
     enter(ENEMY_LOOK);
+}
+
+void enemy_clear(void) {
+    // no enemy in the level: it exists only as a dead, invisible body
+    enemy_spawn(0, 0);
+    e.hp = 0.0f;
+    e.fade = 0.0f;
+    enter(ENEMY_DEAD);
 }
 
 void enemy_seed(unsigned int seed) {
@@ -521,6 +549,10 @@ static bool walk(float dt) {
 }
 
 bool enemy_update(float dt, float gx, float gy, float noise) {
+    if (e.state == ENEMY_DEAD) {
+        if (e.fade > 0.0f) e.fade -= dt;
+        return false;
+    }
     if (e.flash > 0.0f) {
         e.flash -= dt;
     }
@@ -654,6 +686,7 @@ bool enemy_update(float dt, float gx, float gy, float noise) {
             break;
         case ENEMY_STUNNED:
         case ENEMY_WAIT:
+        case ENEMY_DEAD:
             break;
     }
 
@@ -666,14 +699,39 @@ bool enemy_update(float dt, float gx, float gy, float noise) {
 }
 
 void enemy_stun(float seconds) {
+    if (e.state == ENEMY_DEAD) return;
     enter(ENEMY_STUNNED);
     e.timer = seconds;
 }
 
 void enemy_damage(float seconds) {
+    if (e.state == ENEMY_DEAD) return;
     enemy_stun(seconds);
     e.flash = seconds;
     e.angry = ENEMY_ANGRY_SECONDS;  // a fresh hit restarts the anger
+}
+
+bool enemy_hurt(float amount, bool critical) {
+    if (e.state == ENEMY_DEAD) return false;
+    e.hp -= critical ? e.hp : amount;
+    if (e.hp <= 0.0f) {
+        e.hp = 0.0f;
+        enter(ENEMY_DEAD);
+        e.fade = ENEMY_FADE_SECONDS;
+        e.flash = 0.0f;
+        e.angry = 0.0f;
+        return true;
+    }
+    enemy_damage(ENEMY_STAGGER_SECONDS);
+    return false;
+}
+
+float enemy_hp(void) { return e.hp; }
+bool enemy_alive(void) { return e.state != ENEMY_DEAD; }
+
+float enemy_alpha(void) {
+    if (e.state != ENEMY_DEAD) return 1.0f;
+    return e.fade > 0.0f ? e.fade / ENEMY_FADE_SECONDS : 0.0f;
 }
 
 float enemy_angry(void) {
@@ -688,6 +746,7 @@ float enemy_flash(void) {
 // like footsteps), it goes to look. Search heads for the remembered cell and
 // then sweeps around it.
 bool enemy_hear_noise(int x, int y, float radius) {
+    if (e.state == ENEMY_DEAD) return false;
     if (e.state == ENEMY_STUNNED || e.state == ENEMY_WINDED || e.state == ENEMY_BREAKING || e.state == ENEMY_WAIT) {
         return false;
     }
@@ -710,6 +769,7 @@ bool enemy_hear_noise(int x, int y, float radius) {
 }
 
 void enemy_rest(float seconds) {
+    if (e.state == ENEMY_DEAD) return;
     enter(ENEMY_WAIT);
     e.timer = seconds;
 }

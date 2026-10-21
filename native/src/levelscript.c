@@ -113,6 +113,21 @@ static int apply_props(ctx_t* c, obj_t* o, char** argv, int first, int argc) {
             o->state = num ? n : door_state_from_name(v);
         } else if (strcmp(k, "item") == 0) {
             o->item_type = item_from_name(v);
+        } else if (strcmp(k, "key") == 0 || strcmp(k, "key2") == 0 || strcmp(k, "key3") == 0) {
+            // key=ITEM: the item that opens this door (implies lock=key)
+            int it = item_from_name(v);
+            if (strcmp(item_name((item_t)it), v) != 0) return fail(c, "%s: unknown item '%s'", k, v);
+            if (k[3] == '2') o->key2_id = it;
+            else if (k[3] == '3') o->key3_id = it;
+            else o->key_id = it;
+            if (o->lock == LOCK_NONE) o->lock = LOCK_KEY;
+            o->state = DOOR_LOCKED;
+        } else if (strcmp(k, "lock") == 0) {
+            int l = door_lock_from_name(v);
+            if (l < 0) return fail(c, "lock must be none, key, other_side or jammed, got '%s'", v);
+            o->lock = l;
+            o->state = l == LOCK_NONE ? DOOR_UNLOCKED : DOOR_LOCKED;
+            if (l == LOCK_NONE) o->key_id = o->key2_id = o->key3_id = 0;
         } else if (strcmp(k, "link") == 0) {
             const obj_t* t = find_named(c->lv, v);
             if (!t) return fail(c, "link: no object named '%s'", v);
@@ -135,6 +150,8 @@ static int apply_props(ctx_t* c, obj_t* o, char** argv, int first, int argc) {
         else if (strcmp(k, "movable") == 0) o->movable = n;
         else if (strcmp(k, "openable") == 0) o->openable = n;
         else if (strcmp(k, "code") == 0) o->code = n;
+        else if (strcmp(k, "qty") == 0) o->qty = n;
+        else if (strcmp(k, "side") == 0) o->side = n;
         else return fail(c, "unknown property '%s'", k);
     }
     return 0;
@@ -356,11 +373,22 @@ static int run_line(ctx_t* c, int argc, char** argv) {
     } else if (strcmp(cmd, "obj") == 0) {
         if (argc < 4 || need_ints(c, argv, 2, 2, a)) return argc < 4 ? fail(c, "obj KIND X Y [key=value...]") : -1;
         obj_kind_t k = obj_kind_from_name(argv[1]);
-        if (strcmp(obj_kind_name(k), argv[1]) != 0) return fail(c, "unknown object kind '%s'", argv[1]);
-        obj_t* o = new_obj(c, k, a[0] + ox, a[1] + oy);
-        if (!o) return fail(c, "too many objects");
-        snprintf(o->name, LEVEL_MAX_NAME, "%s", argv[1]);
+        if (strcmp(obj_kind_name(k), argv[1]) != 0 && !(k == OBJ_START && strcmp(argv[1], "start") == 0))
+            return fail(c, "unknown object kind '%s'", argv[1]);
+        obj_t* o = NULL;
+        if (k == OBJ_START) {
+            // one Player Spawn per level: a second one moves it
+            for (int i = 0; i < lv->obj_count; i++)
+                if (lv->objs[i].kind == OBJ_START) o = &lv->objs[i];
+            if (o) { o->x = a[0] + ox; o->y = a[1] + oy; }
+        }
+        if (!o) {
+            o = new_obj(c, k, a[0] + ox, a[1] + oy);
+            if (!o) return fail(c, "too many objects");
+            snprintf(o->name, LEVEL_MAX_NAME, "%s", k == OBJ_START ? "Grace start" : argv[1]);
+        }
         if (apply_props(c, o, argv, 4, argc)) return -1;
+        if (k == OBJ_START) { lv->start_x = o->x; lv->start_y = o->y; }
     } else if (strcmp(cmd, "link") == 0) {
         if (argc != 3) return fail(c, "link NAME_FROM NAME_TO (use _ for spaces)");
         obj_t* f = find_named(lv, argv[1]);
@@ -408,6 +436,32 @@ static int run_line(ctx_t* c, int argc, char** argv) {
             copy[j] = store[j];
         }
         if (apply_props(c, best, copy, 5, argc)) return -1;
+    } else if (strcmp(cmd, "cut") == 0) {
+        // cut X0 Y0 X1 Y1: remove a part of the map. Its cells become void,
+        // every object anchored in it goes, every section inside it goes,
+        // and links to the removed objects are cleared (nothing dangles).
+        if (argc != 5 || need_ints(c, argv, 1, 4, a)) return argc != 5 ? fail(c, "cut X0 Y0 X1 Y1") : -1;
+        int x0 = a[0] + ox, y0 = a[1] + oy, x1 = a[2] + ox, y1 = a[3] + oy;
+        order(&x0, &x1);
+        order(&y0, &y1);
+        fill(lv, x0, y0, x1, y1, TILE_VOID);
+        int gone[LEVEL_MAX_OBJECTS], ngone = 0, w = 0;
+        for (int i = 0; i < lv->obj_count; i++) {
+            const obj_t* o = &lv->objs[i];
+            if (o->x >= x0 && o->x <= x1 && o->y >= y0 && o->y <= y1) gone[ngone++] = o->id;
+            else lv->objs[w++] = lv->objs[i];
+        }
+        lv->obj_count = w;
+        for (int i = 0; i < lv->obj_count; i++)
+            for (int k = 0; k < ngone; k++)
+                if (lv->objs[i].link_id == gone[k]) lv->objs[i].link_id = 0;
+        w = 0;
+        for (int i = 0; i < lv->section_count; i++) {
+            const section_t* s = &lv->sections[i];
+            bool inside = s->x >= x0 && s->y >= y0 && s->x + s->w - 1 <= x1 && s->y + s->h - 1 <= y1;
+            if (!inside) lv->sections[w++] = lv->sections[i];
+        }
+        lv->section_count = w;
     } else if (strcmp(cmd, "erase") == 0) {
         // erase X Y: remove every object anchored on that cell
         if (argc != 3 || need_ints(c, argv, 1, 2, a)) return argc != 3 ? fail(c, "erase X Y") : -1;

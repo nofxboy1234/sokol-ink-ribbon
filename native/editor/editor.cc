@@ -322,7 +322,24 @@ static void load_reference(void) {
     snprintf(ed.status, sizeof(ed.status), "loaded reference %s (%dx%d)", ed.ref_path, w, h);
 }
 
+// The Player Spawn object, or NULL.
+static obj_t* player_spawn(void) {
+    for (int i = 0; i < ed.level.obj_count; i++)
+        if (ed.level.objs[i].kind == OBJ_START) return &ed.level.objs[i];
+    return NULL;
+}
+
 static void add_object(int kind, int x, int y) {
+    if (kind == OBJ_START && player_spawn()) {
+        // one Player Spawn per level: placing another moves it
+        obj_t* s = player_spawn();
+        s->x = ed.level.start_x = x;
+        s->y = ed.level.start_y = y;
+        ed.selected = (int)(s - ed.level.objs);
+        ed.dirty = true;
+        snprintf(ed.status, sizeof(ed.status), "One Player Spawn per level: moved it to %d,%d", x, y);
+        return;
+    }
     if (ed.level.obj_count >= LEVEL_MAX_OBJECTS) {
         return;
     }
@@ -352,6 +369,11 @@ static void add_object(int kind, int x, int y) {
         o->h = 2;
     }
     snprintf(o->name, LEVEL_MAX_NAME, "%s", obj_kind_name(o->kind));
+    if (kind == OBJ_START) {
+        snprintf(o->name, LEVEL_MAX_NAME, "Grace start");
+        ed.level.start_x = x;
+        ed.level.start_y = y;
+    }
     ed.selected = ed.level.obj_count - 1;
     ed.dirty = true;
 }
@@ -788,8 +810,11 @@ static void draw_map(void) {
                 fill_rect(rx + rw - 5, ry + rh - 5, 10, 10, 1.0f, 0.55f, 0.0f, 1.0f);
             }
         } else if (o->kind == OBJ_START) {
-            float size = scale * 0.6f;
             fill_circle(cx, cy, scale * 0.51f, PAL_PURPLE, 1.0f);  // Grace's dot
+        } else if (o->kind == OBJ_ENEMY_SPAWN) {
+            // the enemy's dark red dot, ringed in ink: it spawns exactly here
+            fill_circle(cx, cy, scale * 0.62f, PAL_INK, 1.0f);
+            fill_circle(cx, cy, scale * 0.51f, 0.62f, 0.05f, 0.05f, 1.0f);
         } else {
             float r = 0.6f, g = 0.6f, b = 0.6f;
             switch (o->kind) {
@@ -803,6 +828,7 @@ static void draw_map(void) {
                 case OBJ_GOAL: r = 0.118f; g = 0.118f; b = 0.118f; break;
                 case OBJ_RECIPE: r = 1.0f; g = 1.0f; b = 1.0f; break;    // paper sheet
                 case OBJ_CABINET: r = 0.616f; g = 0.616f; b = 0.616f; break;  // PAL_GRAY
+                case OBJ_ITEMBOX: r = 0.45f; g = 0.30f; b = 0.15f; break;    // the brown trunk
                 default: break;
             }
             float size = scale * 0.3f;
@@ -1053,7 +1079,32 @@ static void ui_properties(void) {
                 changed = true;
             }
             changed |= ImGui::Checkbox("open", (bool*)&o->open);
-            changed |= ImGui::InputInt("key_id", &o->key_id);
+            // Lock: what opens the door. Keys are item ids; 0 (the bottle,
+            // never a key) reads as "none".
+            const char* locks[LOCK_KIND_COUNT];
+            for (int i = 0; i < LOCK_KIND_COUNT; i++) {
+                locks[i] = door_lock_name(i);
+            }
+            changed |= ImGui::Combo("lock", &o->lock, locks, LOCK_KIND_COUNT);
+            const char* keys[ITEM_COUNT];
+            keys[0] = "(none)";
+            for (int i = 1; i < ITEM_COUNT; i++) {
+                keys[i] = item_name((item_t)i);
+            }
+            if (o->lock == LOCK_KEY) {
+                changed |= ImGui::Combo("key", &o->key_id, keys, ITEM_COUNT);
+                changed |= ImGui::Combo("key2", &o->key2_id, keys, ITEM_COUNT);
+                changed |= ImGui::Combo("key3", &o->key3_id, keys, ITEM_COUNT);
+            } else if (o->lock == LOCK_OTHER_SIDE) {
+                int side = o->side < 0 ? 0 : 1;
+                const char* sides[2] = { "before (y-1 / x-1)", "after (y / x)" };
+                if (ImGui::Combo("opens from", &side, sides, 2)) {
+                    o->side = side ? 1 : -1;
+                    changed = true;
+                }
+            } else if (o->lock == LOCK_NONE) {
+                changed |= ImGui::InputInt("key_id", &o->key_id);
+            }
             // a normal door is always DOOR_SPAN wide; barriers and gates fit their gap
             if (strstr(o->name, "barrier") || strstr(o->name, "gate")) {
                 changed |= ImGui::InputInt("span", &o->span);
@@ -1070,6 +1121,8 @@ static void ui_properties(void) {
                 items[i] = item_name((item_t)i);
             }
             changed |= ImGui::Combo("item", &o->item_type, items, ITEM_COUNT);
+            changed |= ImGui::InputInt("qty", &o->qty);
+            ImGui::TextWrapped("%s", item_text(o->item_type));
         } else if (o->kind == OBJ_LIGHT) {
             changed |= ImGui::SliderFloat("light radius", &o->radius, LIGHT_RADIUS_MIN, LIGHT_RADIUS_MAX, "%.1f cells");
             tip("How far the light reaches (the game also stops it at walls)");
@@ -1097,6 +1150,35 @@ static void ui_properties(void) {
             if (o->openable) changed |= ImGui::Checkbox("open", (bool*)&o->open);
         } else if (o->kind == OBJ_FILE || o->kind == OBJ_SAFE) {
             changed |= ImGui::InputInt("code", &o->code);
+            if (o->kind == OBJ_SAFE) {
+                // a puzzle box: holding this item opens it (no puzzle)
+                const char* keys[ITEM_COUNT];
+                keys[0] = "(code instead)";
+                for (int i = 1; i < ITEM_COUNT; i++) keys[i] = item_name((item_t)i);
+                changed |= ImGui::Combo("opened by", &o->key_id, keys, ITEM_COUNT);
+            }
+        } else if (o->kind == OBJ_CABINET) {
+            // a coin cabinet: `code` Antique Coins buy item x qty (qty 0:
+            // +4 inventory slots instead)
+            changed |= ImGui::InputInt("price (coins)", &o->code);
+            const char* items[ITEM_COUNT];
+            for (int i = 0; i < ITEM_COUNT; i++) items[i] = item_name((item_t)i);
+            changed |= ImGui::Combo("sells", &o->item_type, items, ITEM_COUNT);
+            changed |= ImGui::InputInt("qty", &o->qty);
+            if (o->qty <= 0) ImGui::TextDisabled("qty 0: sells +4 inventory slots");
+        } else if (o->kind == OBJ_START) {
+            ImGui::TextDisabled("Player Spawn: Grace starts here (one per level)");
+        } else if (o->kind == OBJ_ENEMY_SPAWN) {
+            ImGui::TextDisabled("Enemy Spawn: the enemy spawns exactly here.");
+            ImGui::TextDisabled("No Enemy Spawn in the level: no enemy.");
+        } else if (o->kind == OBJ_GOAL) {
+            const char* items[ITEM_COUNT];
+            for (int i = 0; i < ITEM_COUNT; i++) items[i] = item_name((item_t)i);
+            changed |= ImGui::Combo("gives", &o->item_type, items, ITEM_COUNT);
+            changed |= ImGui::InputInt("qty", &o->qty);
+            ImGui::TextDisabled(o->qty > 0 ? "hands over the item once the fuse is in" : "qty 0: reaching it ends the level");
+        } else if (o->kind == OBJ_ITEMBOX) {
+            ImGui::TextDisabled("Item Box: every box shares one store");
         }
         changed |= ImGui::InputInt("link", &o->link_id);
         ed.dirty |= changed;
@@ -1126,9 +1208,14 @@ static void ui_properties(void) {
         ImGui::Text("Level");
         bool changed = false;
         changed |= ImGui::InputText("name", ed.level.name, LEVEL_MAX_NAME);
-        ImGui::Text("Start");
-        changed |= ImGui::InputInt("start x", &ed.level.start_x);
-        changed |= ImGui::InputInt("start y", &ed.level.start_y);
+        ImGui::Text("Player Spawn");
+        bool moved = ImGui::InputInt("start x", &ed.level.start_x);
+        moved |= ImGui::InputInt("start y", &ed.level.start_y);
+        if (moved && player_spawn()) {
+            player_spawn()->x = ed.level.start_x;
+            player_spawn()->y = ed.level.start_y;
+        }
+        changed |= moved;
         changed |= ImGui::InputInt("cols", &ed.level.cols);
         changed |= ImGui::InputInt("rows", &ed.level.rows);
         ed.dirty |= changed;

@@ -11,6 +11,7 @@ typedef enum {
     ENEMY_BREAKING,
     ENEMY_WAIT,         // just hurt Grace: stands still, senses nothing
     ENEMY_INVESTIGATE,  // going to look at and around a bottle's impact
+    ENEMY_DEAD,         // killed: fades away, then is gone for good
 } enemy_state_t;
 
 // The whole enemy (position, state, timers, anger, route) for save slots.
@@ -28,7 +29,13 @@ typedef enum {
     SENSE_SMELL,
 } enemy_sense_t;
 
+// The level's one enemy type. enemy_spawn spawns it exactly on the level's
+// Enemy Spawn object; enemy_init (an old save with no enemy state) puts it
+// 10-18 path cells from (avoid_x, avoid_y), away from Grace. enemy_clear:
+// the level has no enemy.
 void enemy_init(int avoid_x, int avoid_y);
+void enemy_spawn(int x, int y);
+void enemy_clear(void);
 // noise is how far Grace's footsteps carry this frame, in cells.
 // Returns true on the frame the enemy touches Grace.
 bool enemy_update(float dt, float grace_x, float grace_y, float noise);
@@ -40,6 +47,17 @@ void enemy_rest(float seconds);
 void enemy_set_grace_lit(bool lit);
 // A bottle hit: stunned and flashing for the given seconds.
 void enemy_damage(float seconds);
+// Health. A weapon hit takes `amount` points; a critical hit kills outright.
+// Under ENEMY_HP left it staggers briefly; at 0 it dies and fades away.
+#define ENEMY_HP 100.0f
+#define ENEMY_STAGGER_SECONDS 0.8f
+#define ENEMY_FADE_SECONDS 2.0f
+// True if this hit killed it.
+bool enemy_hurt(float amount, bool critical);
+float enemy_hp(void);
+bool enemy_alive(void);
+// 1 while alive, falling to 0 as a dead enemy fades away.
+float enemy_alpha(void);
 // Seconds of damage flashing left (0 when not flashing).
 float enemy_flash(void);
 // Seconds of anger left after a hit (0 when calm).

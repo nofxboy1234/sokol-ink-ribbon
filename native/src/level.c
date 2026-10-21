@@ -126,12 +126,14 @@ void level_init(level_t* lv) {
 const char* obj_kind_name(obj_kind_t kind) {
     static const char* names[OBJ_KIND_COUNT] = {
         "door", "item", "fusebox", "light", "switch", "typewriter", "file",
-        "safe", "obstacle", "start", "goal", "recipe", "cabinet", "stairs",
+        "safe", "obstacle", "player_spawn", "goal", "recipe", "cabinet", "stairs", "microscope", "itembox",
+        "enemy_spawn",
     };
     return (kind >= 0 && kind < OBJ_KIND_COUNT) ? names[kind] : "door";
 }
 
 obj_kind_t obj_kind_from_name(const char* name) {
+    if (strcmp(name, "start") == 0) return OBJ_START;  // the old name of the player spawn
     for (int i = 0; i < OBJ_KIND_COUNT; i++) {
         if (strcmp(name, obj_kind_name((obj_kind_t)i)) == 0) {
             return (obj_kind_t)i;
@@ -144,20 +146,117 @@ typedef struct {
     const char* id;
     const char* label;
     float r, g, b;
-    int icon;
+    int icon;  // 0 dot, 1 square, 2 ring, 3 ringed dot, 4 triangle, 5 diamond, 6 plus, 7 open square
+    item_cat_t cat;
+    const char* text;
 } item_info_t;
 
+// The one item catalog: the game, the editor and the web UI all read it.
 static const item_info_t k_items[ITEM_COUNT] = {
-    [ITEM_BOTTLE] = { "bottle", "Empty Bottle", 0.0f, 0.031f, 1.0f, 0 },
-    [ITEM_COIN] = { "coin", "Antique Coin", 0.733f, 0.733f, 0.733f, 0 },
-    [ITEM_HERB] = { "herb", "Green Herb", 0.0f, 1.0f, 0.149f, 0 },
-    [ITEM_INK_RIBBON] = { "ink_ribbon", "Ink Ribbon", 0.8f, 0.0f, 0.4f, 3 },
-    [ITEM_SCREWDRIVER] = { "screwdriver", "Screwdriver", 1.0f, 0.0f, 0.933f, 2 },
-    [ITEM_INJECTOR] = { "injector", "Med Injector", 0.0f, 0.8f, 0.15f, 3 },
-    [ITEM_FUSE] = { "fuse", "Fuse", 0.0f, 1.0f, 0.733f, 0 },
-    [ITEM_LIGHTER] = { "lighter", "Lighter", 0.95f, 0.95f, 0.0f, 1 },
-    [ITEM_CHERUB_KEY] = { "cherub_key", "Cherub Key", 0.9f, 0.0f, 0.15f, 3 },
-    [ITEM_MIXED_HERB] = { "mixed_herb", "Mixed Herb (G+G)", 0.13f, 0.45f, 0.10f, 0 },
+    [ITEM_BOTTLE] = { "bottle", "Empty Bottle", 0.0f, 0.031f, 1.0f, 0, ICAT_THROWABLE,
+        "A clear glass bottle. Equip it and throw it to stun the enemy or make a noise." },
+    [ITEM_COIN] = { "coin", "Antique Coin", 0.733f, 0.733f, 0.733f, 0, ICAT_KEY,
+        "A worn coin stamped with a crest. Collectors pay for these." },
+    [ITEM_HERB] = { "herb", "Green Herb", 0.0f, 1.0f, 0.149f, 0, ICAT_HEAL,
+        "A fresh green herb. Used on its own it restores one level of health (Danger to Caution, Caution to Fine)." },
+    [ITEM_INK_RIBBON] = { "ink_ribbon", "Ink Ribbon", 0.8f, 0.0f, 0.4f, 3, ICAT_KEY,
+        "A typewriter ribbon. Saving at a typewriter spends one." },
+    [ITEM_SCREWDRIVER] = { "screwdriver", "Screwdriver", 1.0f, 0.0f, 0.933f, 2, ICAT_TOOL,
+        "A small flat-head screwdriver. It pries panels and tightens fittings." },
+    [ITEM_INJECTOR] = { "injector", "Med Injector", 0.0f, 0.8f, 0.15f, 3, ICAT_HEAL,
+        "A prepared dose in a glass syringe. It restores Grace to full health." },
+    [ITEM_FUSE] = { "fuse", "Fuse", 0.0f, 1.0f, 0.733f, 0, ICAT_KEY,
+        "A glass cartridge fuse. The basement fuse box will take it." },
+    [ITEM_LIGHTER] = { "lighter", "Lighter", 0.95f, 0.95f, 0.0f, 1, ICAT_TOOL,
+        "A pocket lighter. It sits in the top slot of Quick Equip; pick it there to light it or put it out." },
+    [ITEM_CHERUB_KEY] = { "cherub_key", "Cherub Key", 0.9f, 0.0f, 0.15f, 3, ICAT_KEY,
+        "A key topped with a small cherub. It opens a matching lock." },
+    [ITEM_MIXED_HERB] = { "mixed_herb", "Mixed Herb (G+G)", 0.13f, 0.45f, 0.10f, 0, ICAT_HEAL,
+        "This is a combination of 2 Green Herbs. It restores Grace to full health." },
+    [ITEM_HANDGUN_AMMO] = { "handgun_ammo", "Handgun Ammo", 0.85f, 0.65f, 0.15f, 4, ICAT_AMMO,
+        "Rounds for the S&S M232 and the B934." },
+    [ITEM_MAGNUM_AMMO] = { "magnum_ammo", "12.7x55mm Ammo", 0.75f, 0.30f, 0.0f, 4, ICAT_AMMO,
+        "Heavy cartridges for the Requiem revolver." },
+    [ITEM_INFECTED_BLOOD] = { "infected_blood", "Infected Blood", 0.45f, 0.0f, 0.05f, 0, ICAT_BLOOD,
+        "A pool of infected blood. The Blood Collector draws it up for crafting." },
+    [ITEM_TRANSFUSION_BAG] = { "transfusion_bag", "Transfusion Bag", 0.70f, 0.05f, 0.15f, 1, ICAT_CONSUMABLE,
+        "A bag full of infected blood. Use it to refill the Blood Collector; blood past its limit is lost." },
+    [ITEM_SCRAP] = { "scrap", "Scrap", 0.55f, 0.50f, 0.45f, 1, ICAT_MATERIAL,
+        "Odds and ends of metal. A crafting material." },
+    [ITEM_RARE_METAL] = { "rare_metal", "Rare Metal", 0.40f, 0.75f, 0.85f, 1, ICAT_MATERIAL,
+        "A lump of uncommon metal. A crafting material." },
+    [ITEM_HIP_POUCH] = { "hip_pouch", "Hip Pouch", 0.55f, 0.35f, 0.15f, 7, ICAT_POUCH,
+        "A belt pouch. Adds two inventory slots." },
+    [ITEM_LOCKPICK] = { "lockpick", "Lockpick", 0.6f, 0.6f, 0.65f, 6, ICAT_KEY,
+        "Opens a simple lock on a drawer or locker. Breaks after one use." },
+    [ITEM_SPECIMEN_DENATURED] = { "specimen_denatured", "Blood Specimen (Denatured)", 0.9f, 0.4f, 0.5f, 2, ICAT_KEY,
+        "Analyse it at a Laser Microscope to learn Handgun Ammo and Hemolytic Injector recipes." },
+    [ITEM_SPECIMEN_CONVERGED] = { "specimen_converged", "Blood Specimen (Converged)", 0.9f, 0.4f, 0.5f, 2, ICAT_KEY,
+        "Analyse it at a Laser Microscope to learn the Ink Ribbon recipe." },
+    [ITEM_SPECIMEN_REVERSIBLE] = { "specimen_reversible", "Blood Specimen (Reversible)", 0.9f, 0.4f, 0.5f, 2, ICAT_KEY,
+        "Analyse it at a Laser Microscope to learn the Steroids and Stabilizer recipes." },
+    [ITEM_CHARM_EYE_SPY] = { "charm_eye_spy", "Eye Spy Charm", 0.3f, 0.8f, 1.0f, 2, ICAT_CHARM,
+        "Works just by holding it. Once, a hit that would kill Grace leaves her in Danger instead." },
+    [ITEM_CHARM_STAKEOUT] = { "charm_stakeout", "Stakeout Takeout Charm", 0.9f, 0.5f, 0.9f, 2, ICAT_CHARM,
+        "Works just by holding it. Knives hit harder and wear out slower." },
+    [ITEM_GUN_M232] = { "gun_m232", "S&S M232", 0.20f, 0.20f, 0.25f, 5, ICAT_GUN,
+        "An incredibly reliable handgun. Grace bought it for self-defense with her first paycheck. Uses Handgun Ammo." },
+    [ITEM_GUN_B934] = { "gun_b934", "B934", 0.35f, 0.30f, 0.25f, 5, ICAT_GUN,
+        "A straight blowback handgun built for durability over firepower. Uses Handgun Ammo." },
+    [ITEM_GUN_REQUIEM] = { "gun_requiem", "Requiem", 0.10f, 0.10f, 0.10f, 5, ICAT_GUN,
+        "A DSO-issued, large assault revolver. Huge stopping power. Uses 12.7x55mm Ammo." },
+    [ITEM_HEMOLYTIC_INJECTOR] = { "hemolytic_injector", "Hemolytic Injector", 0.6f, 0.0f, 0.6f, 6, ICAT_MELEE,
+        "Destroys infected blood cells. Used on a stunned or unaware enemy next to Grace, it puts it down for a long time." },
+    [ITEM_HUNTING_KNIFE] = { "hunting_knife", "Hunting Knife", 0.75f, 0.75f, 0.80f, 6, ICAT_MELEE,
+        "A sharp knife. Stabs an enemy next to Grace. Breaks after a few uses." },
+    [ITEM_MAKESHIFT_KNIFE] = { "makeshift_knife", "Makeshift Knife", 0.6f, 0.55f, 0.5f, 6, ICAT_MELEE,
+        "A crude but sturdy blade. Stabs an enemy next to Grace and lasts longer than the Hunting Knife." },
+    [ITEM_EAST_WING_KEYCARD] = { "east_wing_keycard", "East Wing Keycard", 0.2f, 0.4f, 1.0f, 7, ICAT_KEY,
+        "Opens the East Wing Door." },
+    [ITEM_WEST_WING_KEYCARD] = { "west_wing_keycard", "West Wing Keycard", 1.0f, 0.4f, 0.2f, 7, ICAT_KEY,
+        "Opens the West Wing Door." },
+    [ITEM_WRISTBAND_1] = { "wristband_1", "ID Wristband (Level 1)", 0.2f, 0.85f, 0.4f, 7, ICAT_KEY,
+        "Clears Security Point Lv. 1 doors." },
+    [ITEM_WRISTBAND_2] = { "wristband_2", "ID Wristband (Level 2)", 0.95f, 0.8f, 0.1f, 7, ICAT_KEY,
+        "Clears Security Point Lv. 1 and Lv. 2 doors." },
+    [ITEM_WRISTBAND_3] = { "wristband_3", "ID Wristband (Level 3)", 0.9f, 0.1f, 0.1f, 7, ICAT_KEY,
+        "Clears every Security Point." },
+    [ITEM_PANTRY_KEY] = { "pantry_key", "Pantry Key", 0.7f, 0.5f, 0.2f, 7, ICAT_KEY,
+        "Opens the Pantry Door." },
+    [ITEM_STAR_QUARTZ] = { "star_quartz", "Star Quartz", 1.0f, 1.0f, 0.6f, 5, ICAT_KEY,
+        "A quartz cut like a star. Fits an indent in the main hall door." },
+    [ITEM_MOON_QUARTZ] = { "moon_quartz", "Moon Quartz", 0.7f, 0.8f, 1.0f, 5, ICAT_KEY,
+        "A quartz cut like a moon. Fits an indent in the main hall door." },
+    [ITEM_SUN_QUARTZ] = { "sun_quartz", "Sun Quartz", 1.0f, 0.6f, 0.1f, 5, ICAT_KEY,
+        "A quartz cut like a sun. Fits an indent in the main hall door." },
+    [ITEM_RED_JEWEL] = { "red_jewel", "Red Jewel", 0.85f, 0.0f, 0.3f, 5, ICAT_KEY,
+        "A red jewel. Fits the Door with Indent." },
+    [ITEM_ARTIFICIAL_HEART] = { "artificial_heart", "Artificial Heart", 0.9f, 0.2f, 0.3f, 3, ICAT_KEY,
+        "A mechanical heart. Something in the Care Center is missing one." },
+    [ITEM_ORGAN_BOX] = { "organ_box", "Organ Transport Box", 0.8f, 0.8f, 0.85f, 7, ICAT_KEY,
+        "A locked transport box. The Leatherbound Notebook explains how to open it." },
+    [ITEM_SEVERED_HAND] = { "severed_hand", "Severed Hand", 0.75f, 0.6f, 0.5f, 3, ICAT_KEY,
+        "A severed hand. Its fingerprints still open a scanner." },
+    [ITEM_BLOOD_COLLECTOR] = { "blood_collector", "Blood Collector", 0.55f, 0.0f, 0.1f, 2, ICAT_TOOL,
+        "Draws up Infected Blood for crafting. Holds 100 units (150 with the Override Manual)." },
+    [ITEM_WRENCH] = { "wrench", "Wrench", 0.5f, 0.5f, 0.6f, 2, ICAT_TOOL,
+        "A heavy wrench. It can turn a Sturdy Lock." },
+    [ITEM_OVERRIDE_MANUAL] = { "override_manual", "Override Manual", 0.3f, 0.3f, 0.7f, 1, ICAT_CONSUMABLE,
+        "A Blood Collector upgrade. Use it to raise the collector's limit by 50 units." },
+    [ITEM_STABILIZER] = { "stabilizer", "Stabilizer", 0.2f, 0.6f, 0.9f, 3, ICAT_CONSUMABLE,
+        "Improves gun handling and firepower. Up to 4 doses." },
+    [ITEM_STEROIDS] = { "steroids", "Steroids", 0.9f, 0.3f, 0.1f, 3, ICAT_CONSUMABLE,
+        "Raises Grace's toughness and heals her fully. Up to 4 doses." },
+    [ITEM_CORROSIVE] = { "corrosive", "Corrosive", 0.6f, 0.9f, 0.1f, 0, ICAT_KEY,
+        "A bottle of strong corrosive. It eats through a rusted lock." },
+    [ITEM_PENCIL] = { "pencil", "Pencil", 0.95f, 0.85f, 0.3f, 6, ICAT_KEY,
+        "A pencil. Shading a notebook page shows what was written on the page above." },
+    [ITEM_UNICORN_BOX] = { "unicorn_box", "Unicorn Trinket Box", 0.95f, 0.75f, 0.9f, 7, ICAT_KEY,
+        "A trinket box with a unicorn on the lid. The Red Jewel is inside." },
+    [ITEM_NOTEBOOK] = { "notebook", "Leatherbound Notebook", 0.45f, 0.25f, 0.1f, 1, ICAT_KEY,
+        "A notebook. Its notes open the Organ Transport Box." },
+    [ITEM_MR_RACCOON] = { "mr_raccoon", "Mr. Raccoon Memoriam", 0.5f, 0.5f, 0.5f, 4, ICAT_COLLECTIBLE,
+        "A Mr. Raccoon statue. A collectible." },
 };
 
 static const item_info_t* item_row(int item) {
@@ -243,6 +342,29 @@ const char* item_color_hex(int item) {
 int item_icon_shape(int item) {
     const item_info_t* row = item_row(item);
     return row ? row->icon : 0;
+}
+
+item_cat_t item_category(int item) {
+    const item_info_t* row = item_row(item);
+    return row ? row->cat : ICAT_KEY;
+}
+
+const char* item_text(int item) {
+    const item_info_t* row = item_row(item);
+    return row ? row->text : "";
+}
+
+static const char* k_locks[LOCK_KIND_COUNT] = { "none", "key", "other_side", "jammed" };
+
+const char* door_lock_name(int lock) {
+    return (lock >= 0 && lock < LOCK_KIND_COUNT) ? k_locks[lock] : "none";
+}
+
+int door_lock_from_name(const char* name) {
+    for (int i = 0; i < LOCK_KIND_COUNT; i++) {
+        if (strcmp(name, k_locks[i]) == 0) return i;
+    }
+    return -1;
 }
 
 void door_color_rgb(int state, float* r, float* g, float* b) {
@@ -505,6 +627,16 @@ static void parse_objects(const char* js, const jsmntok_t* t, level_t* lv, int a
             if ((v = obj_find(js, t, i, "movable")) >= 0) o->movable = tok_bool(js, &t[v], false) ? 1 : 0;
             if ((v = obj_find(js, t, i, "openable")) >= 0) o->openable = tok_bool(js, &t[v], false) ? 1 : 0;
             if ((v = obj_find(js, t, i, "code")) >= 0) o->code = tok_int(js, &t[v], 0);
+            if ((v = obj_find(js, t, i, "qty")) >= 0) o->qty = tok_int(js, &t[v], 0);
+            if ((v = obj_find(js, t, i, "key2_id")) >= 0) o->key2_id = tok_int(js, &t[v], 0);
+            if ((v = obj_find(js, t, i, "key3_id")) >= 0) o->key3_id = tok_int(js, &t[v], 0);
+            if ((v = obj_find(js, t, i, "side")) >= 0) o->side = tok_int(js, &t[v], 0);
+            if ((v = obj_find(js, t, i, "lock")) >= 0) {
+                char lock[LEVEL_MAX_NAME] = "none";
+                tok_str(js, &t[v], lock, LEVEL_MAX_NAME);
+                int l = door_lock_from_name(lock);
+                o->lock = l < 0 ? LOCK_NONE : l;
+            }
             if ((v = obj_find(js, t, i, "name")) >= 0) tok_str(js, &t[v], o->name, LEVEL_MAX_NAME);
             char state[LEVEL_MAX_NAME] = "unknown";
             if ((v = obj_find(js, t, i, "state")) >= 0) {
@@ -570,6 +702,13 @@ bool level_from_json(level_t* lv, const char* json) {
     }
     if ((v = obj_find(json, tokens, 0, "sections")) >= 0) parse_sections(json, tokens, lv, v);
     if ((v = obj_find(json, tokens, 0, "objects")) >= 0) parse_objects(json, tokens, lv, v);
+    // the Player Spawn object is where she starts
+    for (int i = 0; i < lv->obj_count; i++) {
+        if (lv->objs[i].kind == OBJ_START) {
+            lv->start_x = lv->objs[i].x;
+            lv->start_y = lv->objs[i].y;
+        }
+    }
     free(tokens);
     if (lv->has_tiles) {
         level_compile_tiles(lv);
@@ -678,8 +817,13 @@ int level_to_json(const level_t* lv, char* out, int cap) {
             }
             n = ap(out, cap, n, ", \"open\": %s, \"key_id\": %d, \"auto_close\": %.2f, \"breakable\": %s",
                    o->open ? "true" : "false", o->key_id, o->auto_close, o->breakable ? "true" : "false");
+            if (o->lock != LOCK_NONE) {
+                n = ap(out, cap, n, ", \"lock\": \"%s\", \"key2_id\": %d, \"key3_id\": %d, \"side\": %d",
+                       door_lock_name(o->lock), o->key2_id, o->key3_id, o->side);
+            }
         } else if (o->kind == OBJ_ITEM) {
             n = ap(out, cap, n, ", \"item\": \"%s\"", item_name((item_t)o->item_type));
+            if (o->qty > 1) n = ap(out, cap, n, ", \"qty\": %d", o->qty);
         } else if (o->kind == OBJ_LIGHT) {
             n = ap(out, cap, n, ", \"radius\": %.2f, \"state\": %d, \"group_id\": %d, \"breakable\": %s",
                    o->radius, o->state, o->group_id, o->breakable ? "true" : "false");
@@ -692,8 +836,18 @@ int level_to_json(const level_t* lv, char* out, int cap) {
                    o->w, o->h, o->climbable ? "true" : "false");
             if (o->movable) n = ap(out, cap, n, ", \"movable\": true");
             if (o->openable) n = ap(out, cap, n, ", \"openable\": true, \"open\": %s", o->open ? "true" : "false");
+            if (o->key_id > 0) n = ap(out, cap, n, ", \"key_id\": %d", o->key_id);
+            if (o->lock != LOCK_NONE) n = ap(out, cap, n, ", \"lock\": \"%s\"", door_lock_name(o->lock));
         } else if (o->kind == OBJ_FILE || o->kind == OBJ_SAFE) {
             n = ap(out, cap, n, ", \"code\": %d", o->code);
+            if (o->kind == OBJ_SAFE && o->key_id > 0) n = ap(out, cap, n, ", \"key_id\": %d", o->key_id);
+            if (o->kind == OBJ_SAFE && o->open) n = ap(out, cap, n, ", \"open\": true");
+        } else if (o->kind == OBJ_GOAL && o->qty > 0) {
+            n = ap(out, cap, n, ", \"item\": \"%s\", \"qty\": %d", item_name((item_t)o->item_type), o->qty);
+        } else if (o->kind == OBJ_CABINET) {
+            // price in coins, and what it sells (qty 0: the old +4 slots)
+            n = ap(out, cap, n, ", \"code\": %d", o->code);
+            if (o->qty > 0) n = ap(out, cap, n, ", \"item\": \"%s\", \"qty\": %d", item_name((item_t)o->item_type), o->qty);
         }
         if (o->link_id > 0) {
             n = ap(out, cap, n, ", \"link\": %d", o->link_id);

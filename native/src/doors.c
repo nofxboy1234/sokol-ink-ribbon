@@ -187,10 +187,53 @@ static int linked_item_type(const obj_t* o) {
 
 // The item type that unlocks this door or openable, or -1 if none does.
 int doors_key_type(const obj_t* o) {
-    if (o->kind == OBJ_DOOR && o->key_id > 0) {
+    if ((o->kind == OBJ_DOOR || o->kind == OBJ_OBSTACLE) && o->key_id > 0) {
         return o->key_id;
     }
     return linked_item_type(o);
+}
+
+// A higher ID Wristband clears every lower Security Point.
+bool doors_has_key(int item) {
+    if (item < 0 || inventory_has(item)) return true;
+    if (item == ITEM_WRISTBAND_1) return inventory_has(ITEM_WRISTBAND_2) || inventory_has(ITEM_WRISTBAND_3);
+    if (item == ITEM_WRISTBAND_2) return inventory_has(ITEM_WRISTBAND_3);
+    return false;
+}
+
+static bool on_open_side(const obj_t* o, int px, int py) {
+    if (o->side == 0) return true;
+    int v = o->horizontal ? py : px;
+    int line = o->horizontal ? o->y : o->x;
+    return o->side > 0 ? v >= line : v < line;
+}
+
+// Whether Grace, standing at (px, py), can unlock this locked door now.
+bool doors_unlockable(const obj_t* o, int px, int py) {
+    if (o->kind != OBJ_DOOR || o->state != DOOR_LOCKED || o->code > 0) return false;
+    switch (o->lock) {
+        case LOCK_JAMMED: return false;
+        case LOCK_OTHER_SIDE: return on_open_side(o, px, py);
+        case LOCK_KEY:
+            return doors_has_key(o->key_id) && (o->key2_id <= 0 || doors_has_key(o->key2_id)) &&
+                   (o->key3_id <= 0 || doors_has_key(o->key3_id));
+        default: {
+            int key = doors_key_type(o);
+            return key >= 0 && inventory_has(key);
+        }
+    }
+}
+
+// Unlock it and spend keys no other lock still needs.
+void doors_unlock(int index) {
+    obj_t* o = &dr.level->objs[index];
+    o->state = DOOR_UNLOCKED;
+    o->open = 0;
+    dr.discovered[index] = 1;
+    int keys[3] = { doors_key_type(o), o->key2_id, o->key3_id };
+    for (int k = 0; k < 3; k++) {
+        if (keys[k] > 0) doors_drop_key_if_done(keys[k]);
+    }
 }
 
 static bool will_be_locked(const obj_t* d) {
@@ -207,15 +250,16 @@ static bool will_be_locked(const obj_t* d) {
 }
 
 void doors_drop_key_if_done(int item_type) {
-    if (item_type < 0) {
-        return;
+    if (item_type < 0 || item_category(item_type) == ICAT_TOOL) {
+        return;  // tools (Lighter, Wrench, Screwdriver) are never used up
     }
     const level_t* lv = dr.level;
     for (int k = 0; k < lv->obj_count; k++) {
         const obj_t* d = &lv->objs[k];
         bool waiting = (is_door(d) && will_be_locked(d)) ||
                        ((d->kind == OBJ_OBSTACLE && d->openable) && !d->open);
-        if (waiting && doors_key_type(d) == item_type) {
+        if (waiting && item_type != ITEM_LOCKPICK &&
+            (doors_key_type(d) == item_type || (is_door(d) && (d->key2_id == item_type || d->key3_id == item_type)))) {
             return;
         }
     }
@@ -256,12 +300,8 @@ bool doors_interact(int x, int y) {
             continue;
         }
         if (o->state == DOOR_LOCKED && o->code > 0) { pending_code_door = i; return true; }
-        int key = doors_key_type(o);
-        if (o->state == DOOR_LOCKED && key >= 0 && inventory_has(key)) {
-            o->state = DOOR_UNLOCKED;
-            o->open = 0;
-            dr.discovered[i] = 1;
-            doors_drop_key_if_done(key);
+        if (doors_unlockable(o, px, py)) {
+            doors_unlock(i);
             return true;
         }
         if (o->state == DOOR_UNLOCKED) {

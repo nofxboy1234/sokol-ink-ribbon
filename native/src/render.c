@@ -49,6 +49,15 @@ static void fill_rect(float x, float y, float w, float h, float cr, float cg, fl
     sgl_end();
 }
 
+static void fill_tri(float x0, float y0, float x1, float y1, float x2, float y2, float cr, float cg, float cb, float ca) {
+    sgl_begin_triangles();
+    sgl_c4f(cr, cg, cb, ca);
+    sgl_v2f(x0, y0);
+    sgl_v2f(x1, y1);
+    sgl_v2f(x2, y2);
+    sgl_end();
+}
+
 static void fill_circle(float cx, float cy, float radius, float cr, float cg, float cb, float ca) {
     const int segments = 20;
     sgl_begin_triangle_strip();
@@ -259,6 +268,28 @@ static void item_color(int item, float* cr, float* cg, float* cb) {
 
 static void door_color(const obj_t* o, float* cr, float* cg, float* cb) {
     door_color_rgb(o->state, cr, cg, cb);
+    if (o->state == DOOR_LOCKED && o->lock == LOCK_JAMMED) {
+        *cr = *cg = *cb = 0.38f;  // warped or blocked: never opens for Grace
+    }
+}
+
+// A locked door shows what opens it: a chip in the key's colour, or a
+// small bar on the side it opens from.
+static void door_lock_mark(const obj_t* o, float lx, float ly, float spanpx, float scale) {
+    if (o->state != DOOR_LOCKED || o->open) return;
+    float mx = o->horizontal ? lx + spanpx * 0.5f : lx;
+    float my = o->horizontal ? ly : ly + spanpx * 0.5f;
+    float r = scale * 0.22f;
+    if (o->lock == LOCK_KEY && o->key_id > 0) {
+        float cr, cg, cb;
+        item_color_rgb(o->key_id, &cr, &cg, &cb);
+        fill_rect(mx - r, my - r, r * 2.0f, r * 2.0f, C_INK_R);
+        fill_rect(mx - r * 0.7f, my - r * 0.7f, r * 1.4f, r * 1.4f, cr, cg, cb, 1.0f);
+    } else if (o->lock == LOCK_OTHER_SIDE && o->side != 0) {
+        float d = scale * 0.55f * (float)o->side;
+        float ox = o->horizontal ? 0.0f : d, oy = o->horizontal ? d : 0.0f;
+        fill_rect(mx + ox - r * 0.5f, my + oy - r * 0.5f, r, r, C_INK_R);
+    }
 }
 
 static void draw_objects_pass(int item_pass) {
@@ -324,6 +355,7 @@ static void draw_objects_pass(int item_pass) {
                         fill_rect(lx + th * 0.5f, ly, edge, spanpx, C_INK_R);
                     }
                 }
+                door_lock_mark(o, lx, ly, spanpx, scale);
                 break;
             }
             case OBJ_ITEM: {
@@ -340,6 +372,21 @@ static void draw_objects_pass(int item_pass) {
                 } else if (shape == 3) {
                     fill_circle(c, d, rad, cr, cg, cb, 1.0f);
                     ring_circle(c, d, rad, scale * 0.1f, C_INK_R);
+                } else if (shape == 4) {
+                    fill_tri(c, d - rad, c + rad, d + rad * 0.8f, c - rad, d + rad * 0.8f, cr, cg, cb, 1.0f);
+                } else if (shape == 5) {
+                    fill_tri(c, d - rad, c + rad, d, c - rad, d, cr, cg, cb, 1.0f);
+                    fill_tri(c, d + rad, c - rad, d, c + rad, d, cr, cg, cb, 1.0f);
+                } else if (shape == 6) {
+                    float t = rad * 0.38f;
+                    fill_rect(c - rad, d - t, rad * 2.0f, t * 2.0f, cr, cg, cb, 1.0f);
+                    fill_rect(c - t, d - rad, t * 2.0f, rad * 2.0f, cr, cg, cb, 1.0f);
+                } else if (shape == 7) {
+                    float t = scale * 0.12f;
+                    fill_rect(c - rad, d - rad, rad * 2.0f, t, cr, cg, cb, 1.0f);
+                    fill_rect(c - rad, d + rad - t, rad * 2.0f, t, cr, cg, cb, 1.0f);
+                    fill_rect(c - rad, d - rad, t, rad * 2.0f, cr, cg, cb, 1.0f);
+                    fill_rect(c + rad - t, d - rad, t, rad * 2.0f, cr, cg, cb, 1.0f);
                 } else {
                     fill_circle(c, d, rad, cr, cg, cb, 1.0f);
                 }
@@ -354,7 +401,25 @@ static void draw_objects_pass(int item_pass) {
             }
             case OBJ_CABINET: {
                 fill_rect(sx + scale * 0.15f, sy + scale * 0.1f, scale * 0.7f, scale * 0.8f, PAL_GRAY, 1.0f);
-                ring_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.18f, scale * 0.07f, C_YELLOW_R);
+                if (o->qty > 0 && !o->state) {
+                    // the prize behind the glass, in its item colour
+                    float cr, cg, cb;
+                    item_color(o->item_type, &cr, &cg, &cb);
+                    fill_rect(sx + scale * 0.3f, sy + scale * 0.2f, scale * 0.4f, scale * 0.35f, cr, cg, cb, 1.0f);
+                }
+                ring_circle(sx + scale * 0.5f, sy + scale * 0.7f, scale * 0.12f, scale * 0.06f, C_YELLOW_R);
+                break;
+            }
+            case OBJ_ITEMBOX: {
+                // a brown trunk with a dark lid line
+                fill_rect(sx + scale * 0.1f, sy + scale * 0.25f, scale * 0.8f, scale * 0.6f, 0.45f, 0.28f, 0.12f, 1.0f);
+                thick_line(sx + scale * 0.1f, sy + scale * 0.42f, sx + scale * 0.9f, sy + scale * 0.42f, scale * 0.06f, C_INK_R);
+                break;
+            }
+            case OBJ_MICROSCOPE: {
+                fill_rect(sx + scale * 0.2f, sy + scale * 0.7f, scale * 0.6f, scale * 0.15f, PAL_GRAY, 1.0f);
+                thick_line(sx + scale * 0.35f, sy + scale * 0.7f, sx + scale * 0.6f, sy + scale * 0.2f, scale * 0.14f, C_INK_R);
+                fill_circle(sx + scale * 0.62f, sy + scale * 0.22f, scale * 0.1f, 0.9f, 0.1f, 0.2f, 1.0f);
                 break;
             }
             case OBJ_GOAL: {
@@ -455,7 +520,8 @@ static void draw_discovery_markers(void) {
         const obj_t* o = &lv->objs[i];
         if (o->kind != OBJ_ITEM && o->kind != OBJ_DOOR && o->kind != OBJ_SWITCH &&
             o->kind != OBJ_TYPEWRITER && o->kind != OBJ_FUSEBOX &&
-            o->kind != OBJ_FILE && o->kind != OBJ_SAFE && !(o->kind == OBJ_OBSTACLE && o->openable) &&
+            o->kind != OBJ_FILE && o->kind != OBJ_SAFE && o->kind != OBJ_ITEMBOX && o->kind != OBJ_CABINET &&
+            o->kind != OBJ_MICROSCOPE && !(o->kind == OBJ_OBSTACLE && o->openable) &&
             !(o->kind == OBJ_OBSTACLE && o->climbable)) {
             continue;
         }
@@ -612,7 +678,15 @@ void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* ro
 
     draw_discovery_markers();
 
-    if (grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y())) &&
+    if (!enemy_alive()) {
+        // killed: a grey dot that fades away, then nothing
+        float fade = enemy_alpha();
+        if (fade > 0.0f && grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
+            float ex, ey;
+            camera_cell_to_screen(enemy_x(), enemy_y(), &ex, &ey);
+            fill_circle(ex, ey, scale * 0.64f, 0.45f, 0.45f, 0.45f, fade);
+        }
+    } else if (grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y())) &&
         !light_cell_lit((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
         // In the dark the enemy is always just a black outline of its dot:
         // a hollow circle, no fill, whatever Grace can hear or smell. (This

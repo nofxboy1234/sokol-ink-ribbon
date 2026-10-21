@@ -1,6 +1,7 @@
 #include "interact.h"
 #include "doors.h"
 #include "grid.h"
+#include "gear.h"
 #include "inventory.h"
 #include "crafting.h"
 #include "items.h"
@@ -19,6 +20,7 @@ static struct {
     bool goal;
     bool save_menu;
     bool complete;
+    bool itembox;  // an Item Box was just opened
     int pending_safe;
 } in;
 
@@ -162,8 +164,11 @@ bool interact_at(int x, int y) {
             return true;
         }
         if ((o->kind == OBJ_OBSTACLE && o->openable) && !o->open) {
+            if (o->lock == LOCK_JAMMED) {
+                return true;  // warped shut: Grace can't open it
+            }
             int keytype = doors_key_type(o);
-            if (keytype >= 0 && !inventory_has(keytype)) {
+            if (keytype >= 0 && !doors_has_key(keytype)) {
                 return true; // needs the linked key
             }
             o->open = 1;
@@ -187,8 +192,34 @@ bool interact_at(int x, int y) {
             }
             return true;
         }
+        if (o->kind == OBJ_SAFE && !o->open && o->key_id > 0) {
+            // no puzzles: holding the item it is for opens it
+            if (doors_has_key(o->key_id)) {
+                o->open = 1;
+                doors_drop_key_if_done(o->key_id);
+            }
+            return true;
+        }
+        if (o->kind == OBJ_SAFE && !o->open && o->link_id > 0) {
+            // no dial: the safe opens once she has picked up its code file
+            // (the file it links to); until then it stays locked
+            for (int k = 0; k < in.level->obj_count; k++) {
+                if (in.level->objs[k].id == o->link_id && in.level->objs[k].kind == OBJ_FILE && file_found(k)) {
+                    o->open = 1;
+                }
+            }
+            return true;
+        }
         if (o->kind == OBJ_SAFE && !o->open) {
             in.pending_safe = i;  // React opens the keypad; interact_try_safe_code checks it
+            return true;
+        }
+        if (o->kind == OBJ_ITEMBOX) {
+            in.itembox = true;  // the UI opens the box; see interact_take_itembox
+            return true;
+        }
+        if (o->kind == OBJ_MICROSCOPE) {
+            gear_analyse_specimen();
             return true;
         }
         if (o->kind == OBJ_RECIPE && !o->state) {
@@ -197,9 +228,16 @@ bool interact_at(int x, int y) {
             return true;
         }
         if (o->kind == OBJ_CABINET && !o->state) {
+            // a coin cabinet: `code` Antique Coins buy what it holds (item
+            // x qty), or 4 more slots when it holds nothing
             int cost = o->code > 0 ? o->code : 1;
-            if (inventory_capacity() < INV_SLOTS && inventory_count_of(ITEM_COIN) >= cost) {
-                for (int k = 0; k < cost; k++) inventory_remove(ITEM_COIN);
+            if (gear_count(ITEM_COIN) < cost) return true;
+            if (o->qty > 0) {
+                if (!gear_pickup(o->item_type, o->qty)) return true;  // no room: she keeps her coins
+                gear_spend(ITEM_COIN, cost);
+                o->state = 1;
+            } else if (inventory_capacity() < INV_SLOTS) {
+                gear_spend(ITEM_COIN, cost);
                 inventory_expand(4);
                 o->state = 1;
             }
@@ -323,6 +361,10 @@ void lighter_toggle(void) {
     light_update();
 }
 
+bool interact_file_found(int obj_index) {
+    return file_found(obj_index);
+}
+
 int files_found(void) {
     return in.file_count;
 }
@@ -357,13 +399,27 @@ bool interact_try_safe_code(int code) {
 }
 bool level_complete(void) { return in.complete; }
 bool interact_check_complete(void) {
-    if (!in.goal || in.complete) return false;
     int px, py; player_cell(&px, &py);
     for (int i = 0; i < in.level->obj_count; i++) {
-        const obj_t* o = &in.level->objs[i];
-        if (o->kind == OBJ_GOAL && o->x == px && o->y == py) { in.complete = true; return true; }
+        obj_t* o = &in.level->objs[i];
+        if (o->kind != OBJ_GOAL || o->x != px || o->y != py) continue;
+        if (o->qty > 0) {
+            // past the gate the fuse powers: Leon hands Grace the Requiem
+            // (one round in the cylinder); the level goes on
+            if (in.goal && !o->state && gear_pickup(o->item_type, o->qty)) o->state = 1;
+            continue;
+        }
+        if (in.complete) return false;
+        in.complete = true;  // the Security Manager's Office: the way out
+        return true;
     }
     return false;
+}
+
+bool interact_take_itembox(void) {
+    bool open = in.itembox;
+    in.itembox = false;
+    return open;
 }
 
 bool interact_take_save_menu(void) {

@@ -246,9 +246,10 @@ export function AimStick() {
       const grace = readGrace();
       quickOpenRef.current = grace.quickOpen;
       setState((prev) =>
-        prev.bottleActive === grace.bottleActive && prev.quickOpen === grace.quickOpen
+        prev.bottleActive === (grace.bottleActive || grace.weaponActive) &&
+        prev.quickOpen === grace.quickOpen
           ? prev
-          : { bottleActive: grace.bottleActive, quickOpen: grace.quickOpen },
+          : { bottleActive: grace.bottleActive || grace.weaponActive, quickOpen: grace.quickOpen },
       );
     };
     sync();
@@ -349,8 +350,8 @@ export function AimStick() {
       role="application"
       aria-label={
         state.bottleActive
-          ? "Aim stick. Push to aim, release to throw. Tap centre to interact, hold centre for Quick Equip."
-          : "Interact stick. Tap centre to interact, hold centre for Quick Equip. No bottle active, so aiming is unavailable."
+          ? "Aim stick. Push to aim, release to throw or fire. Tap centre to interact, hold centre for Quick Equip."
+          : "Interact stick. Tap centre to interact, hold centre for Quick Equip. No bottle or weapon active, so aiming is unavailable."
       }
       onPointerDown={onDown}
       onPointerMove={onMove}

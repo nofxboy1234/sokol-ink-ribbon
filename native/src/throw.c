@@ -1,4 +1,5 @@
 #include "throw.h"
+#include "gear.h"
 #include "enemy.h"
 #include "grid.h"
 #include "inventory.h"
@@ -45,6 +46,9 @@ bool throw_set_equipped(bool on) {
     }
     t.equipped = on;
     t.had = inventory_has(ITEM_BOTTLE);
+    if (on) {
+        gear_unequip();  // one weapon in the East slot
+    }
     if (!on) {
         t.active = false;
     }
@@ -64,6 +68,9 @@ bool throw_empty(void) {
 bool throw_set_active(bool on) {
     if (on && (!t.equipped || !inventory_has(ITEM_BOTTLE))) {
         return false;
+    }
+    if (on) {
+        gear_set_active(false);
     }
     t.active = on;
     return true;
@@ -92,7 +99,7 @@ bool throw_sync(void) {
 }
 
 bool throw_other_weapon_active(void) {
-    return false;
+    return gear_active();
 }
 
 bool throw_allowed(throw_stance_t stance) {
@@ -171,7 +178,7 @@ bool throw_hitscan(float gx, float gy, float dx, float dy, float max_dist, throw
     float perp2 = ex * ex + ey * ey - proj * proj;
     float r2 = THROW_ENEMY_RADIUS * THROW_ENEMY_RADIUS;
     float enemy_enter = -1.0f;
-    if (proj > 0.0f && perp2 < r2) {
+    if (enemy_alive() && proj > 0.0f && perp2 < r2) {
         enemy_enter = proj - sqrtf(r2 - perp2);
         if (enemy_enter < 0.0f) {
             enemy_enter = 0.0f;

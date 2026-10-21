@@ -1,6 +1,7 @@
 // Native checks for the bottle throw: hitscan hits, Run blocking, bottle use,
 // the stun and noise-led investigation, the kept equip slot, anger and light. Build and run with tests/run.sh.
 #include "enemy.h"
+#include "gear.h"
 #include "grid.h"
 #include "inventory.h"
 #include "level.h"
@@ -647,11 +648,11 @@ int main(int argc, char** argv) {
         }
         CHECK(open_jambs == 0, "doors: the wall carries on past both ends of every door (%d open)", open_jambs);
         // every normal door is Room 202's size (2 cells); only the red
-        // barricades (barrier, gate) keep the width the map draws
+        // barricades (barrier, gate, the Rehabilitation Ward door) keep the width the map draws
         int odd = 0;
         for (int i = 0; i < level.obj_count; i++) {
             const obj_t* o = &level.objs[i];
-            if (o->kind == OBJ_DOOR && strcmp(o->name, "barrier") != 0 && strcmp(o->name, "gate") != 0 && o->span != 2) odd++;
+            if (o->kind == OBJ_DOOR && strcmp(o->name, "barrier") != 0 && strcmp(o->name, "gate") != 0 && strcmp(o->name, "Rehabilitation Ward Door") != 0 && o->span != 2) odd++;
         }
         CHECK(odd == 0, "doors: every normal door spans 2 cells (%d odd)", odd);
         bool in203 = false;
@@ -661,7 +662,84 @@ int main(int argc, char** argv) {
                 level.start_y >= sc->y && level.start_y < sc->y + sc->h) in203 = true;
         }
         CHECK(in203 && grid_is_floor(level.start_x, level.start_y), "Grace starts on the floor of Room 203");
+        int pspawns = 0, espawns = 0; const obj_t* ps = NULL; const obj_t* es = NULL;
+        for (int i = 0; i < level.obj_count; i++) {
+            if (level.objs[i].kind == OBJ_START) { pspawns++; ps = &level.objs[i]; }
+            if (level.objs[i].kind == OBJ_ENEMY_SPAWN) { espawns++; es = &level.objs[i]; }
+        }
+        CHECK(pspawns == 1 && ps->x == 159 && ps->y == 68 && level.start_x == 159 && level.start_y == 68,
+              "one Player Spawn object, at 159,68 in Room 203, and Grace starts on it");
+        CHECK(espawns == 1 && es->x == 162 && es->y == 79 && grid_is_floor(es->x, es->y),
+              "one Enemy Spawn, on the floor at Room 203's south end (162,79)");
+        enemy_spawn(es->x, es->y);
+        CHECK(enemy_alive() && (int)enemy_x() == 162 && (int)enemy_y() == 79, "the enemy spawns exactly on its Enemy Spawn");
+        enemy_clear();
+        CHECK(!enemy_alive(), "no enemy spawn: no enemy");
         CHECK(long_doors * 2 > doors, "doors: most doors span their map bar (%d of %d are 2+ cells)", long_doors, doors);
+    }
+
+    // --- round 4: Central Hall stairs, code-file safe, 23 coins
+    {
+        const obj_t *f1w = NULL, *f2w = NULL, *f1e = NULL, *f2e = NULL, *safe = NULL, *code = NULL;
+        int coins = 0;
+        for (int i = 0; i < level.obj_count; i++) {
+            const obj_t* o = &level.objs[i];
+            if (o->kind == OBJ_STAIRS && o->x == 81 && o->y == 180) f1w = o;
+            if (o->kind == OBJ_STAIRS && o->x == 81 && o->y == 93) f2w = o;
+            if (o->kind == OBJ_STAIRS && o->x == 98 && o->y == 180) f1e = o;
+            if (o->kind == OBJ_STAIRS && o->x == 100 && o->y == 93) f2e = o;
+            if (o->kind == OBJ_SAFE && o->x == 124 && o->y == 184) safe = o;
+            if (o->kind == OBJ_FILE && o->x == 148 && o->y == 115) code = o;
+            if (o->kind == OBJ_ITEM && o->item_type == ITEM_COIN) coins += o->qty > 0 ? o->qty : 1;
+        }
+        CHECK(f1w && f2w && f1w->link_id == f2w->id && f2w->link_id == f1w->id &&
+                  f1e && f2e && f1e->link_id == f2e->id && f2e->link_id == f1e->id,
+              "the Central Hall flights link floor 1 (81,180 / 98,180) and floor 2 at the flights' tops (81,93 / 100,93)");
+        CHECK(coins == 23, "23 Antique Coins in the level (%d)", coins);
+        // the attic storage is cut: no cells, objects, sections or stairs
+        // there, nothing links into it, and the Attic Door stays bolted
+        int left = 0, dangling = 0, f3stairs = 0;
+        for (int y = 40; y <= 57; y++)
+            for (int x = 55; x <= 99; x++) left += level_tile(&level, x, y) != TILE_VOID;
+        for (int i = 0; i < level.obj_count; i++) {
+            const obj_t* o = &level.objs[i];
+            if (o->x >= 55 && o->x <= 99 && o->y >= 40 && o->y <= 57) left++;
+            if (o->link_id > 0 && !level_obj_by_id(&level, o->link_id)) dangling++;
+            if (o->kind == OBJ_STAIRS && o->y < 60) f3stairs++;
+        }
+        for (int i = 0; i < level.section_count; i++)
+            if (strcmp(level.sections[i].name, "F3 Attic Storage") == 0) left++;
+        CHECK(left == 0 && dangling == 0, "the attic storage is gone with nothing pointing into it (%d left, %d dangling links)", left, dangling);
+        CHECK(f3stairs == 1, "floor 3 keeps only its west stairs (%d stairs on F3)", f3stairs);
+        // round 6: the sealed Attic and Medical Supply Room are cut too
+        int east = 0;
+        for (int y = 0; y < 60; y++)
+            for (int x = 100; x < level.cols; x++) east += level_tile(&level, x, y) != TILE_VOID;
+        for (int i = 0; i < level.obj_count; i++)
+            if (level.objs[i].x >= 100 && level.objs[i].y < 60) east++;
+        for (int i = 0; i < level.section_count; i++)
+            if (strcmp(level.sections[i].name, "F3 Attic") == 0 || strcmp(level.sections[i].name, "F3 Medical Supply Room") == 0) east++;
+        CHECK(east == 0, "the Attic and Medical Supply Room are gone: floor 3 east of x 100 is empty (%d left)", east);
+        CHECK(safe && code && safe->link_id == code->id && !safe->open,
+              "the Examination Room Safe (124,184) is shut and tied to its code file (148,115)");
+        interact_init(); items_import(NULL, 0);
+        obj_t* sm = (obj_t*)safe;
+        for (int d = 0; d < 4; d++) {
+            static const int n4[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            if (grid_is_floor(sm->x + n4[d][0], sm->y + n4[d][1])) { player_set_cell(sm->x + n4[d][0], sm->y + n4[d][1]); break; }
+        }
+        int sx0, sy0; player_cell(&sx0, &sy0);
+        interact_at(sm->x, sm->y);
+        CHECK(!sm->open && interact_pending_safe() < 0, "without the file the safe stays locked, and no dial opens");
+        player_set_cell(code->x, code->y);
+        interact_at(code->x, code->y);
+        CHECK(files_found() >= 1 && strcmp(file_name_at(files_found() - 1), "Examination Room Safe Code") == 0,
+              "picking up the code file lists it under Files");
+        player_set_cell(sx0, sy0);
+        interact_at(sm->x, sm->y);
+        CHECK(sm->open, "with the file read, the safe opens");
+        sm->open = 0;
+        interact_init();
     }
 
     // --- pass 2: perimeter containment and reveal-section coverage.
@@ -699,16 +777,31 @@ int main(int argc, char** argv) {
         // not by id or old-map coordinates.
         inventory_init(); interact_init(); items_import(NULL, 0);
         obj_t* box = NULL; obj_t* fusebox = NULL; obj_t* gate = NULL; obj_t* goal = NULL;
+        obj_t* ward = NULL; obj_t* way_out = NULL;
         int fuse_i = -1;
         for (int i = 0; i < level.obj_count; i++) {
             obj_t* o = (obj_t*)&grid_level()->objs[i];
-            if (o->kind == OBJ_OBSTACLE && o->openable) box = o;
-            if (o->kind == OBJ_FUSEBOX) fusebox = o;
-            if (o->kind == OBJ_DOOR && strcmp(o->name, "gate") == 0 && !gate) gate = o;
-            if (o->kind == OBJ_GOAL) goal = o;
             if (o->kind == OBJ_ITEM && o->item_type == ITEM_FUSE) fuse_i = i;
         }
-        CHECK(box && fusebox && gate && goal && fuse_i >= 0, "fuse chain objects exist (cabinet, fusebox, gate, goal)");
+        for (int i = 0; i < level.obj_count && fuse_i >= 0; i++) {
+            obj_t* o = (obj_t*)&grid_level()->objs[i];
+            const obj_t* f = &grid_level()->objs[fuse_i];
+            // the box is the openable on the fuse's cell
+            if (o->kind == OBJ_OBSTACLE && o->openable && o->x == f->x && o->y == f->y) box = o;
+            // the F2 gate right of the Central Hall, its fuse box, the
+            // Requiem handover past it, the Rehabilitation Ward door and
+            // the Security Manager's Office: by kind and position
+            if (o->kind == OBJ_FUSEBOX && o->x == 80 && o->y == 109) fusebox = o;
+            if (o->kind == OBJ_DOOR && o->x == 79 && o->y == 107) gate = o;
+            if (o->kind == OBJ_DOOR && o->x == 132 && o->y == 223) ward = o;
+            if (o->kind == OBJ_GOAL && o->x == 77 && o->y == 107) goal = o;
+            if (o->kind == OBJ_GOAL && o->x == 178 && o->y == 179) way_out = o;
+        }
+        CHECK(box && fusebox && gate && goal && ward && way_out && fuse_i >= 0,
+              "fuse chain objects exist (cabinet, fusebox 80,109, gate 79,107, Requiem goal 77,107, way out 178,179)");
+        int fuseboxes = 0;
+        for (int i = 0; i < level.obj_count; i++) fuseboxes += level.objs[i].kind == OBJ_FUSEBOX;
+        CHECK(fuseboxes == 1, "one fuse box in the level (%d)", fuseboxes);
         // stand on a floor neighbour of the cabinet
         static const int nb4[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         for (int d = 0; d < 4; d++) {
@@ -734,8 +827,18 @@ int main(int argc, char** argv) {
         inventory_add(ITEM_FUSE);
         interact_at(fusebox->x, fusebox->y);
         CHECK(goal_met() && gate->state == DOOR_BROKEN && !inventory_has(ITEM_FUSE), "fuse inserted: gate powered open");
+        CHECK(ward->state != DOOR_BROKEN, "the fuse leaves the Rehabilitation Ward door alone");
+        CHECK(ward->lock == LOCK_JAMMED, "the Rehabilitation Ward door is bolted for Grace (Leon's chainsaw)");
+        gear_init();
         player_set_cell(goal->x, goal->y);
-        CHECK(interact_check_complete() && level_complete(), "walking past the gate to the goal ends the level");
+        CHECK(!interact_check_complete() && !level_complete() && inventory_has(ITEM_GUN_REQUIEM) &&
+              gear_loaded(ITEM_GUN_REQUIEM) == 1, "past the gate Leon hands her the Requiem (1 round); the game goes on");
+        for (int k = 0; k < inventory_capacity(); k++) if (inventory_slot(k) == ITEM_GUN_REQUIEM) inventory_clear_slot(k);
+        interact_check_complete();
+        CHECK(!inventory_has(ITEM_GUN_REQUIEM), "only once");
+        player_set_cell(way_out->x, way_out->y);
+        CHECK(interact_check_complete() && level_complete(), "reaching the Security Manager's Office ends the level");
+        goal->state = 0;
 
         // cherub door (the door whose link names the cherub key object):
         // only that key opens it
@@ -880,11 +983,24 @@ int main(int argc, char** argv) {
             if (safe) safe->kind = OBJ_SAFE;
         }
         if (safe) {
+            int key = safe->key_id, code = safe->code, kind_was = safe->kind;
+            safe->kind = OBJ_SAFE; safe->key_id = 0;  // a code safe
             safe->open = 0; safe->code = 1234; player_set_cell(safe->x + 1, safe->y);
             interact_at(safe->x, safe->y);
             CHECK(interact_pending_safe() >= 0 && !interact_try_safe_code(1111) && interact_try_safe_code(1234) && safe->open == 1,
                   "safe: wrong code fails, right code opens");
-            safe->kind = OBJ_GOAL; safe->code = 0;
+            safe->key_id = key; safe->code = code; safe->open = 0;
+            if (kind_was == OBJ_SAFE && key > 0) {
+                // no puzzles: a puzzle box opens for the item it needs
+                interact_at(safe->x, safe->y);
+                bool shut = !safe->open;
+                inventory_add(key);
+                interact_at(safe->x, safe->y);
+                CHECK(shut && safe->open == 1, "puzzle box: shut without its item, opens holding it");
+                inventory_remove(key);
+                safe->open = 0;
+            }
+            if (kind_was == OBJ_GOAL) { safe->kind = OBJ_GOAL; safe->code = 0; }
         } else {
             CHECK(true, "safe: none placed in level 1 (system tested when placed)");
         }

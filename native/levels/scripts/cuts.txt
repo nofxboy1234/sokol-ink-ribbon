@@ -1,0 +1,13 @@
+# Parts of Polygon's map that are not in Grace's level. Runs last, so every
+# object, section and link the earlier scripts put there goes with it.
+
+# Floor 3's Attic Storage and the corridor to the Attic (Dylan, round 5):
+# its rooms, walls, the Warped Closet with the Basement Safe Code, the light,
+# the attic stairs and the "F3 Attic Storage" reveal section.
+cut 55 40 99 57
+# The Attic and the Medical Supply Room (Dylan, round 6): with the storage
+# gone they had no way in (the Attic Door, Leon's, was their only door on
+# Grace's side). Their floor, walls, pickups and the "F3 Attic" and "F3
+# Medical Supply Room" reveal sections go. Nothing on floor 3 is left east
+# of the west wing, so no wall faces the void.
+cut 100 20 145 59
