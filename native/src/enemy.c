@@ -227,16 +227,23 @@ static void enter(enemy_state_t state) {
 }
 
 void enemy_init(int avoid_x, int avoid_y) {
+    enemy_spawn(avoid_x, avoid_y, ENEMY_SPAWN_MAX);
+}
+
+void enemy_spawn(int x, int y, int radius) {
     e.rng = (unsigned int)time(NULL) * 2654435761u + 1u;
-    e.x = (float)avoid_x + 0.5f;
-    e.y = (float)avoid_y + 0.5f;
+    int avoid_x = x, avoid_y = y;
+    e.x = (float)x + 0.5f;
+    e.y = (float)y + 0.5f;
     e.path.count = 0;
     e.index = 0;
-    for (int attempt = 0; attempt < 400; attempt++) {
-        int tx = avoid_x + (int)(rnd() % 37u) - 18;
-        int ty = avoid_y + (int)(rnd() % 37u) - 18;
-        if (grid_is_floor(tx, ty) && pathfind_within(avoid_x, avoid_y, tx, ty, ENEMY_SPAWN_MAX, false, &scratch) &&
-            scratch.count - 1 >= ENEMY_SPAWN_MIN) {
+    int span = radius * 2 + 1;
+    int min = radius < ENEMY_SPAWN_MIN ? radius / 2 : ENEMY_SPAWN_MIN;
+    for (int attempt = 0; radius > 0 && attempt < 400; attempt++) {
+        int tx = avoid_x + (int)(rnd() % (unsigned)span) - radius;
+        int ty = avoid_y + (int)(rnd() % (unsigned)span) - radius;
+        if (grid_is_floor(tx, ty) && pathfind_within(avoid_x, avoid_y, tx, ty, radius, false, &scratch) &&
+            scratch.count - 1 >= min) {
             e.x = (float)tx + 0.5f;
             e.y = (float)ty + 0.5f;
             break;
@@ -253,6 +260,14 @@ void enemy_init(int avoid_x, int avoid_y) {
     e.hp = ENEMY_HP;
     e.fade = 0.0f;
     enter(ENEMY_LOOK);
+}
+
+void enemy_clear(void) {
+    // no enemy in the level: it exists only as a dead, invisible body
+    enemy_spawn(0, 0, 0);
+    e.hp = 0.0f;
+    e.fade = 0.0f;
+    enter(ENEMY_DEAD);
 }
 
 void enemy_seed(unsigned int seed) {

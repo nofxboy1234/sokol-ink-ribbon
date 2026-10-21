@@ -6,6 +6,14 @@
 # Door at 79,107, so that door is the gate and its fuse box sits beside it.
 set 79 107 lock=none state=locked name=gate
 obj fusebox 80 109 name=fusebox
+# Past the gate Leon hands Grace his Requiem (IGN Leon walkthrough: "the
+# large gate that you tried to escape through as Grace ... pass on his
+# Requiem revolver to Grace"). One round loaded; the game goes on.
+obj goal 77 107 item=gun_requiem qty=1 name=Requiem_handover
+
+# The way out: Grace reaches the Security Manager's Office in the East
+# Wing's Isolation Ward (VGC, Evil Resource, GameSpot; Level 2 Wristband).
+obj goal 178 179 name=Security_Managers_Office
 
 # The F2 south-east stairs drop Grace into a walled landing on floor 1 whose
 # only way on is the map's Locked Door at 141,240. Grace has to come
@@ -26,6 +34,3 @@ set 17 160 lock=key key=wrench
 # chapter this door stays shut for good.
 set 26 27 lock=jammed
 
-# No Requiem pickup: Leon hands Grace the Requiem, one round loaded, when
-# she reaches the goal past the gate the Fuse powers (GameSpot, IGN;
-# interact_check_complete).

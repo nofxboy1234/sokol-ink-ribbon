@@ -326,11 +326,22 @@ static int run_line(ctx_t* c, int argc, char** argv) {
     } else if (strcmp(cmd, "obj") == 0) {
         if (argc < 4 || need_ints(c, argv, 2, 2, a)) return argc < 4 ? fail(c, "obj KIND X Y [key=value...]") : -1;
         obj_kind_t k = obj_kind_from_name(argv[1]);
-        if (strcmp(obj_kind_name(k), argv[1]) != 0) return fail(c, "unknown object kind '%s'", argv[1]);
-        obj_t* o = new_obj(c, k, a[0] + ox, a[1] + oy);
-        if (!o) return fail(c, "too many objects");
-        snprintf(o->name, LEVEL_MAX_NAME, "%s", argv[1]);
+        if (strcmp(obj_kind_name(k), argv[1]) != 0 && !(k == OBJ_START && strcmp(argv[1], "start") == 0))
+            return fail(c, "unknown object kind '%s'", argv[1]);
+        obj_t* o = NULL;
+        if (k == OBJ_START) {
+            // one Player Spawn per level: a second one moves it
+            for (int i = 0; i < lv->obj_count; i++)
+                if (lv->objs[i].kind == OBJ_START) o = &lv->objs[i];
+            if (o) { o->x = a[0] + ox; o->y = a[1] + oy; }
+        }
+        if (!o) {
+            o = new_obj(c, k, a[0] + ox, a[1] + oy);
+            if (!o) return fail(c, "too many objects");
+            snprintf(o->name, LEVEL_MAX_NAME, "%s", k == OBJ_START ? "Grace start" : argv[1]);
+        }
         if (apply_props(c, o, argv, 4, argc)) return -1;
+        if (k == OBJ_START) { lv->start_x = o->x; lv->start_y = o->y; }
     } else if (strcmp(cmd, "link") == 0) {
         if (argc != 3) return fail(c, "link NAME_FROM NAME_TO (use _ for spaces)");
         obj_t* f = find_named(lv, argv[1]);

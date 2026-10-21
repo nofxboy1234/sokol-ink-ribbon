@@ -110,6 +110,13 @@ LOCK_REACH = 4  # cells from the marker to the door it labels
 # Level 3 ward); Sun: Corrosive (its Sturdy Lock padlock).
 PUZZLES = {"moon_quartz": "pencil", "star_quartz": "wristband_3", "sun_quartz": "corrosive"}
 
+# Antique Coins locked in safes (IGN "Where to Find Antique Coins", Evil
+# Resource "Antique Coin", Polygon coin guide): the safe's coins move onto
+# its cell, so it holds them shut. A marker's "(N)" beyond what the safe
+# holds stays loose where the marker is (the Waiting Room's table coin).
+SAFE_COINS = {"Examination Room Safe": 3, "Waiting Room Safe": 2, "Bar & Lounge Safe": 3}
+SAFES_OPEN = {"Waiting Room Safe"}  # "wide open, 2 free Coins" (IGN)
+
 # Parlor (F1 rooms 50..66 x 186..200): its prizes sit in coin cabinets at
 # the Parlor price (GameSpot, Evil Resource, VGC).
 PARLOR = {"hip_pouch": 3, "stabilizer": 4, "steroids": 4, "override_manual": 6}
@@ -298,6 +305,35 @@ def main(base_path, markers_path, out_dir):
         if pos:
             taken.add(pos)
             out_fix.append(f"obj itembox {pos[0]} {pos[1]} name=Item_Box  # F{floor_of(t['y'])} by the typewriter at {t['x']},{t['y']}")
+
+    # Antique Coins: the traced coins are one each; Polygon's "(N)" markers
+    # hold N, and a safe's share goes inside the safe
+    safes = [o for o in lv["objects"] if o["kind"] == "safe" and o.get("name") in SAFE_COINS]
+    coins = [(o["x"], o["y"]) for o in lv["objects"] if o["kind"] == "item" and o.get("item") == "coin"]
+    for mk in markers:
+        if mk["layer"] != "Antique Coin":
+            continue
+        n = re.search(r"\((\d+)\)", mk["title"])
+        qty = int(n.group(1)) if n else 1
+        cx = int((mk["x"] * 8192 - X0) // CELL)
+        cy = int((mk["y"] * 8192 - Y0) // CELL)
+        if not coins:
+            break
+        c = min(coins, key=lambda p: abs(p[0] - cx) + abs(p[1] - cy))
+        safe = next((o for o in safes if abs(o["x"] - c[0]) + abs(o["y"] - c[1]) <= 2), None)
+        if safe is None and qty == 1:
+            continue
+        out_fix.append(f"erase {c[0]} {c[1]}")
+        loose = qty
+        if safe is not None:
+            inside = SAFE_COINS[safe["name"]]
+            loose = max(0, qty - inside)
+            out_fix.append(f"item {safe['x']} {safe['y']} coin qty={inside} name=Antique_Coin_({inside})  # F{floor_of(safe['y'])} inside the {safe['name']}")
+            if safe["name"] in SAFES_OPEN:
+                out_fix.append(f"set {safe['x']} {safe['y']} open=1  # the {safe['name']} stands open")
+        if loose > 0:
+            q = f" qty={loose}" if loose > 1 else ""
+            out_fix.append(f"item {c[0]} {c[1]} coin{q} name=Antique_Coin  # F{floor_of(c[1])} Polygon {mk['title']}")
 
     out_locks = []
     used = set()

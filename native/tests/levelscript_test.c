@@ -56,6 +56,20 @@ int main(void) {
               find(&lv, OBJ_DOOR, 9, 2)->state == DOOR_UNLOCKED && strcmp(find(&lv, OBJ_DOOR, 9, 2)->name, "gate") == 0,
           "set changes the object on a cell");
     CHECK(lv.section_count == 2 && strcmp(lv.sections[1].name, "East Room") == 0, "named rooms become sections");
+    {
+        // one Player Spawn per level: a second one moves it; spawns round-trip
+        CHECK(run("obj player_spawn 3 4\nobj player_spawn 5 2\nobj enemy_spawn 14 3 radius=6\n") == 3, "spawn objects place");
+        int spawns = 0;
+        for (int i = 0; i < lv.obj_count; i++) spawns += lv.objs[i].kind == OBJ_START;
+        CHECK(spawns == 1 && find(&lv, OBJ_START, 5, 2) && lv.start_x == 5 && lv.start_y == 2,
+              "a second Player Spawn moves the one Grace starts at");
+        const obj_t* es = find(&lv, OBJ_ENEMY_SPAWN, 14, 3);
+        CHECK(es && (int)es->radius == 6, "enemy spawn carries its radius");
+        level_to_json(&lv, json, sizeof(json));
+        CHECK(level_from_json(&back, json) && find(&back, OBJ_START, 5, 2) && back.start_x == 5 &&
+                  find(&back, OBJ_ENEMY_SPAWN, 14, 3) && (int)find(&back, OBJ_ENEMY_SPAWN, 14, 3)->radius == 6,
+              "spawns survive a JSON round trip");
+    }
 
     grid_init(&lv);
     CHECK(grid_is_floor(2, 2) && grid_is_floor(15, 3), "both rooms walkable through the door gap");

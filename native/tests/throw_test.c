@@ -1,6 +1,7 @@
 // Native checks for the bottle throw: hitscan hits, Run blocking, bottle use,
 // the stun and noise-led investigation, the kept equip slot, anger and light. Build and run with tests/run.sh.
 #include "enemy.h"
+#include "gear.h"
 #include "grid.h"
 #include "inventory.h"
 #include "level.h"
@@ -647,11 +648,11 @@ int main(int argc, char** argv) {
         }
         CHECK(open_jambs == 0, "doors: the wall carries on past both ends of every door (%d open)", open_jambs);
         // every normal door is Room 202's size (2 cells); only the red
-        // barricades (barrier, gate) keep the width the map draws
+        // barricades (barrier, gate, the Rehabilitation Ward door) keep the width the map draws
         int odd = 0;
         for (int i = 0; i < level.obj_count; i++) {
             const obj_t* o = &level.objs[i];
-            if (o->kind == OBJ_DOOR && strcmp(o->name, "barrier") != 0 && strcmp(o->name, "gate") != 0 && o->span != 2) odd++;
+            if (o->kind == OBJ_DOOR && strcmp(o->name, "barrier") != 0 && strcmp(o->name, "gate") != 0 && strcmp(o->name, "Rehabilitation Ward Door") != 0 && o->span != 2) odd++;
         }
         CHECK(odd == 0, "doors: every normal door spans 2 cells (%d odd)", odd);
         bool in203 = false;
@@ -661,6 +662,19 @@ int main(int argc, char** argv) {
                 level.start_y >= sc->y && level.start_y < sc->y + sc->h) in203 = true;
         }
         CHECK(in203 && grid_is_floor(level.start_x, level.start_y), "Grace starts on the floor of Room 203");
+        int pspawns = 0, espawns = 0; const obj_t* ps = NULL; const obj_t* es = NULL;
+        for (int i = 0; i < level.obj_count; i++) {
+            if (level.objs[i].kind == OBJ_START) { pspawns++; ps = &level.objs[i]; }
+            if (level.objs[i].kind == OBJ_ENEMY_SPAWN) { espawns++; es = &level.objs[i]; }
+        }
+        CHECK(pspawns == 1 && ps->x == 159 && ps->y == 68 && level.start_x == 159 && level.start_y == 68,
+              "one Player Spawn object, at 159,68 in Room 203, and Grace starts on it");
+        CHECK(espawns == 1 && es->x == 159 && es->y == 68 && (int)es->radius == ENEMY_SPAWN_RADIUS,
+              "one Enemy Spawn at Grace's start with the old random-spawn radius");
+        enemy_spawn(es->x, es->y, 0);
+        CHECK(enemy_alive(), "an enemy spawn spawns the enemy");
+        enemy_clear();
+        CHECK(!enemy_alive(), "no enemy spawn: no enemy");
         CHECK(long_doors * 2 > doors, "doors: most doors span their map bar (%d of %d are 2+ cells)", long_doors, doors);
     }
 
@@ -699,6 +713,7 @@ int main(int argc, char** argv) {
         // not by id or old-map coordinates.
         inventory_init(); interact_init(); items_import(NULL, 0);
         obj_t* box = NULL; obj_t* fusebox = NULL; obj_t* gate = NULL; obj_t* goal = NULL;
+        obj_t* ward = NULL; obj_t* way_out = NULL;
         int fuse_i = -1;
         for (int i = 0; i < level.obj_count; i++) {
             obj_t* o = (obj_t*)&grid_level()->objs[i];
@@ -709,11 +724,20 @@ int main(int argc, char** argv) {
             const obj_t* f = &grid_level()->objs[fuse_i];
             // the box is the openable on the fuse's cell
             if (o->kind == OBJ_OBSTACLE && o->openable && o->x == f->x && o->y == f->y) box = o;
-            if (o->kind == OBJ_FUSEBOX) fusebox = o;
-            if (o->kind == OBJ_DOOR && strcmp(o->name, "gate") == 0 && !gate) gate = o;
-            if (o->kind == OBJ_GOAL) goal = o;
+            // the F2 gate right of the Central Hall, its fuse box, the
+            // Requiem handover past it, the Rehabilitation Ward door and
+            // the Security Manager's Office: by kind and position
+            if (o->kind == OBJ_FUSEBOX && o->x == 80 && o->y == 109) fusebox = o;
+            if (o->kind == OBJ_DOOR && o->x == 79 && o->y == 107) gate = o;
+            if (o->kind == OBJ_DOOR && o->x == 132 && o->y == 223) ward = o;
+            if (o->kind == OBJ_GOAL && o->x == 77 && o->y == 107) goal = o;
+            if (o->kind == OBJ_GOAL && o->x == 178 && o->y == 179) way_out = o;
         }
-        CHECK(box && fusebox && gate && goal && fuse_i >= 0, "fuse chain objects exist (cabinet, fusebox, gate, goal)");
+        CHECK(box && fusebox && gate && goal && ward && way_out && fuse_i >= 0,
+              "fuse chain objects exist (cabinet, fusebox 80,109, gate 79,107, Requiem goal 77,107, way out 178,179)");
+        int fuseboxes = 0;
+        for (int i = 0; i < level.obj_count; i++) fuseboxes += level.objs[i].kind == OBJ_FUSEBOX;
+        CHECK(fuseboxes == 1, "one fuse box in the level (%d)", fuseboxes);
         // stand on a floor neighbour of the cabinet
         static const int nb4[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         for (int d = 0; d < 4; d++) {
@@ -739,8 +763,17 @@ int main(int argc, char** argv) {
         inventory_add(ITEM_FUSE);
         interact_at(fusebox->x, fusebox->y);
         CHECK(goal_met() && gate->state == DOOR_BROKEN && !inventory_has(ITEM_FUSE), "fuse inserted: gate powered open");
+        CHECK(ward->state != DOOR_BROKEN, "the fuse leaves the Rehabilitation Ward door alone");
+        gear_init();
         player_set_cell(goal->x, goal->y);
-        CHECK(interact_check_complete() && level_complete(), "walking past the gate to the goal ends the level");
+        CHECK(!interact_check_complete() && !level_complete() && inventory_has(ITEM_GUN_REQUIEM) &&
+              gear_loaded(ITEM_GUN_REQUIEM) == 1, "past the gate Leon hands her the Requiem (1 round); the game goes on");
+        for (int k = 0; k < inventory_capacity(); k++) if (inventory_slot(k) == ITEM_GUN_REQUIEM) inventory_clear_slot(k);
+        interact_check_complete();
+        CHECK(!inventory_has(ITEM_GUN_REQUIEM), "only once");
+        player_set_cell(way_out->x, way_out->y);
+        CHECK(interact_check_complete() && level_complete(), "reaching the Security Manager's Office ends the level");
+        goal->state = 0;
 
         // cherub door (the door whose link names the cherub key object):
         // only that key opens it

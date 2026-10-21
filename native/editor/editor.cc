@@ -308,7 +308,24 @@ static void load_reference(void) {
     snprintf(ed.status, sizeof(ed.status), "loaded reference %s (%dx%d)", ed.ref_path, w, h);
 }
 
+// The Player Spawn object, or NULL.
+static obj_t* player_spawn(void) {
+    for (int i = 0; i < ed.level.obj_count; i++)
+        if (ed.level.objs[i].kind == OBJ_START) return &ed.level.objs[i];
+    return NULL;
+}
+
 static void add_object(int kind, int x, int y) {
+    if (kind == OBJ_START && player_spawn()) {
+        // one Player Spawn per level: placing another moves it
+        obj_t* s = player_spawn();
+        s->x = ed.level.start_x = x;
+        s->y = ed.level.start_y = y;
+        ed.selected = (int)(s - ed.level.objs);
+        ed.dirty = true;
+        snprintf(ed.status, sizeof(ed.status), "One Player Spawn per level: moved it to %d,%d", x, y);
+        return;
+    }
     if (ed.level.obj_count >= LEVEL_MAX_OBJECTS) {
         return;
     }
@@ -338,6 +355,12 @@ static void add_object(int kind, int x, int y) {
         o->h = 2;
     }
     snprintf(o->name, LEVEL_MAX_NAME, "%s", obj_kind_name(o->kind));
+    if (kind == OBJ_START) {
+        snprintf(o->name, LEVEL_MAX_NAME, "Grace start");
+        ed.level.start_x = x;
+        ed.level.start_y = y;
+    }
+    if (kind == OBJ_ENEMY_SPAWN) o->radius = 0.0f;  // exactly here unless given a radius
     ed.selected = ed.level.obj_count - 1;
     ed.dirty = true;
 }
@@ -723,6 +746,18 @@ static void draw_map(void) {
         } else if (o->kind == OBJ_START) {
             float size = scale * 0.6f;
             fill_circle(cx, cy, scale * 0.51f, PAL_PURPLE, 1.0f);  // Grace's dot
+        } else if (o->kind == OBJ_ENEMY_SPAWN) {
+            // the enemy's dark red dot, and a dashed ring round where it may
+            // spawn (a ring, not a fill: the editor draws without blending)
+            if (o->radius > 0.0f) {
+                float er = o->radius * scale;
+                for (int seg = 0; seg < 64; seg += 2) {
+                    float a0 = (float)seg / 64.0f * 6.2831853f, a1 = (float)(seg + 1) / 64.0f * 6.2831853f;
+                    draw_line(cx + cosf(a0) * er, cy + sinf(a0) * er, cx + cosf(a1) * er, cy + sinf(a1) * er,
+                              ed.selected == i ? 3.0f : 2.0f, 0.62f, 0.05f, 0.05f, 1.0f);
+                }
+            }
+            fill_circle(cx, cy, scale * 0.51f, 0.62f, 0.05f, 0.05f, 1.0f);
         } else {
             float r = 0.6f, g = 0.6f, b = 0.6f;
             switch (o->kind) {
@@ -1032,6 +1067,18 @@ static void ui_properties(void) {
             changed |= ImGui::Combo("sells", &o->item_type, items, ITEM_COUNT);
             changed |= ImGui::InputInt("qty", &o->qty);
             if (o->qty <= 0) ImGui::TextDisabled("qty 0: sells +4 inventory slots");
+        } else if (o->kind == OBJ_START) {
+            ImGui::TextDisabled("Player Spawn: Grace starts here (one per level)");
+        } else if (o->kind == OBJ_ENEMY_SPAWN) {
+            changed |= ImGui::SliderFloat("spawn radius", &o->radius, 0.0f, 30.0f, "%.0f cells");
+            ImGui::TextDisabled("0: spawns exactly here; else a random floor cell");
+            ImGui::TextDisabled("within that many path cells. No spawn: no enemy.");
+        } else if (o->kind == OBJ_GOAL) {
+            const char* items[ITEM_COUNT];
+            for (int i = 0; i < ITEM_COUNT; i++) items[i] = item_name((item_t)i);
+            changed |= ImGui::Combo("gives", &o->item_type, items, ITEM_COUNT);
+            changed |= ImGui::InputInt("qty", &o->qty);
+            ImGui::TextDisabled(o->qty > 0 ? "hands over the item once the fuse is in" : "qty 0: reaching it ends the level");
         } else if (o->kind == OBJ_ITEMBOX) {
             ImGui::TextDisabled("Item Box: every box shares one store");
         }
@@ -1055,9 +1102,14 @@ static void ui_properties(void) {
         ImGui::Text("Level");
         bool changed = false;
         changed |= ImGui::InputText("name", ed.level.name, LEVEL_MAX_NAME);
-        ImGui::Text("Start");
-        changed |= ImGui::InputInt("start x", &ed.level.start_x);
-        changed |= ImGui::InputInt("start y", &ed.level.start_y);
+        ImGui::Text("Player Spawn");
+        bool moved = ImGui::InputInt("start x", &ed.level.start_x);
+        moved |= ImGui::InputInt("start y", &ed.level.start_y);
+        if (moved && player_spawn()) {
+            player_spawn()->x = ed.level.start_x;
+            player_spawn()->y = ed.level.start_y;
+        }
+        changed |= moved;
         changed |= ImGui::InputInt("cols", &ed.level.cols);
         changed |= ImGui::InputInt("rows", &ed.level.rows);
         ed.dirty |= changed;

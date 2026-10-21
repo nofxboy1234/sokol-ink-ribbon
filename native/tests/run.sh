@@ -20,8 +20,8 @@ cc -std=c11 -O1 -Wall -Isrc -Ilibs -o .fibs/tests/levelscript_test tests/levelsc
 cc -std=c11 -O1 -Wall -Isrc -Ilibs -o .fibs/tests/levelscript tools/levelscript.c src/levelscript.c src/level.c
 # Playthrough: Grace's route reaches all of floors 1 and 2; on floor 3 only
 # the rooms behind the Warped Door (Leon's hatchet, jammed for her) stay
-# shut, with the one Med Injector in them. She buys at the Parlor and gets
-# the Requiem at the goal.
+# shut, with the one Med Injector in them. She buys all four Parlor prizes,
+# gets the Requiem past the F2 gate and reaches the Security Manager's Office.
 sh tools/build_reach.sh
 R=.fibs/tests/reach.txt
 .fibs/tests/reach src/level_01.json > $R
@@ -32,6 +32,7 @@ test "$(sed -n '/^Sections with floor/,/^$/p' $R | grep -c '^  F')" -eq 4 || fai
 test "$(sed -n '/^Sections with floor/,/^$/p' $R | grep -vc "^  F3 \(Lounge\|Alcove\|Director's Office\|Meeting Room\) \|^Sections\|^$")" -eq 0 || fail "unreached section outside the Warped Door rooms"
 test "$(sed -n '/^Pickups she never reaches/,/^$/p' $R | grep -c '^  ')" -eq 1 || fail "unreached pickups"
 grep -q '^  Med Injector  *at  46, 34 (F3)' $R || fail "unexpected unreached pickup"
-grep -q 'Requiem: received at the goal' $R || fail "no Requiem at the goal"
-grep -q 'Parlor cabinets bought: [34] of 4' $R || fail "Parlor cabinets"
-echo "reach: floors 1-2 100%, F3 Warped Door rooms shut (Leon's), Requiem at the goal"
+grep -q 'Requiem: received past the gate' $R || fail "no Requiem past the gate"
+grep -q 'Parlor cabinets bought: 4 of 4' $R || fail "Parlor cabinets"
+grep -q "^Way out: Security Managers Office at 178,179 reached" $R || fail "the Security Manager's Office is not reached"
+echo "reach: floors 1-2 100%, F3 Warped Door rooms shut (Leon's), Requiem past the gate, way out reached"

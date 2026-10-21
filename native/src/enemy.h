@@ -29,7 +29,14 @@ typedef enum {
     SENSE_SMELL,
 } enemy_sense_t;
 
+// The level's one enemy type. enemy_init spawns it 10-18 path cells from
+// (avoid_x, avoid_y), away from Grace; enemy_spawn spawns it at an enemy
+// spawn object: exactly there (radius 0) or at a random floor cell within
+// radius path cells of it. enemy_clear: the level has no enemy.
+#define ENEMY_SPAWN_RADIUS 18
 void enemy_init(int avoid_x, int avoid_y);
+void enemy_spawn(int x, int y, int radius);
+void enemy_clear(void);
 // noise is how far Grace's footsteps carry this frame, in cells.
 // Returns true on the frame the enemy touches Grace.
 bool enemy_update(float dt, float grace_x, float grace_y, float noise);

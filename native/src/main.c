@@ -155,6 +155,21 @@ static struct {
     int gl_peak;       // most vertices any frame used (tests)
 } app;
 
+// The level's enemy spawn object (the first: the game has one enemy), or
+// NULL when the level has none.
+static const obj_t* level_enemy_spawn(void) {
+    for (int i = 0; i < app.level.obj_count; i++)
+        if (app.level.objs[i].kind == OBJ_ENEMY_SPAWN) return &app.level.objs[i];
+    return NULL;
+}
+
+// Spawn the enemy from the level's enemy spawn object; none: no enemy.
+static void spawn_level_enemy(void) {
+    const obj_t* s = level_enemy_spawn();
+    if (s) enemy_spawn(s->x, s->y, (int)s->radius);
+    else enemy_clear();
+}
+
 // Map streaming (stream.h) draws only the chunks in view, so the per-frame
 // vertex count follows the window, not how much of the hospital is revealed.
 // Measured peak over every door + every staircase: 49,334 vertices at the
@@ -847,7 +862,7 @@ static void init(void) {
     savegame_init();
     throw_init();
     gear_init();
-    enemy_init(app.level.start_x, app.level.start_y);
+    spawn_level_enemy();
     app.respawn_x = app.level.start_x;
     app.respawn_y = app.level.start_y;
     camera_init();
@@ -2284,7 +2299,7 @@ WEB_EXPORT void game_reset(void) {
     health_init();
     throw_init();
     gear_init();
-    enemy_init(app.level.start_x, app.level.start_y);
+    spawn_level_enemy();
     app.respawn_x = app.level.start_x;
     app.respawn_y = app.level.start_y;
     camera_set_follow(true);
@@ -2349,7 +2364,8 @@ WEB_EXPORT int load_game(int slot) {
         app.elapsed = e / 1000.0;
         player_cell(&app.respawn_x, &app.respawn_y);
         if (!savegame_has_enemy(slot)) {
-            enemy_init(app.respawn_x, app.respawn_y);  // an old slot: respawn it away from her
+            if (level_enemy_spawn()) enemy_init(app.respawn_x, app.respawn_y);  // an old slot: respawn it away from her
+            else enemy_clear();
         }
         player_stop();
         app.grace = GRACE_PAUSED;

@@ -163,6 +163,8 @@ static int side_reached(const obj_t* o, int which) {
     return 0;
 }
 
+static int exit_round = -1, exit_obj = -1;
+
 static bool round_step(int round, FILE* log) {
     bool changed = false;
     for (int i = 0; i < level.obj_count; i++) {
@@ -217,12 +219,22 @@ static bool round_step(int round, FILE* log) {
                 if (log) fprintf(log, "  round %d: buy %-29s at %3d,%3d (F%d) for %d coins\n", round,
                                  o->qty > 0 ? item_display_name(o->item_type) : "+4 slots", o->x, o->y, floor_of(o->y), o->code);
             }
-        } else if (o->kind == OBJ_GOAL && goal_met() && !level_complete() && reached(o->x, o->y)) {
+        } else if (o->kind == OBJ_GOAL && o->qty > 0 && !o->state && goal_met() && reached(o->x, o->y)) {
+            player_set_cell(o->x, o->y);
+            interact_check_complete();
+            if (o->state) {
+                changed = true;
+                if (log) fprintf(log, "  round %d: past the gate at %d,%d: %s (%d round loaded)\n", round, o->x, o->y,
+                                 item_display_name(o->item_type), gear_loaded(o->item_type));
+            }
+        } else if (o->kind == OBJ_GOAL && o->qty == 0 && !level_complete() && reached(o->x, o->y)) {
+            // the way out: noted, and play goes on so the report covers the rest
             player_set_cell(o->x, o->y);
             if (interact_check_complete()) {
                 changed = true;
-                if (log) fprintf(log, "  round %d: reach the goal at %d,%d: Leon's Requiem (%d round loaded)\n", round,
-                                 o->x, o->y, gear_loaded(ITEM_GUN_REQUIEM));
+                exit_round = round;
+                exit_obj = i;
+                if (log) fprintf(log, "  round %d: reach the way out, %s at %d,%d (F%d)\n", round, o->name, o->x, o->y, floor_of(o->y));
             }
         } else if (o->kind == OBJ_DOOR && o->state == DOOR_LOCKED) {
             // try from each reached cell beside the slab (a one-sided lock
@@ -274,6 +286,7 @@ static bool simulate(const char* json, const int* side, FILE* log) {
     items_init();
     doors_init();
     interact_init();
+    exit_round = exit_obj = -1;
     health_init();
     throw_init();
     gear_init();
@@ -414,8 +427,19 @@ int main(int argc, char** argv) {
         for (int i = 0; i < level.obj_count; i++) {
             if (level.objs[i].kind == OBJ_CABINET) { cabinets++; bought += level.objs[i].state != 0; }
         }
+        int coins = 0;
+        for (int i = 0; i < level.obj_count; i++) {
+            const obj_t* o = &level.objs[i];
+            if (o->kind == OBJ_ITEM && o->item_type == ITEM_COIN) coins += o->qty > 0 ? o->qty : 1;
+        }
+        printf("Antique Coins in the level: %d (the four Parlor prizes cost 17).\n", coins);
         printf("Parlor cabinets bought: %d of %d. Requiem: %s.\n", bought, cabinets,
-               inventory_has(ITEM_GUN_REQUIEM) ? "received at the goal" : "never received");
+               inventory_has(ITEM_GUN_REQUIEM) ? "received past the gate" : "never received");
+        if (exit_obj >= 0)
+            printf("Way out: %s at %d,%d reached in round %d.\n", level.objs[exit_obj].name, level.objs[exit_obj].x,
+                   level.objs[exit_obj].y, exit_round);
+        else
+            printf("Way out: never reached.\n");
     }
 
     if (map_out) {

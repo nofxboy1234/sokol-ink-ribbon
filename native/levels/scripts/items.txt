@@ -142,3 +142,11 @@ obj cabinet 58 195 item=stabilizer qty=1 code=4 name=Coin_Cabinet  # F1 Parlor
 obj cabinet 58 196 item=hip_pouch qty=1 code=3 name=Coin_Cabinet  # F1 Parlor
 obj itembox 113 78 name=Item_Box  # F2 by the typewriter at 113,79
 obj itembox 154 129 name=Item_Box  # F2 by the typewriter at 155,129
+erase 47 67
+item 47 68 coin qty=3 name=Antique_Coin_(3)  # F2 inside the Bar & Lounge Safe
+erase 123 184
+item 124 184 coin qty=3 name=Antique_Coin_(3)  # F1 inside the Examination Room Safe
+erase 118 198
+item 118 199 coin qty=2 name=Antique_Coin_(2)  # F1 inside the Waiting Room Safe
+set 118 199 open=1  # the Waiting Room Safe stands open
+item 118 198 coin name=Antique_Coin  # F1 Polygon Antique Coin (3)

@@ -23,8 +23,11 @@ typedef enum {
     OBJ_FILE,
     OBJ_SAFE,
     OBJ_OBSTACLE,
+    // the Player Spawn: Grace starts here. One per level (level.start_x/y).
     OBJ_START,
-    // a marker for where the level ends (the game itself ignores it)
+    // a goal Grace walks onto. With qty > 0 it hands her item x qty once
+    // the fuse has powered the gate (the Requiem); with qty 0 it ends the
+    // level.
     OBJ_GOAL,
     OBJ_RECIPE,
     OBJ_CABINET,
@@ -34,6 +37,9 @@ typedef enum {
     OBJ_MICROSCOPE,
     // an Item Box: slot items stored here are in every box
     OBJ_ITEMBOX,
+    // where the level's enemy spawns; radius > 0: anywhere within radius
+    // path cells of it. No enemy spawn: no enemy.
+    OBJ_ENEMY_SPAWN,
     OBJ_KIND_COUNT,
 } obj_kind_t;
 

@@ -22,3 +22,12 @@ ts	phase	decision	why	evidence	result
 2026-10-21T06:03:40Z	round2	Coins counted not slotted; Parlor cabinets sell injectors at 3/4/4/6	Dylan + GameSpot/EvilResource/VGC prices	reach: 3 of 4 bought (15 coins vs 17)	open question
 2026-10-21T06:03:40Z	round2	Steroids +1 max HP; Stabilizer x1.1-1.25 bullet dmg	Dylan + GameSpot/IGN	gear_test	pass
 2026-10-21T06:03:40Z	round2	reach assertion relaxed to F1/F2 100%, only F3 warped rooms shut	expected route	tests/run.sh	pass
+2026-10-21T07:15:45Z	round3	Antique Coins in safes: Examination Room 3, Waiting Room 2 (+1 loose), Bar & Lounge 3; level total 21	IGN coin guide, Evil Resource, Polygon safe markers	reach: 21 coins, Parlor 4 of 4	pass
+2026-10-21T07:15:45Z	round3	Fuse goal hands over the Requiem (goal qty>0) and no longer ends the game	Dylan item 2	throw_test fuse chain, smoke fuse chain	pass
+2026-10-21T07:15:45Z	round3	New end goal: Security Manager's Office 178,179 (Isolation Ward, Level 2 wristband)	VGC, Evil Resource, GameSpot; Polygon marker 179,180	reach: way out in round 9	pass
+2026-10-21T07:15:45Z	round3	Fuse only powers the F2 gate 79,107 right of Central Hall; F1 vestibule fusebox/goal removed	IGN Leon walkthrough	throw_test: one fusebox, ward door untouched	pass
+2026-10-21T07:15:45Z	round3	Rehabilitation Ward door 132,223: plain unlocked door, not jammed	jammed (game: Leon's chainsaw) cut F1 reach to 49%; map has no F2->F1 Central Hall stairs so the ward is Grace's only link	reach F1 49%->100%	pass, open question
+2026-10-21T07:15:45Z	round3	Enemy Spawn object (kind 16, radius 18 at 159,68) replaces the hardcoded spawn; none = no enemy	Dylan item 4; same random spawn as before	throw_test, levelscript_test, smoke spawn test, probe 4 boots 8-14 cells away	pass
+2026-10-21T07:15:45Z	round3	Player Spawn reuses OBJ_START renamed player_spawn ('start' alias); second one moves the first with a status message	Dylan item 5; least churn	levelscript_test, editor screenshot	pass
+2026-10-21T07:15:45Z	round3	Editor enemy-spawn radius drawn as a dashed ring	the editor has no blending: a 0.1-alpha fill drew opaque and hid Room 203	editor screenshot	pass
+2026-10-21T07:15:45Z	round3	phone aim-stick dead-zone test failed once in a full run, passed 3/3 alone	touch timing under load; untouched by this round	--repeat-each=3	flake

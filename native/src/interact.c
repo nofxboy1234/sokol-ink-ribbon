@@ -385,17 +385,19 @@ bool interact_try_safe_code(int code) {
 }
 bool level_complete(void) { return in.complete; }
 bool interact_check_complete(void) {
-    if (!in.goal || in.complete) return false;
     int px, py; player_cell(&px, &py);
     for (int i = 0; i < in.level->obj_count; i++) {
-        const obj_t* o = &in.level->objs[i];
-        if (o->kind == OBJ_GOAL && o->x == px && o->y == py) {
-            in.complete = true;
-            // through the door the fuse powers: Leon hands Grace the
-            // Requiem, one round in the cylinder
-            if (!inventory_has(ITEM_GUN_REQUIEM)) gear_pickup(ITEM_GUN_REQUIEM, 1);
-            return true;
+        obj_t* o = &in.level->objs[i];
+        if (o->kind != OBJ_GOAL || o->x != px || o->y != py) continue;
+        if (o->qty > 0) {
+            // past the gate the fuse powers: Leon hands Grace the Requiem
+            // (one round in the cylinder); the level goes on
+            if (in.goal && !o->state && gear_pickup(o->item_type, o->qty)) o->state = 1;
+            continue;
         }
+        if (in.complete) return false;
+        in.complete = true;  // the Security Manager's Office: the way out
+        return true;
     }
     return false;
 }

@@ -126,12 +126,14 @@ void level_init(level_t* lv) {
 const char* obj_kind_name(obj_kind_t kind) {
     static const char* names[OBJ_KIND_COUNT] = {
         "door", "item", "fusebox", "light", "switch", "typewriter", "file",
-        "safe", "obstacle", "start", "goal", "recipe", "cabinet", "stairs", "microscope", "itembox",
+        "safe", "obstacle", "player_spawn", "goal", "recipe", "cabinet", "stairs", "microscope", "itembox",
+        "enemy_spawn",
     };
     return (kind >= 0 && kind < OBJ_KIND_COUNT) ? names[kind] : "door";
 }
 
 obj_kind_t obj_kind_from_name(const char* name) {
+    if (strcmp(name, "start") == 0) return OBJ_START;  // the old name of the player spawn
     for (int i = 0; i < OBJ_KIND_COUNT; i++) {
         if (strcmp(name, obj_kind_name((obj_kind_t)i)) == 0) {
             return (obj_kind_t)i;
@@ -635,6 +637,13 @@ bool level_from_json(level_t* lv, const char* json) {
     }
     if ((v = obj_find(json, tokens, 0, "sections")) >= 0) parse_sections(json, tokens, lv, v);
     if ((v = obj_find(json, tokens, 0, "objects")) >= 0) parse_objects(json, tokens, lv, v);
+    // the Player Spawn object is where she starts
+    for (int i = 0; i < lv->obj_count; i++) {
+        if (lv->objs[i].kind == OBJ_START) {
+            lv->start_x = lv->objs[i].x;
+            lv->start_y = lv->objs[i].y;
+        }
+    }
     free(tokens);
     if (lv->has_tiles) {
         level_compile_tiles(lv);
@@ -767,6 +776,10 @@ int level_to_json(const level_t* lv, char* out, int cap) {
         } else if (o->kind == OBJ_FILE || o->kind == OBJ_SAFE) {
             n = ap(out, cap, n, ", \"code\": %d", o->code);
             if (o->kind == OBJ_SAFE && o->key_id > 0) n = ap(out, cap, n, ", \"key_id\": %d", o->key_id);
+        } else if (o->kind == OBJ_GOAL && o->qty > 0) {
+            n = ap(out, cap, n, ", \"item\": \"%s\", \"qty\": %d", item_name((item_t)o->item_type), o->qty);
+        } else if (o->kind == OBJ_ENEMY_SPAWN) {
+            n = ap(out, cap, n, ", \"radius\": %.0f", o->radius);
         } else if (o->kind == OBJ_CABINET) {
             // price in coins, and what it sells (qty 0: the old +4 slots)
             n = ap(out, cap, n, ", \"code\": %d", o->code);
