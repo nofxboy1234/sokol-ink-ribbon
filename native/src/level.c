@@ -126,7 +126,7 @@ void level_init(level_t* lv) {
 const char* obj_kind_name(obj_kind_t kind) {
     static const char* names[OBJ_KIND_COUNT] = {
         "door", "item", "fusebox", "light", "switch", "typewriter", "file",
-        "safe", "obstacle", "start", "goal", "recipe", "cabinet", "stairs", "microscope",
+        "safe", "obstacle", "start", "goal", "recipe", "cabinet", "stairs", "microscope", "itembox",
     };
     return (kind >= 0 && kind < OBJ_KIND_COUNT) ? names[kind] : "door";
 }
@@ -175,8 +175,6 @@ static const item_info_t k_items[ITEM_COUNT] = {
         "Rounds for the S&S M232 and the B934." },
     [ITEM_MAGNUM_AMMO] = { "magnum_ammo", "12.7x55mm Ammo", 0.75f, 0.30f, 0.0f, 4, ICAT_AMMO,
         "Heavy cartridges for the Requiem revolver." },
-    [ITEM_SHOTGUN_SHELLS] = { "shotgun_shells", "Shotgun Shells", 0.85f, 0.10f, 0.10f, 4, ICAT_AMMO,
-        "Shells for the MSBG 500 shotgun." },
     [ITEM_INFECTED_BLOOD] = { "infected_blood", "Infected Blood", 0.45f, 0.0f, 0.05f, 0, ICAT_BLOOD,
         "A pool of infected blood. The Blood Collector draws it up for crafting." },
     [ITEM_TRANSFUSION_BAG] = { "transfusion_bag", "Transfusion Bag", 0.70f, 0.05f, 0.15f, 1, ICAT_CONSUMABLE,
@@ -195,8 +193,6 @@ static const item_info_t k_items[ITEM_COUNT] = {
         "Analyse it at a Laser Microscope to learn the Ink Ribbon recipe." },
     [ITEM_SPECIMEN_REVERSIBLE] = { "specimen_reversible", "Blood Specimen (Reversible)", 0.9f, 0.4f, 0.5f, 2, ICAT_KEY,
         "Analyse it at a Laser Microscope to learn the Steroids and Stabilizer recipes." },
-    [ITEM_CHARM_CONNOISSEUR] = { "charm_connoisseur", "Connoisseur Charm", 1.0f, 0.75f, 0.2f, 2, ICAT_CHARM,
-        "A charm for any gun. Increases firepower while carried." },
     [ITEM_CHARM_EYE_SPY] = { "charm_eye_spy", "Eye Spy Charm", 0.3f, 0.8f, 1.0f, 2, ICAT_CHARM,
         "Works just by holding it. Once, a hit that would kill Grace leaves her in Danger instead." },
     [ITEM_CHARM_STAKEOUT] = { "charm_stakeout", "Stakeout Takeout Charm", 0.9f, 0.5f, 0.9f, 2, ICAT_CHARM,
@@ -207,10 +203,6 @@ static const item_info_t k_items[ITEM_COUNT] = {
         "A straight blowback handgun built for durability over firepower. Uses Handgun Ammo." },
     [ITEM_GUN_REQUIEM] = { "gun_requiem", "Requiem", 0.10f, 0.10f, 0.10f, 5, ICAT_GUN,
         "A DSO-issued, large assault revolver. Huge stopping power. Uses 12.7x55mm Ammo." },
-    [ITEM_GUN_MSBG500] = { "gun_msbg500", "MSBG 500", 0.45f, 0.15f, 0.10f, 5, ICAT_GUN,
-        "A compact pump-action shotgun with a wide spread. Uses Shotgun Shells." },
-    [ITEM_CHAINSAW] = { "chainsaw", "Chainsaw", 0.95f, 0.55f, 0.0f, 6, ICAT_MELEE,
-        "A loud, heavy saw. Stuns the enemy for a long time but draws it from far away." },
     [ITEM_HEMOLYTIC_INJECTOR] = { "hemolytic_injector", "Hemolytic Injector", 0.6f, 0.0f, 0.6f, 6, ICAT_MELEE,
         "Destroys infected blood cells. Used on a stunned or unaware enemy next to Grace, it puts it down for a long time." },
     [ITEM_HUNTING_KNIFE] = { "hunting_knife", "Hunting Knife", 0.75f, 0.75f, 0.80f, 6, ICAT_MELEE,
@@ -261,10 +253,6 @@ static const item_info_t k_items[ITEM_COUNT] = {
         "A trinket box with a unicorn on the lid. The Red Jewel is inside." },
     [ITEM_NOTEBOOK] = { "notebook", "Leatherbound Notebook", 0.45f, 0.25f, 0.1f, 1, ICAT_KEY,
         "A notebook. Its notes open the Organ Transport Box." },
-    [ITEM_HAND_GRENADE] = { "hand_grenade", "Hand Grenade", 0.25f, 0.45f, 0.15f, 4, ICAT_THROWABLE,
-        "Throw it like a bottle. The blast stuns the enemy anywhere within 2 cells." },
-    [ITEM_COMPENSATOR] = { "compensator", "Compensator", 0.4f, 0.4f, 0.45f, 7, ICAT_CHARM,
-        "A weapon part. While carried, guns reach 2 cells further." },
     [ITEM_MR_RACCOON] = { "mr_raccoon", "Mr. Raccoon Memoriam", 0.5f, 0.5f, 0.5f, 4, ICAT_COLLECTIBLE,
         "A Mr. Raccoon statue. A collectible." },
 };
@@ -778,6 +766,11 @@ int level_to_json(const level_t* lv, char* out, int cap) {
             if (o->lock != LOCK_NONE) n = ap(out, cap, n, ", \"lock\": \"%s\"", door_lock_name(o->lock));
         } else if (o->kind == OBJ_FILE || o->kind == OBJ_SAFE) {
             n = ap(out, cap, n, ", \"code\": %d", o->code);
+            if (o->kind == OBJ_SAFE && o->key_id > 0) n = ap(out, cap, n, ", \"key_id\": %d", o->key_id);
+        } else if (o->kind == OBJ_CABINET) {
+            // price in coins, and what it sells (qty 0: the old +4 slots)
+            n = ap(out, cap, n, ", \"code\": %d", o->code);
+            if (o->qty > 0) n = ap(out, cap, n, ", \"item\": \"%s\", \"qty\": %d", item_name((item_t)o->item_type), o->qty);
         }
         if (o->link_id > 0) {
             n = ap(out, cap, n, ", \"link\": %d", o->link_id);

@@ -9,6 +9,7 @@ import {
   readRadialDirection,
   graceDead,
   type GraceView,
+  reloadGun,
 } from "./wasmBridge";
 import { useGameState } from "./GameState";
 
@@ -333,8 +334,23 @@ export function GraceActions() {
       ? `Grace: Paused, last ${STATUS[grace.last]?.label ?? "Waiting"}`
       : `Grace: ${status.label}`;
 
+  const gun = grace.loaded >= 0 && grace.mag > 0;
   return (
     <div ref={hostRef} className="grace-actions">
+      {grace.live && gun && (
+        <button
+          type="button"
+          className="grace-reload"
+          data-testid="reload"
+          disabled={grace.reloading || grace.loaded >= grace.mag}
+          title={grace.reloading ? "Reloading" : "Reload (R)"}
+          onClick={() => reloadGun()}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <span className="grace-reload-count">{grace.loaded}/{grace.mag}</span>
+          <span>{grace.reloading ? "Reloading" : "Reload"}</span>
+        </button>
+      )}
       {grace.live && (
         <div
           className="grace-status"

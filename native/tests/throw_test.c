@@ -885,11 +885,24 @@ int main(int argc, char** argv) {
             if (safe) safe->kind = OBJ_SAFE;
         }
         if (safe) {
+            int key = safe->key_id, code = safe->code, kind_was = safe->kind;
+            safe->kind = OBJ_SAFE; safe->key_id = 0;  // a code safe
             safe->open = 0; safe->code = 1234; player_set_cell(safe->x + 1, safe->y);
             interact_at(safe->x, safe->y);
             CHECK(interact_pending_safe() >= 0 && !interact_try_safe_code(1111) && interact_try_safe_code(1234) && safe->open == 1,
                   "safe: wrong code fails, right code opens");
-            safe->kind = OBJ_GOAL; safe->code = 0;
+            safe->key_id = key; safe->code = code; safe->open = 0;
+            if (kind_was == OBJ_SAFE && key > 0) {
+                // no puzzles: a puzzle box opens for the item it needs
+                interact_at(safe->x, safe->y);
+                bool shut = !safe->open;
+                inventory_add(key);
+                interact_at(safe->x, safe->y);
+                CHECK(shut && safe->open == 1, "puzzle box: shut without its item, opens holding it");
+                inventory_remove(key);
+                safe->open = 0;
+            }
+            if (kind_was == OBJ_GOAL) { safe->kind = OBJ_GOAL; safe->code = 0; }
         } else {
             CHECK(true, "safe: none placed in level 1 (system tested when placed)");
         }

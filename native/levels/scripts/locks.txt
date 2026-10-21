@@ -7,7 +7,7 @@ set 126 87 lock=none name=Broken_Light  # F2 marker 126,87
 door 148 94 h 2 lock=jammed name=Blocked_Door  # F2 marker 146,94, no doorway traced
 set 150 103 lock=none name=Broken_Light  # F2 marker 150,104
 set 79 107 lock=other_side name=Locked_Door  # F2 marker 79,108
-door 157 134 v 2 key=wrench name=Sturdy_Lock  # F2 marker 155,136, no doorway traced
+door 157 134 v 2 key=corrosive name=Sturdy_Lock  # F2 marker 155,136, no doorway traced
 door 168 156 v 2 lock=other_side name=Locked_Door  # F1 marker 171,158, no doorway traced
 set 17 160 lock=jammed name=Broken_Door  # F1 marker 17,161
 set 51 164 key=wristband_1 name=Security_Point_Lv._1  # F1 marker 53,164

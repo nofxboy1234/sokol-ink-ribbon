@@ -9,18 +9,16 @@
 #include <math.h>
 #include <string.h>
 
-// Numbers from the RE Requiem stat tables, scaled to stun seconds: the
-// enemy here can't die, so damage becomes how long it stays down.
+// Damage: an enemy has ENEMY_HP (100). The handguns kill in 4 to 6 hits
+// (M232 17-25, B934 17-22), a critical hit kills outright; the Requiem
+// (Power 85 of 100, "kills most zombies with a single shot") kills in one.
 static const weapon_t k_weapons[] = {
-    { ITEM_GUN_M232, AMMO_HANDGUN, 10.0f, 5.0f, 12.0f, 1, 0, 0.0f, false },
-    { ITEM_GUN_B934, AMMO_HANDGUN, 9.0f, 4.0f, 12.0f, 1, 0, 0.0f, false },
-    { ITEM_GUN_REQUIEM, AMMO_MAGNUM, 14.0f, 20.0f, 16.0f, 1, 0, 0.0f, false },
-    { ITEM_GUN_MSBG500, AMMO_SHELLS, 6.0f, 10.0f, 14.0f, 5, 0, 0.0f, false },
-    { ITEM_HUNTING_KNIFE, -1, GEAR_MELEE_REACH, 2.5f, 2.0f, 1, 4, 0.0f, false },
-    { ITEM_MAKESHIFT_KNIFE, -1, GEAR_MELEE_REACH, 2.5f, 2.0f, 1, 12, 0.0f, false },
-    { ITEM_CHAINSAW, -1, GEAR_MELEE_REACH, 8.0f, 14.0f, 1, 6, 0.0f, false },
-    { ITEM_HEMOLYTIC_INJECTOR, -1, GEAR_MELEE_REACH, 45.0f, 0.0f, 1, 1, 0.0f, true },
-    { ITEM_HAND_GRENADE, -1, THROW_RANGE_CELLS, 6.0f, 16.0f, 1, 1, 2.0f, false },
+    { ITEM_GUN_M232, AMMO_HANDGUN, 10.0f, 17.0f, 25.0f, 0.08f, 12.0f, 9, 9, 1.6f, 0, false },
+    { ITEM_GUN_B934, AMMO_HANDGUN, 9.0f, 17.0f, 22.0f, 0.06f, 12.0f, 7, 0, 1.8f, 0, false },
+    { ITEM_GUN_REQUIEM, AMMO_MAGNUM, 14.0f, 100.0f, 100.0f, 0.0f, 16.0f, 5, 1, 2.5f, 0, false },
+    { ITEM_HUNTING_KNIFE, -1, GEAR_MELEE_REACH, 12.0f, 16.0f, 0.05f, 2.0f, 0, 0, 0.0f, 4, false },
+    { ITEM_MAKESHIFT_KNIFE, -1, GEAR_MELEE_REACH, 8.0f, 12.0f, 0.03f, 2.0f, 0, 0, 0.0f, 12, false },
+    { ITEM_HEMOLYTIC_INJECTOR, -1, GEAR_MELEE_REACH, 100.0f, 100.0f, 0.0f, 0.0f, 0, 0, 0.0f, 1, true },
 };
 #define WEAPON_COUNT ((int)(sizeof(k_weapons) / sizeof(k_weapons[0])))
 
@@ -31,38 +29,55 @@ static struct {
     int blood, blood_cap;
     int scrap, rare_metal;
     int steroids, stabilizer;
-    int grit;
     int collectibles;
+    int coins;
     int equipped;  // item or -1
     int active;
     int wear;      // uses left on the melee weapon in hand
     int eye_spy_used;
-    int stabs;     // knife hits, for the Stakeout Takeout Charm's free one in five
-} g = { .blood_cap = GEAR_BLOOD_CAP, .equipped = -1 };
+    int stabs;     // knife hits, for the Stakeout Takeout Charm
+    int loaded[WEAPON_COUNT];
+    float reload_left;  // seconds; > 0 while reloading the equipped gun
+    unsigned int rng;
+} g;
+
+static int weapon_index(int item) {
+    for (int i = 0; i < WEAPON_COUNT; i++) {
+        if (k_weapons[i].item == item) return i;
+    }
+    return -1;
+}
 
 void gear_init(void) {
+    unsigned int rng = g.rng ? g.rng : 0x9e3779b9u;
     memset(&g, 0, sizeof(g));
     g.blood_cap = GEAR_BLOOD_CAP;
     g.equipped = -1;
+    g.rng = rng;
+}
+
+void gear_seed(unsigned int seed) { g.rng = seed ? seed : 1u; }
+
+static float roll(void) {
+    g.rng ^= g.rng << 13;
+    g.rng ^= g.rng >> 17;
+    g.rng ^= g.rng << 5;
+    return (float)(g.rng & 0xffffffu) / (float)0x1000000;
 }
 
 const weapon_t* gear_weapon(int item) {
-    for (int i = 0; i < WEAPON_COUNT; i++) {
-        if (k_weapons[i].item == item) return &k_weapons[i];
-    }
-    return 0;
+    int i = weapon_index(item);
+    return i >= 0 ? &k_weapons[i] : 0;
 }
 
 static int ammo_kind_of(int item) {
     switch (item) {
         case ITEM_HANDGUN_AMMO: return AMMO_HANDGUN;
         case ITEM_MAGNUM_AMMO: return AMMO_MAGNUM;
-        case ITEM_SHOTGUN_SHELLS: return AMMO_SHELLS;
         default: return -1;
     }
 }
 
-// The counter a counted item lives in, or 0 for slot items.
 static int* counter_of(int item) {
     int a = ammo_kind_of(item);
     if (a >= 0) return &g.ammo[a];
@@ -70,12 +85,11 @@ static int* counter_of(int item) {
     if (item == ITEM_RARE_METAL) return &g.rare_metal;
     if (item == ITEM_INFECTED_BLOOD) return &g.blood;
     if (item == ITEM_MR_RACCOON) return &g.collectibles;
+    if (item == ITEM_COIN) return &g.coins;  // Antique Coins stack in one place (RE)
     return 0;
 }
 
-bool gear_counted(int item) {
-    return counter_of(item) != 0;
-}
+bool gear_counted(int item) { return counter_of(item) != 0; }
 
 int gear_count(int item) {
     int* c = counter_of(item);
@@ -112,21 +126,21 @@ bool gear_pickup(int item, int qty) {
     if (qty < 1) qty = 1;
     switch (item_category(item)) {
         case ICAT_BLOOD:
-            // the Blood Collector draws it up; without one it stays put
             if (!inventory_has(ITEM_BLOOD_COLLECTOR) || g.blood >= g.blood_cap) return false;
             return gear_give(item, qty);
         case ICAT_POUCH:
             inventory_expand(2);
             return true;
         case ICAT_GUN: {
-            // a gun found loaded: its rounds join the ammo count
             if (!inventory_add(item)) return false;
-            const weapon_t* w = gear_weapon(item);
-            if (w && w->ammo >= 0 && qty > 1) g.ammo[w->ammo] += qty;
+            int w = weapon_index(item);
+            if (w >= 0) g.loaded[w] = k_weapons[w].found_loaded;
             if (g.equipped < 0 && !throw_equipped()) gear_equip(item);
             return true;
         }
         default:
+            // the Unicorn Trinket Box opens in her hands: the Red Jewel
+            if (item == ITEM_UNICORN_BOX) return inventory_add(ITEM_RED_JEWEL);
             if (counter_of(item)) return gear_give(item, qty);
             return inventory_add(item);
     }
@@ -138,22 +152,18 @@ int gear_blood_cap(void) { return g.blood_cap; }
 int gear_doses_steroids(void) { return g.steroids; }
 int gear_doses_stabilizer(void) { return g.stabilizer; }
 int gear_collectibles(void) { return g.collectibles; }
-int gear_grit(void) { return g.grit; }
 
 bool gear_use_slot(int index) {
     int item = inventory_slot(index);
-    int health = health_state();
     switch (item) {
         case ITEM_HERB:
         case ITEM_MIXED_HERB:
-        case ITEM_INJECTOR: {
-            int heal = item == ITEM_HERB ? 1 : 2;
-            if (health == 0) return false;
+        case ITEM_INJECTOR:
+            if (health_hp() >= health_max()) return false;
             if (!inventory_clear_slot(index)) return false;
-            health_set(health - heal);
-            if (health_state() == 0) gear_refill_grit();
+            if (item == ITEM_HERB) health_heal(1);
+            else health_heal_full();
             return true;
-        }
         case ITEM_TRANSFUSION_BAG:
             if (!inventory_has(ITEM_BLOOD_COLLECTOR) || g.blood >= g.blood_cap) return false;
             inventory_clear_slot(index);
@@ -164,14 +174,13 @@ bool gear_use_slot(int index) {
             inventory_clear_slot(index);
             g.blood_cap += GEAR_BLOOD_CAP_STEP;
             return true;
-        case ITEM_STEROIDS:
+        case ITEM_STEROIDS:  // permanent: +1 max health, and a full heal
             if (g.steroids >= GEAR_MAX_DOSES) return false;
             inventory_clear_slot(index);
             g.steroids++;
-            health_set(0);
-            gear_refill_grit();
+            health_raise_max(1);
             return true;
-        case ITEM_STABILIZER:
+        case ITEM_STABILIZER:  // permanent: more damage per bullet
             if (g.stabilizer >= GEAR_MAX_DOSES) return false;
             inventory_clear_slot(index);
             g.stabilizer++;
@@ -189,6 +198,7 @@ bool gear_equip(int item) {
     throw_set_equipped(false);  // one weapon in the East slot
     if (g.equipped != item) {
         g.wear = w->uses;
+        g.reload_left = 0.0f;
     }
     g.equipped = item;
     g.active = 0;
@@ -198,14 +208,16 @@ bool gear_equip(int item) {
 void gear_unequip(void) {
     g.equipped = -1;
     g.active = 0;
+    g.reload_left = 0.0f;
 }
 
 bool gear_active(void) { return g.active && g.equipped >= 0; }
 
 bool gear_ready(void) {
     if (g.equipped < 0 || !inventory_has(g.equipped)) return false;
-    const weapon_t* w = gear_weapon(g.equipped);
-    if (w->ammo >= 0) return g.ammo[w->ammo] > 0;
+    int i = weapon_index(g.equipped);
+    const weapon_t* w = &k_weapons[i];
+    if (w->ammo >= 0) return g.loaded[i] > 0 || g.ammo[w->ammo] > 0;
     return true;
 }
 
@@ -218,24 +230,52 @@ bool gear_set_active(bool on) {
 
 float gear_range(void) {
     const weapon_t* w = gear_weapon(g.equipped);
-    if (!w) return THROW_RANGE_CELLS;
-    float r = w->range;
-    if (w->ammo >= 0 && inventory_has(ITEM_COMPENSATOR)) r += 2.0f;
-    return r;
+    return w ? w->range : THROW_RANGE_CELLS;
 }
 
-static float stun_mult(const weapon_t* w) {
-    if (w->ammo >= 0) {
-        float m = k_stabilizer_mult[g.stabilizer];
-        if (inventory_has(ITEM_CHARM_CONNOISSEUR)) m *= 1.1f;
-        return m;
-    }
-    if (w->uses > 1 && w->item != ITEM_CHAINSAW && inventory_has(ITEM_CHARM_STAKEOUT)) return 1.5f;
+int gear_loaded(int item) {
+    int i = weapon_index(item);
+    return i >= 0 && k_weapons[i].mag > 0 ? g.loaded[i] : -1;
+}
+
+void gear_set_loaded(int item, int rounds) {
+    int i = weapon_index(item);
+    if (i < 0 || k_weapons[i].mag <= 0) return;
+    g.loaded[i] = rounds < 0 ? 0 : rounds > k_weapons[i].mag ? k_weapons[i].mag : rounds;
+}
+
+bool gear_reloading(void) { return g.reload_left > 0.0f; }
+
+bool gear_reload(void) {
+    int i = weapon_index(g.equipped);
+    if (i < 0 || g.reload_left > 0.0f) return false;
+    const weapon_t* w = &k_weapons[i];
+    if (w->mag <= 0 || g.loaded[i] >= w->mag || g.ammo[w->ammo] <= 0) return false;
+    g.reload_left = w->reload;
+    return true;
+}
+
+bool gear_update(float dt) {
+    if (g.reload_left <= 0.0f) return false;
+    g.reload_left -= dt;
+    if (g.reload_left > 0.0f) return false;
+    g.reload_left = 0.0f;
+    int i = weapon_index(g.equipped);
+    if (i < 0) return false;
+    const weapon_t* w = &k_weapons[i];
+    int take = w->mag - g.loaded[i];
+    if (take > g.ammo[w->ammo]) take = g.ammo[w->ammo];
+    g.loaded[i] += take;
+    g.ammo[w->ammo] -= take;
+    return true;
+}
+
+static float damage_mult(const weapon_t* w) {
+    if (w->ammo >= 0) return k_stabilizer_mult[g.stabilizer];
+    if (w->uses > 1 && inventory_has(ITEM_CHARM_STAKEOUT)) return 1.5f;
     return 1.0f;
 }
 
-// A used-up melee weapon or throwable leaves her hand; the next one of the
-// same kind takes its place.
 static void wear_out(const weapon_t* w) {
     if (--g.wear > 0) return;
     inventory_remove(w->item);
@@ -244,55 +284,45 @@ static void wear_out(const weapon_t* w) {
 }
 
 bool gear_fire(float gx, float gy, float dx, float dy, float len, gear_shot_t* out) {
+    (void)len;
     memset(out, 0, sizeof(*out));
-    if (!gear_active() || !gear_ready()) return false;
-    const weapon_t* w = gear_weapon(g.equipped);
+    if (!gear_active() || !gear_ready() || g.reload_left > 0.0f) return false;
+    int i = weapon_index(g.equipped);
+    const weapon_t* w = &k_weapons[i];
+    if (w->mag > 0 && g.loaded[i] <= 0) {
+        gear_reload();  // an empty magazine: reload instead of firing
+        return false;
+    }
     float range = gear_range();
-    bool thrown = w->blast > 0.0f;
-    float reach = thrown ? (len < range ? len : range) : range;
     if (w->needs_stun) {
         enemy_state_t s = enemy_state();
         float ex = enemy_x() - gx, ey = enemy_y() - gy;
         if ((s != ENEMY_STUNNED && s != ENEMY_PATROL) || ex * ex + ey * ey > range * range) return false;
     }
-    float base = atan2f(dy, dx);
-    for (int p = 0; p < w->pellets; p++) {
-        // pellets fan out 8 degrees apart around the aim
-        float a = base + ((float)p - (float)(w->pellets - 1) * 0.5f) * 0.14f;
-        throw_scan_t scan;
-        throw_hitscan(gx, gy, cosf(a), sinf(a), reach, &scan);
-        if (p == 0 || scan.hit_enemy) {
-            out->x = scan.x;
-            out->y = scan.y;
-        }
-        if (scan.hit_enemy) out->hit = true;
-    }
-    if (thrown) {
-        float ex = enemy_x() - out->x, ey = enemy_y() - out->y;
-        out->hit = out->hit || ex * ex + ey * ey <= w->blast * w->blast;
-    }
+    float n = sqrtf(dx * dx + dy * dy);
+    if (n < 1e-6f) return false;
+    throw_scan_t scan;
+    throw_hitscan(gx, gy, dx / n, dy / n, range, &scan);
+    out->x = scan.x;
+    out->y = scan.y;
+    out->hit = scan.hit_enemy && enemy_alive();
     if (out->hit) {
-        enemy_damage(w->stun * stun_mult(w));
+        out->critical = roll() < w->crit;
+        out->damage = (w->damage_min + (w->damage_max - w->damage_min) * roll()) * damage_mult(w);
+        out->killed = enemy_hurt(out->damage, out->critical);
     }
     if (w->noise > 0.0f) {
         enemy_hear_noise((int)floorf(out->x), (int)floorf(out->y), w->noise);
     }
-    if (w->ammo >= 0) {
-        g.ammo[w->ammo]--;
-        if (g.ammo[w->ammo] == 0) g.active = 0;
-    } else if (out->hit || thrown) {
-        // a knife only wears when it connects
-        // the Stakeout Takeout Charm's 0.8x wear: every fifth knife hit is free
-        bool free_hit = w->uses > 1 && inventory_has(ITEM_CHARM_STAKEOUT) && (++g.stabs % 5) == 1;  // 1 in 5 stabs free: 0.8x wear
+    if (w->mag > 0) {
+        g.loaded[i]--;
+        if (g.loaded[i] == 0 && !gear_reload() && g.ammo[w->ammo] == 0) g.active = 0;
+    } else if (out->hit) {
+        // Stakeout Takeout: 1 in 5 stabs is free (0.8x wear)
+        bool free_hit = w->uses > 1 && inventory_has(ITEM_CHARM_STAKEOUT) && (++g.stabs % 5) == 1;
         if (!free_hit) wear_out(w);
     }
     out->fired = true;
-    return true;
-}
-
-bool gear_absorb_hit(void) {
-    if (g.grit <= 0) return false;
-    g.grit--;
     return true;
 }
 
@@ -302,9 +332,6 @@ bool gear_survive_fatal(void) {
     return true;
 }
 
-void gear_refill_grit(void) { g.grit = g.steroids; }
-
-// Which recipes each specimen teaches (indices into crafting.c's table).
 bool gear_analyse_specimen(void) {
     static const struct { int item; unsigned mask; } k_teach[] = {
         { ITEM_SPECIMEN_DENATURED, (1u << 2) | (1u << 3) },
@@ -322,18 +349,26 @@ bool gear_analyse_specimen(void) {
     return false;
 }
 
+_Static_assert(14 + WEAPON_COUNT < GEAR_SAVE_INTS, "gear save size");
+
 void gear_export(int* out) {
-    int v[GEAR_SAVE_INTS] = {
-        g.ammo[0], g.ammo[1], g.ammo[2], g.blood, g.blood_cap, g.scrap, g.rare_metal,
-        g.steroids, g.stabilizer, g.grit, g.collectibles, g.equipped, g.active, g.wear, g.eye_spy_used,
+    memset(out, 0, sizeof(int) * GEAR_SAVE_INTS);
+    int v[14] = {
+        g.ammo[0], g.ammo[1], g.blood, g.blood_cap, g.scrap, g.rare_metal, g.steroids,
+        g.stabilizer, g.collectibles, g.equipped, g.active, g.wear, g.eye_spy_used, g.stabs,
     };
     memcpy(out, v, sizeof(v));
+    for (int i = 0; i < WEAPON_COUNT; i++) out[14 + i] = g.loaded[i];
+    out[GEAR_SAVE_INTS - 1] = g.coins;
 }
 
 void gear_import(const int* in) {
-    g.ammo[0] = in[0]; g.ammo[1] = in[1]; g.ammo[2] = in[2];
-    g.blood = in[3]; g.blood_cap = in[4] > 0 ? in[4] : GEAR_BLOOD_CAP;
-    g.scrap = in[5]; g.rare_metal = in[6];
-    g.steroids = in[7]; g.stabilizer = in[8]; g.grit = in[9]; g.collectibles = in[10];
-    g.equipped = in[11]; g.active = in[12]; g.wear = in[13]; g.eye_spy_used = in[14];
+    g.ammo[0] = in[0]; g.ammo[1] = in[1];
+    g.blood = in[2]; g.blood_cap = in[3] > 0 ? in[3] : GEAR_BLOOD_CAP;
+    g.scrap = in[4]; g.rare_metal = in[5];
+    g.steroids = in[6]; g.stabilizer = in[7]; g.collectibles = in[8];
+    g.equipped = in[9]; g.active = in[10]; g.wear = in[11]; g.eye_spy_used = in[12]; g.stabs = in[13];
+    for (int i = 0; i < WEAPON_COUNT; i++) g.loaded[i] = in[14 + i];
+    g.coins = in[GEAR_SAVE_INTS - 1];
+    g.reload_left = 0.0f;
 }

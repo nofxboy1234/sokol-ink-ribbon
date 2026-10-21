@@ -96,6 +96,15 @@ export type EmscriptenModule = {
   _web_weapon_active?: () => number;
   _web_equip_item?: (item: number, on: number) => number;
   _web_gear_stat?: (which: number) => number;
+  _web_reload?: () => number;
+  _web_take_itembox?: () => number;
+  _web_itembox_count?: () => number;
+  _web_itembox_item?: (index: number) => number;
+  _web_itembox_store?: (slot: number) => number;
+  _web_itembox_take?: (index: number) => number;
+  _web_enemy_alive?: () => number;
+  _web_enemy_hp?: () => number;
+  _web_test_gear_seed?: (seed: number) => void;
   _web_key_count?: () => number;
   _web_key_item?: (index: number) => number;
   _replay_length?: () => number;
@@ -251,7 +260,6 @@ export function readSnapshot(revision: number): GameSnapshot {
 export type GearStats = {
   handgunAmmo: number;
   magnumAmmo: number;
-  shells: number;
   blood: number;
   bloodCap: number;
   scrap: number;
@@ -259,20 +267,27 @@ export type GearStats = {
   steroids: number;
   stabilizer: number;
   raccoons: number;
-  grit: number;
+  hp: number;
+  hpMax: number;
+  loaded: number; // rounds in the equipped gun's magazine, -1 no gun
+  mag: number;
+  reloading: boolean;
+  coins: number;
 };
 
 const EMPTY_GEAR: GearStats = {
-  handgunAmmo: 0, magnumAmmo: 0, shells: 0, blood: 0, bloodCap: 0, scrap: 0,
-  rareMetal: 0, steroids: 0, stabilizer: 0, raccoons: 0, grit: 0,
+  handgunAmmo: 0, magnumAmmo: 0, blood: 0, bloodCap: 0, scrap: 0, rareMetal: 0,
+  steroids: 0, stabilizer: 0, raccoons: 0, hp: 0, hpMax: 0, loaded: -1, mag: 0,
+  reloading: false, coins: 0,
 };
 
 function readGear(m: EmscriptenModule): GearStats {
   const stat = (i: number) => m._web_gear_stat?.(i) ?? 0;
   return {
-    handgunAmmo: stat(0), magnumAmmo: stat(1), shells: stat(2), blood: stat(3),
-    bloodCap: stat(4), scrap: stat(5), rareMetal: stat(6), steroids: stat(7),
-    stabilizer: stat(8), raccoons: stat(9), grit: stat(10),
+    handgunAmmo: stat(0), magnumAmmo: stat(1), blood: stat(3), bloodCap: stat(4),
+    scrap: stat(5), rareMetal: stat(6), steroids: stat(7), stabilizer: stat(8),
+    raccoons: stat(9), hp: stat(10), hpMax: stat(11), loaded: stat(12), mag: stat(13),
+    reloading: stat(14) !== 0, coins: stat(15),
   };
 }
 
@@ -341,6 +356,9 @@ export type GraceView = {
   bottleEmpty: boolean;
   equippedItem: number;
   weaponActive: boolean;
+  loaded: number; // equipped gun's magazine, -1 no gun
+  mag: number;
+  reloading: boolean;
   hasLighter: boolean;
   lighterOn: boolean;
   throwAllowed: boolean;
@@ -366,6 +384,9 @@ export function readGrace(): GraceView {
     bottleEmpty: (m?._web_bottle_empty?.() ?? 0) !== 0,
     equippedItem: m?._web_equipped_item?.() ?? -1,
     weaponActive: (m?._web_weapon_active?.() ?? 0) !== 0,
+    loaded: m?._web_gear_stat?.(12) ?? -1,
+    mag: m?._web_gear_stat?.(13) ?? 0,
+    reloading: (m?._web_gear_stat?.(14) ?? 0) !== 0,
     hasLighter: (m?._web_inventory_has?.(ITEM_LIGHTER) ?? 0) !== 0,
     lighterOn: (m?._lighter_value?.() ?? 0) !== 0,
     throwAllowed: (m?._web_throw_allowed?.() ?? 0) !== 0,
@@ -452,6 +473,26 @@ export function setPaused(paused: boolean): void {
 }
 
 export const SAVE_SLOTS = 6;
+
+// Reload the equipped gun from the reserve (R on desktop).
+export function reloadGun(): boolean {
+  return (module()?._web_reload?.() ?? 0) !== 0;
+}
+
+// The Item Box: true once when Grace opens one in the level.
+export function takeItembox(): boolean {
+  return (module()?._web_take_itembox?.() ?? 0) !== 0;
+}
+export function readItembox(): number[] {
+  const m = module();
+  return Array.from({ length: m?._web_itembox_count?.() ?? 0 }, (_, i) => m?._web_itembox_item?.(i) ?? -1);
+}
+export function itemboxStore(slot: number): boolean {
+  return (module()?._web_itembox_store?.(slot) ?? 0) !== 0;
+}
+export function itemboxTake(index: number): boolean {
+  return (module()?._web_itembox_take?.(index) ?? 0) !== 0;
+}
 
 export function takeSaveMenu(): boolean {
   return (module()?._take_save_menu?.() ?? 0) !== 0;

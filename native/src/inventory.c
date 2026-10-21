@@ -8,6 +8,8 @@ static int inv_capacity = INV_BASE_SLOTS;
 // take a slot, so progression can't be blocked by a full bag.
 static int key_ring[INV_KEY_RING];
 static int key_count;
+static int box[INV_BOX_MAX];
+static int box_count;
 
 bool inventory_is_key_item(int item_type) {
     item_cat_t c = item_category(item_type);
@@ -20,6 +22,7 @@ void inventory_init(void) {
         inv_slots[i] = -1;
     }
     key_count = 0;
+    box_count = 0;
 }
 
 int inventory_key_count(void) { return key_count; }
@@ -143,4 +146,32 @@ void inventory_set(int count, const int* slots) {
     for (int i = 0; i < INV_SLOTS; i++) {
         inv_slots[i] = (i < count && slots) ? slots[i] : -1;
     }
+}
+
+int inventory_box_count(void) { return box_count; }
+int inventory_box_item(int index) { return index >= 0 && index < box_count ? box[index] : -1; }
+
+bool inventory_box_store(int slot) {
+    if (slot < 0 || slot >= inv_capacity || inv_slots[slot] < 0 || box_count >= INV_BOX_MAX) return false;
+    box[box_count++] = inv_slots[slot];
+    inv_slots[slot] = -1;
+    return true;
+}
+
+bool inventory_box_take(int index) {
+    if (index < 0 || index >= box_count) return false;
+    for (int i = 0; i < inv_capacity; i++) {
+        if (inv_slots[i] < 0) {
+            inv_slots[i] = box[index];
+            for (int k = index; k + 1 < box_count; k++) box[k] = box[k + 1];
+            box_count--;
+            return true;
+        }
+    }
+    return false;  // bag full
+}
+
+void inventory_box_set(int count, const int* items) {
+    box_count = count < 0 ? 0 : count > INV_BOX_MAX ? INV_BOX_MAX : count;
+    for (int i = 0; i < box_count; i++) box[i] = items[i];
 }

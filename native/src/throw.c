@@ -178,7 +178,7 @@ bool throw_hitscan(float gx, float gy, float dx, float dy, float max_dist, throw
     float perp2 = ex * ex + ey * ey - proj * proj;
     float r2 = THROW_ENEMY_RADIUS * THROW_ENEMY_RADIUS;
     float enemy_enter = -1.0f;
-    if (proj > 0.0f && perp2 < r2) {
+    if (enemy_alive() && proj > 0.0f && perp2 < r2) {
         enemy_enter = proj - sqrtf(r2 - perp2);
         if (enemy_enter < 0.0f) {
             enemy_enter = 0.0f;

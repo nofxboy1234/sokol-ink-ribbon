@@ -12,3 +12,13 @@ ts	phase	decision	why	evidence	result
 2026-10-21T04:50:38Z	fix	web_throw_allowed and the phone aim stick use weapon_active (bottle or gear)	phone test: aim stick stayed greyed with an active gun	gear.spec.ts phone test	phone fires on stick release
 2026-10-21T04:50:38Z	fix	Requiem moved to 156,72 in Room 203	smoke test uses 159,68 as the far-from-items spot	smoke.spec.ts:1646	test passes
 2026-10-21T04:50:38Z	verify	native suite, wasm build, 65 Playwright tests (desktop + phone touch), screenshots	prove-it-works on the real artefact	/workspace/doors-items-artifacts	all green
+2026-10-21T06:03:40Z	round2	Requiem off the map; given at the goal (1 round)	Dylan: Grace gets it passing the fuse-opened door	interact_check_complete; reach log 'reach the goal'	reach: received
+2026-10-21T06:03:40Z	round2	Enemy HP 100, guns 17-25 dmg, crit kills, dead fade 2s	Dylan: 4-6 shots, crit chance, fade	gear_test: M232 5-6 shots, 18/40 crit kills	pass
+2026-10-21T06:03:40Z	round2	Magazines + reload (M232 9 full, B934 7 empty, Requiem 5)	Dylan; Prima/Gamer Guides capacities	gear_test + gear.spec reload	pass
+2026-10-21T06:03:40Z	round2	Item Box: shared store, Polygon markers + typewriters	Dylan: RE item box	place_markers Item Box layer	4 boxes
+2026-10-21T06:03:40Z	round2	Removed Leon items (shotgun/shells, MSBG, chainsaw, grenades, compensator, Connoisseur)	Dylan + GameSpot/GameRant	place_markers None entries	skipped
+2026-10-21T06:03:40Z	round2	F3 Warped Door jammed	Dylan: permanently locked; hatchet is Leon's	progression.txt	F3 west rooms unreachable
+2026-10-21T06:03:40Z	round2	Puzzle boxes open with their item (pencil/wristband3/corrosive)	Dylan: no puzzles	throw_test puzzle box check	pass
+2026-10-21T06:03:40Z	round2	Coins counted not slotted; Parlor cabinets sell injectors at 3/4/4/6	Dylan + GameSpot/EvilResource/VGC prices	reach: 3 of 4 bought (15 coins vs 17)	open question
+2026-10-21T06:03:40Z	round2	Steroids +1 max HP; Stabilizer x1.1-1.25 bullet dmg	Dylan + GameSpot/IGN	gear_test	pass
+2026-10-21T06:03:40Z	round2	reach assertion relaxed to F1/F2 100%, only F3 warped rooms shut	expected route	tests/run.sh	pass

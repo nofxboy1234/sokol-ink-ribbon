@@ -1,7 +1,8 @@
-// Native checks for gear, locks and the key ring: guns need their ammo,
-// melee wears out, blood needs the collector, Steroids and Eye Spy, every
-// lock kind, the wristband ladder, specimens, counter crafting and saves.
-// Objects are found by kind, lock and position, never by list index.
+// Native checks for gear, locks and the key ring: magazines, reloads,
+// shots to kill, crits and fading bodies, melee wear, blood and the
+// collector, Steroids, the Stabilizer and Eye Spy, the Item Box, the Parlor
+// cabinets, every lock kind, the wristband ladder, specimens, counter
+// crafting and saves. Objects are found by kind, lock and position.
 #include "crafting.h"
 #include "doors.h"
 #include "enemy.h"
@@ -120,28 +121,93 @@ int main(int argc, char** argv) {
     savegame_init();
     throw_seed(7u);
 
-    // --- guns need their own ammo, and a hit stuns ---
+    // --- guns: magazines, reloads, 4-6 shots to kill, crits, death fades ---
     reset();
-    CHECK(gear_pickup(ITEM_HANDGUN_AMMO, 6) && gear_ammo(AMMO_HANDGUN) == 6, "handgun ammo is a counter, not a slot");
+    gear_seed(1u);
+    CHECK(gear_pickup(ITEM_HANDGUN_AMMO, 20) && gear_ammo(AMMO_HANDGUN) == 20, "handgun ammo is a counter, not a slot");
     CHECK(inventory_count() == 0, "ammo takes no slot");
     CHECK(!gear_equip(ITEM_GUN_M232), "no M232 in the bag: can't equip it");
     CHECK(gear_pickup(ITEM_GUN_M232, 1) && gear_equipped() == ITEM_GUN_M232, "picking up the M232 equips it");
-    CHECK(gear_set_active(true) && gear_active(), "M232 with handgun ammo goes active");
+    CHECK(gear_loaded(ITEM_GUN_M232) == 9, "the M232 is found with a full 9-round magazine");
+    CHECK(gear_set_active(true) && gear_active(), "M232 goes active");
     int gx = 0, gy = 0;
     CHECK(line_up(&gx, &gy, 4), "found an open firing line at %d,%d", gx, gy);
-    enemy_at(gx + 4, gy);
     gear_shot_t shot;
-    CHECK(shoot(gx, gy, &shot) && shot.hit, "M232 shot hits the enemy 4 cells away");
-    CHECK(enemy_state() == ENEMY_STUNNED, "the hit stuns her pursuer");
-    CHECK(gear_ammo(AMMO_HANDGUN) == 5, "one round spent");
-    CHECK(gear_pickup(ITEM_GUN_REQUIEM, 1) && gear_equip(ITEM_GUN_REQUIEM), "Requiem equips");
-    CHECK(!gear_set_active(true), "Requiem won't go active on handgun ammo alone");
-    gear_pickup(ITEM_MAGNUM_AMMO, 1);
-    CHECK(gear_set_active(true), "one 12.7mm round arms the Requiem");
+    int min_shots = 99, max_shots = 0, crits = 0;
+    for (int trial = 0; trial < 40; trial++) {
+        gear_set_loaded(ITEM_GUN_M232, 9);
+        gear_give(ITEM_HANDGUN_AMMO, 9);
+        enemy_at(gx + 4, gy);
+        int shots = 0;
+        bool crit = false;
+        while (enemy_alive() && shots < 12) {
+            if (!shoot(gx, gy, &shot)) break;
+            shots++;
+            crit = crit || shot.critical;
+            if (!shot.killed) CHECK(shot.hit && enemy_state() == ENEMY_STUNNED, "a non-fatal hit staggers (trial %d)", trial);
+        }
+        if (crit) { crits++; continue; }
+        if (shots < min_shots) min_shots = shots;
+        if (shots > max_shots) max_shots = shots;
+    }
+    CHECK(min_shots >= 4 && max_shots <= 6, "M232: 4-6 shots to kill without a crit (%d-%d)", min_shots, max_shots);
+    CHECK(crits > 0, "a critical hit sometimes kills early (%d of 40)", crits);
+    {   // a critical hit kills outright
+        enemy_at(gx + 4, gy);
+        CHECK(enemy_hurt(1.0f, true) && !enemy_alive() && enemy_state() == ENEMY_DEAD, "a critical hit kills in one");
+        CHECK(!enemy_hurt(50.0f, false), "the dead take no more damage");
+        enemy_update(1.0f, (float)gx, (float)gy, 0.0f);
+        float half = enemy_alpha();
+        enemy_update(2.0f, (float)gx, (float)gy, 0.0f);
+        CHECK(half > 0.0f && half < 1.0f && enemy_alpha() == 0.0f, "the body fades away (%.2f -> %.2f)", half, enemy_alpha());
+        gear_set_loaded(ITEM_GUN_M232, 9);
+        CHECK(shoot(gx, gy, &shot) && !shot.hit, "shots pass over the dead");
+    }
+    // magazine and reload
+    reset();
+    gear_pickup(ITEM_GUN_M232, 1);
+    gear_set_active(true);
+    gear_pickup(ITEM_HANDGUN_AMMO, 5);
     enemy_at(gx + 4, gy);
-    CHECK(shoot(gx, gy, &shot) && gear_ammo(AMMO_MAGNUM) == 0 && !gear_active(), "the last round fires, then she lowers it");
-    CHECK(!shoot(gx, gy, &shot), "an empty Requiem can't fire");
-    CHECK(gear_ammo(AMMO_HANDGUN) == 5, "Requiem never spends handgun ammo");
+    for (int k = 0; k < 9; k++) shoot(gx, gy, &shot);
+    CHECK(gear_loaded(ITEM_GUN_M232) == 0 && gear_ammo(AMMO_HANDGUN) == 5, "9 shots empty the magazine; the reserve is untouched");
+    CHECK(gear_reloading(), "an empty magazine starts a reload");
+    CHECK(!shoot(gx, gy, &shot), "no shot while reloading");
+    CHECK(!gear_update(1.0f) && gear_update(1.0f), "the M232 reload takes 1.6 s");
+    CHECK(gear_loaded(ITEM_GUN_M232) == 5 && gear_ammo(AMMO_HANDGUN) == 0, "it loads what the reserve has (5)");
+    CHECK(!gear_reload(), "no reserve: nothing to reload");
+    gear_pickup(ITEM_HANDGUN_AMMO, 10);
+    CHECK(gear_reload() && gear_update(2.0f) && gear_loaded(ITEM_GUN_M232) == 9 && gear_ammo(AMMO_HANDGUN) == 6,
+          "a manual reload tops the magazine up to 9");
+    CHECK(gear_pickup(ITEM_GUN_B934, 1) && gear_loaded(ITEM_GUN_B934) == 0, "the B934 is found empty (Prima)");
+    // the Stabilizer raises bullet damage
+    gear_equip(ITEM_GUN_M232);
+    gear_set_active(true);
+    float plain = 0.0f, boosted = 0.0f;
+    for (int k = 0; k < 20; k++) {
+        gear_set_loaded(ITEM_GUN_M232, 9);
+        enemy_at(gx + 4, gy);
+        if (shoot(gx, gy, &shot) && !shot.critical) plain += shot.damage;
+    }
+    gear_pickup(ITEM_STABILIZER, 1);
+    int bag = -1;
+    for (int i = 0; i < inventory_capacity(); i++) if (inventory_slot(i) == ITEM_STABILIZER) bag = i;
+    CHECK(gear_use_slot(bag) && gear_doses_stabilizer() == 1, "a Stabilizer dose is taken");
+    for (int k = 0; k < 20; k++) {
+        gear_set_loaded(ITEM_GUN_M232, 9);
+        enemy_at(gx + 4, gy);
+        if (shoot(gx, gy, &shot) && !shot.critical) boosted += shot.damage;
+    }
+    CHECK(boosted > plain, "the Stabilizer raises bullet damage (%.0f -> %.0f over 20 shots)", plain, boosted);
+    // the Requiem: one 12.7mm round kills
+    reset();
+    CHECK(gear_pickup(ITEM_GUN_REQUIEM, 1) && gear_equip(ITEM_GUN_REQUIEM) && gear_loaded(ITEM_GUN_REQUIEM) == 1,
+          "the Requiem comes with one round loaded");
+    CHECK(gear_set_active(true), "one round arms it");
+    enemy_at(gx + 4, gy);
+    CHECK(shoot(gx, gy, &shot) && shot.killed, "one Requiem round kills");
+    CHECK(gear_loaded(ITEM_GUN_REQUIEM) == 0 && !gear_active(), "empty with no reserve: she lowers it");
+    CHECK(gear_ammo(AMMO_HANDGUN) == 0, "the Requiem never spends handgun ammo");
     CHECK(!throw_equipped(), "a gun takes the bottle's East slot");
 
     // --- knife wear and the Stakeout Takeout Charm ---
@@ -173,7 +239,7 @@ int main(int argc, char** argv) {
     gear_pickup(ITEM_BLOOD_COLLECTOR, 1);
     CHECK(gear_pickup(ITEM_INFECTED_BLOOD, 90) && gear_blood() == 90, "collector holds blood");
     gear_pickup(ITEM_TRANSFUSION_BAG, 1);
-    int bag = -1;
+    bag = -1;
     for (int i = 0; i < inventory_capacity(); i++) if (inventory_slot(i) == ITEM_TRANSFUSION_BAG) bag = i;
     bool used = gear_use_slot(bag);
     CHECK(used && gear_blood() == 100, "a transfusion bag tops up to the 100 cap (slot %d used %d blood %d)", bag, used, gear_blood());
@@ -181,16 +247,77 @@ int main(int argc, char** argv) {
     for (int i = 0; i < inventory_capacity(); i++) if (inventory_slot(i) == ITEM_OVERRIDE_MANUAL) bag = i;
     CHECK(gear_use_slot(bag) && gear_blood_cap() == 150, "override manual lifts the cap by 50");
 
-    // --- Steroids grit and the Eye Spy Charm ---
+    // --- Steroids raise max health; the Eye Spy Charm ---
     reset();
-    health_set(2);
+    CHECK(health_hp() == HEALTH_BASE_MAX && health_max() == HEALTH_BASE_MAX, "she starts at %d of %d", health_hp(), health_max());
+    health_hurt();
+    health_hurt();
     gear_pickup(ITEM_STEROIDS, 1);
     for (int i = 0; i < inventory_capacity(); i++) if (inventory_slot(i) == ITEM_STEROIDS) bag = i;
-    CHECK(gear_use_slot(bag) && health_state() == 0 && gear_doses_steroids() == 1, "steroids heal fully and add a dose");
-    CHECK(gear_absorb_hit() && !gear_absorb_hit(), "one dose absorbs one hit");
+    CHECK(gear_use_slot(bag) && health_max() == HEALTH_BASE_MAX + 1 && health_hp() == health_max(),
+          "Steroids: +1 max health and a full heal (%d of %d)", health_hp(), health_max());
+    CHECK(!health_hurt() && !health_hurt() && !health_hurt() && health_hurt(), "with 4 max she survives 3 hits, the 4th is fatal");
+    health_heal(1);
+    gear_pickup(ITEM_HERB, 1);
+    for (int i = 0; i < inventory_capacity(); i++) if (inventory_slot(i) == ITEM_HERB) bag = i;
+    CHECK(gear_use_slot(bag) && health_hp() == 2, "a Green Herb heals one point");
     CHECK(!gear_survive_fatal(), "no Eye Spy: a fatal hit is fatal");
     gear_pickup(ITEM_CHARM_EYE_SPY, 1);
     CHECK(gear_survive_fatal() && !gear_survive_fatal(), "Eye Spy saves her once");
+
+    // --- the Item Box ---
+    reset();
+    gear_pickup(ITEM_GUN_M232, 1);
+    inventory_add(ITEM_HERB);
+    int herb = -1;
+    for (int i = 0; i < inventory_capacity(); i++) if (inventory_slot(i) == ITEM_HERB) herb = i;
+    CHECK(inventory_box_store(herb) && inventory_box_count() == 1 && !inventory_has(ITEM_HERB), "a herb goes into the Item Box");
+    CHECK(inventory_box_take(0) && inventory_has(ITEM_HERB) && inventory_box_count() == 0, "and comes back out");
+    {
+        int box = -1;
+        for (int i = 0; i < level.obj_count; i++) if (level.objs[i].kind == OBJ_ITEMBOX) { box = i; break; }
+        CHECK(box >= 0, "the level has an Item Box");
+        if (box >= 0) {
+            const obj_t* o = &level.objs[box];
+            static const int nx[4] = { 0, 0, 1, -1 }, ny[4] = { 1, -1, 0, 0 };
+            bool opened = false;
+            for (int k = 0; k < 4 && !opened; k++) {
+                if (!grid_is_floor(o->x + nx[k], o->y + ny[k])) continue;
+                player_init(o->x + nx[k], o->y + ny[k]);
+                interact_at(o->x, o->y);
+                opened = interact_take_itembox();
+            }
+            CHECK(opened, "using the Item Box at %d,%d opens it", o->x, o->y);
+            player_init(level.start_x, level.start_y);
+        }
+    }
+
+    // --- the Parlor: coin cabinets sell the injectors ---
+    reset();
+    {
+        int cab = -1;
+        for (int i = 0; i < level.obj_count; i++) {
+            const obj_t* o = &level.objs[i];
+            if (o->kind == OBJ_CABINET && o->item_type == ITEM_STEROIDS && o->qty > 0) cab = i;
+        }
+        CHECK(cab >= 0 && level.objs[cab].code == 4, "the Parlor sells Steroids for 4 coins");
+        if (cab >= 0) {
+            obj_t* o = &level.objs[cab];
+            static const int nx[4] = { 0, 0, 1, -1 }, ny[4] = { 1, -1, 0, 0 };
+            int fx = -1, fy = -1;
+            for (int k = 0; k < 4 && fx < 0; k++) if (grid_is_floor(o->x + nx[k], o->y + ny[k])) { fx = o->x + nx[k]; fy = o->y + ny[k]; }
+            player_init(fx, fy);
+            gear_pickup(ITEM_COIN, 3);
+            interact_at(o->x, o->y);
+            CHECK(!o->state && !inventory_has(ITEM_STEROIDS) && gear_count(ITEM_COIN) == 3, "3 coins don't buy it");
+            gear_pickup(ITEM_COIN, 2);
+            interact_at(o->x, o->y);
+            CHECK(o->state && inventory_has(ITEM_STEROIDS) && gear_count(ITEM_COIN) == 1, "5 coins buy it, 1 left");
+            CHECK(inventory_count() == 1, "Antique Coins stack: they take no slot");
+            o->state = 0;
+            player_init(level.start_x, level.start_y);
+        }
+    }
 
     // --- locks ---
     reset();
@@ -280,11 +407,21 @@ int main(int argc, char** argv) {
     gear_pickup(ITEM_GUN_M232, 1);
     CHECK(inventory_key_count() == 2 && inventory_count() == 1, "wrench and keycard go on the key ring, the gun in a slot");
     inventory_add(ITEM_INK_RIBBON);
+    inventory_add(ITEM_HERB);
+    for (int i = 0; i < inventory_capacity(); i++) if (inventory_slot(i) == ITEM_HERB) bag = i;
+    inventory_box_store(bag);
+    gear_pickup(ITEM_COIN, 3);
+    gear_set_loaded(ITEM_GUN_M232, 4);
+    health_raise_max(1);
+    health_hurt();
     CHECK(savegame_save(0, 1.0), "saved");
     reset();
     double ms = 0;
     CHECK(savegame_load(0, &ms) && inventory_key_count() == 2 && gear_ammo(AMMO_HANDGUN) == 7 && gear_equipped() == ITEM_GUN_M232,
           "load restores the key ring, ammo and the equipped gun");
+    CHECK(gear_loaded(ITEM_GUN_M232) == 4 && gear_count(ITEM_COIN) == 3, "and the rounds loaded and the coins");
+    CHECK(health_max() == HEALTH_BASE_MAX + 1 && health_hp() == HEALTH_BASE_MAX, "and health %d of %d", health_hp(), health_max());
+    CHECK(inventory_box_count() == 1 && inventory_box_item(0) == ITEM_HERB, "and the Item Box");
 
     printf("%s: %d failure(s)\n", failures ? "FAIL" : "OK", failures);
     return failures ? 1 : 0;

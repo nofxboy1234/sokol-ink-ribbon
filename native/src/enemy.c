@@ -95,6 +95,8 @@ static struct {
     int impact_x, impact_y;  // the bottle being investigated
     bool at_impact;          // reached it, now looking around
     float light_travel;      // cells walked since the last lamp-smash roll
+    float hp;                // health left (0: dead)
+    float fade;              // seconds of fading left once dead
 } e;
 
 _Static_assert(sizeof(e) <= ENEMY_SAVE_BYTES, "enemy save size");
@@ -207,6 +209,7 @@ static void enter(enemy_state_t state) {
             break;
         case ENEMY_STUNNED:
         case ENEMY_WAIT:
+        case ENEMY_DEAD:
             e.path.count = 0;
             break;
         case ENEMY_INVESTIGATE:
@@ -247,6 +250,8 @@ void enemy_init(int avoid_x, int avoid_y) {
     e.flash = 0.0f;
     e.angry = 0.0f;
     e.grace_lit = true;
+    e.hp = ENEMY_HP;
+    e.fade = 0.0f;
     enter(ENEMY_LOOK);
 }
 
@@ -521,6 +526,10 @@ static bool walk(float dt) {
 }
 
 bool enemy_update(float dt, float gx, float gy, float noise) {
+    if (e.state == ENEMY_DEAD) {
+        if (e.fade > 0.0f) e.fade -= dt;
+        return false;
+    }
     if (e.flash > 0.0f) {
         e.flash -= dt;
     }
@@ -654,6 +663,7 @@ bool enemy_update(float dt, float gx, float gy, float noise) {
             break;
         case ENEMY_STUNNED:
         case ENEMY_WAIT:
+        case ENEMY_DEAD:
             break;
     }
 
@@ -666,14 +676,39 @@ bool enemy_update(float dt, float gx, float gy, float noise) {
 }
 
 void enemy_stun(float seconds) {
+    if (e.state == ENEMY_DEAD) return;
     enter(ENEMY_STUNNED);
     e.timer = seconds;
 }
 
 void enemy_damage(float seconds) {
+    if (e.state == ENEMY_DEAD) return;
     enemy_stun(seconds);
     e.flash = seconds;
     e.angry = ENEMY_ANGRY_SECONDS;  // a fresh hit restarts the anger
+}
+
+bool enemy_hurt(float amount, bool critical) {
+    if (e.state == ENEMY_DEAD) return false;
+    e.hp -= critical ? e.hp : amount;
+    if (e.hp <= 0.0f) {
+        e.hp = 0.0f;
+        enter(ENEMY_DEAD);
+        e.fade = ENEMY_FADE_SECONDS;
+        e.flash = 0.0f;
+        e.angry = 0.0f;
+        return true;
+    }
+    enemy_damage(ENEMY_STAGGER_SECONDS);
+    return false;
+}
+
+float enemy_hp(void) { return e.hp; }
+bool enemy_alive(void) { return e.state != ENEMY_DEAD; }
+
+float enemy_alpha(void) {
+    if (e.state != ENEMY_DEAD) return 1.0f;
+    return e.fade > 0.0f ? e.fade / ENEMY_FADE_SECONDS : 0.0f;
 }
 
 float enemy_angry(void) {
@@ -688,6 +723,7 @@ float enemy_flash(void) {
 // like footsteps), it goes to look. Search heads for the remembered cell and
 // then sweeps around it.
 bool enemy_hear_noise(int x, int y, float radius) {
+    if (e.state == ENEMY_DEAD) return false;
     if (e.state == ENEMY_STUNNED || e.state == ENEMY_WINDED || e.state == ENEMY_BREAKING || e.state == ENEMY_WAIT) {
         return false;
     }
@@ -710,6 +746,7 @@ bool enemy_hear_noise(int x, int y, float radius) {
 }
 
 void enemy_rest(float seconds) {
+    if (e.state == ENEMY_DEAD) return;
     enter(ENEMY_WAIT);
     e.timer = seconds;
 }

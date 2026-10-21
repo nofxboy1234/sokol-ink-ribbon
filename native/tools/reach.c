@@ -47,7 +47,7 @@ static bool essential(int item) {
     if (opens_a_lock(item) && item != ITEM_LOCKPICK) return true;
     item_cat_t c = item_category(item);
     return c == ICAT_KEY && item != ITEM_COIN && item != ITEM_INK_RIBBON && item != ITEM_LOCKPICK ? true
-         : c == ICAT_TOOL || c == ICAT_POUCH;
+         : c == ICAT_TOOL || c == ICAT_POUCH || c == ICAT_GUN;  // she keeps her guns
 }
 
 // A full bag: drop the first slot that isn't essential.
@@ -207,6 +207,22 @@ static bool round_step(int round, FILE* log) {
             if (done && (o->open != was_open || o->kind == OBJ_FUSEBOX)) {
                 changed = true;
                 if (log) fprintf(log, "  round %d: open %-28s at %3d,%3d (F%d)\n", round, o->name, o->x, o->y, floor_of(o->y));
+            }
+        } else if (o->kind == OBJ_CABINET && !o->state && rect_touchable(o, &fx, &fy) &&
+                   gear_count(ITEM_COIN) >= (o->code > 0 ? o->code : 1)) {
+            player_set_cell(fx, fy);
+            interact_at(o->x, o->y);
+            if (o->state) {
+                changed = true;
+                if (log) fprintf(log, "  round %d: buy %-29s at %3d,%3d (F%d) for %d coins\n", round,
+                                 o->qty > 0 ? item_display_name(o->item_type) : "+4 slots", o->x, o->y, floor_of(o->y), o->code);
+            }
+        } else if (o->kind == OBJ_GOAL && goal_met() && !level_complete() && reached(o->x, o->y)) {
+            player_set_cell(o->x, o->y);
+            if (interact_check_complete()) {
+                changed = true;
+                if (log) fprintf(log, "  round %d: reach the goal at %d,%d: Leon's Requiem (%d round loaded)\n", round,
+                                 o->x, o->y, gear_loaded(ITEM_GUN_REQUIEM));
             }
         } else if (o->kind == OBJ_DOOR && o->state == DOOR_LOCKED) {
             // try from each reached cell beside the slab (a one-sided lock
@@ -391,8 +407,16 @@ int main(int argc, char** argv) {
     if (!lost) printf("  none\n");
     printf("\nSlots: at most %d of %d held at once by progression items; %d key pickups found the bag full.\n",
            peak_slots, inventory_capacity(), overflow);
-    printf("\nAmmo: handgun %d, 12.7x55mm %d, shells %d. Blood %d/%d. Scrap %d.\n", gear_ammo(0), gear_ammo(1),
-           gear_ammo(2), gear_blood(), gear_blood_cap(), gear_count(ITEM_SCRAP));
+    printf("\nAmmo: handgun %d, 12.7x55mm %d. Blood %d/%d. Scrap %d. Antique Coins left %d.\n", gear_ammo(0),
+           gear_ammo(1), gear_blood(), gear_blood_cap(), gear_count(ITEM_SCRAP), gear_count(ITEM_COIN));
+    {
+        int bought = 0, cabinets = 0;
+        for (int i = 0; i < level.obj_count; i++) {
+            if (level.objs[i].kind == OBJ_CABINET) { cabinets++; bought += level.objs[i].state != 0; }
+        }
+        printf("Parlor cabinets bought: %d of %d. Requiem: %s.\n", bought, cabinets,
+               inventory_has(ITEM_GUN_REQUIEM) ? "received at the goal" : "never received");
+    }
 
     if (map_out) {
         // a picture, 4 px per cell: reachable floor green, unreachable floor

@@ -21,6 +21,11 @@ import {
   saveTimeMs,
   saveUsed,
   pendingSafe,
+  itemboxStore,
+  itemboxTake,
+  readItembox,
+  takeItembox,
+  setPaused,
   pendingCodeDoor,
   trySafeCode,
   tryDoorCode,
@@ -442,9 +447,10 @@ export function Inventory({
         </div>
       </div>
       <p className="gear-line" data-testid="gear-line">
-        Handgun {gear.handgunAmmo} · Magnum {gear.magnumAmmo} · Shells {gear.shells} · Blood{" "}
-        {gear.bloodCap > 0 ? `${gear.blood}/${gear.bloodCap}` : "—"} · Scrap {gear.scrap}
-        {gear.grit > 0 ? ` · Grit ${gear.grit}` : ""}
+        Health {gear.hp}/{gear.hpMax}
+        {gear.loaded >= 0 ? ` · Loaded ${gear.loaded}/${gear.mag}${gear.reloading ? " (reloading)" : ""}` : ""} · Handgun{" "}
+        {gear.handgunAmmo} · 12.7mm {gear.magnumAmmo} · Blood{" "}
+        {gear.bloodCap > 0 ? `${gear.blood}/${gear.bloodCap}` : "—"} · Scrap {gear.scrap} · Coins {gear.coins}
       </p>
       {keyItems.length > 0 && (
         <div className="key-ring" data-testid="key-ring">
@@ -771,6 +777,80 @@ function SaveLoadSlots({ onClose }: { onClose: () => void }) {
         <button type="button" className="pause-item" data-menu-item onClick={onClose}>
           Close
         </button>
+      </div>
+    </div>
+  );
+}
+
+// The Item Box (RE's storage trunk): opens when Grace uses one in the
+// level. Tap a bag item to store it, a box item to take it back.
+export function ItemBox() {
+  const { inventory, capacity, dead } = useGameState();
+  const navRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [, setTick] = useState(0);
+  useMenuNav(navRef, open && !dead, () => setOpen(false));
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (takeItembox()) setOpen(true);
+    }, 150);
+    return () => clearInterval(id);
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    setPaused(true);  // the world waits while she sorts the box
+    return () => setPaused(false);
+  }, [open]);
+  if (!open || dead) return null;
+  const box = readItembox();
+  const refresh = () => setTick((t) => t + 1);
+  return (
+    <div className="pause-overlay">
+      <div ref={navRef} className="item-box" role="dialog" aria-label="Item Box">
+        <div className="save-title">Item Box</div>
+        <div className="item-box-cols">
+          <div>
+            <div className="item-box-head">Bag</div>
+            <div className="item-box-list" data-testid="itembox-bag">
+              {inventory.slice(0, capacity).map((item, slot) =>
+                item >= 0 ? (
+                  <button
+                    key={slot}
+                    type="button"
+                    className="pause-item item-box-entry"
+                    data-menu-item
+                    data-item={item}
+                    title={`Store ${itemAppearance(item).label}`}
+                    onClick={() => { itemboxStore(slot); refresh(); }}
+                  >
+                    <ItemGlyph appearance={itemAppearance(item)} />
+                    <span>{itemAppearance(item).label}</span>
+                  </button>
+                ) : null,
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="item-box-head">Box ({box.length})</div>
+            <div className="item-box-list" data-testid="itembox-box">
+              {box.map((item, index) => (
+                <button
+                  key={`${index}-${item}`}
+                  type="button"
+                  className="pause-item item-box-entry"
+                  data-menu-item
+                  data-item={item}
+                  title={`Take ${itemAppearance(item).label}`}
+                  onClick={() => { itemboxTake(index); refresh(); }}
+                >
+                  <ItemGlyph appearance={itemAppearance(item)} />
+                  <span>{itemAppearance(item).label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <button type="button" className="pause-item" data-menu-item onClick={() => setOpen(false)}>Close</button>
       </div>
     </div>
   );

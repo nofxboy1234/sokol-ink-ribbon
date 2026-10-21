@@ -39,6 +39,8 @@ bool interact_check_complete(void);
 
 // Save/load state.
 bool interact_take_save_menu(void);
+// True once after she opens an Item Box (the UI shows it).
+bool interact_take_itembox(void);
 void interact_export(bool* lighter, int* saves, bool* goal, int* file_count, int* file_obj, bool* complete);
 void interact_restore(bool lighter, int saves, bool goal, int file_count, const int* file_obj, bool complete);
 

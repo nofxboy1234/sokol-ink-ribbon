@@ -20,6 +20,7 @@ static struct {
     bool goal;
     bool save_menu;
     bool complete;
+    bool itembox;  // an Item Box was just opened
     int pending_safe;
 } in;
 
@@ -191,8 +192,20 @@ bool interact_at(int x, int y) {
             }
             return true;
         }
+        if (o->kind == OBJ_SAFE && !o->open && o->key_id > 0) {
+            // no puzzles: holding the item it is for opens it
+            if (doors_has_key(o->key_id)) {
+                o->open = 1;
+                doors_drop_key_if_done(o->key_id);
+            }
+            return true;
+        }
         if (o->kind == OBJ_SAFE && !o->open) {
             in.pending_safe = i;  // React opens the keypad; interact_try_safe_code checks it
+            return true;
+        }
+        if (o->kind == OBJ_ITEMBOX) {
+            in.itembox = true;  // the UI opens the box; see interact_take_itembox
             return true;
         }
         if (o->kind == OBJ_MICROSCOPE) {
@@ -205,9 +218,16 @@ bool interact_at(int x, int y) {
             return true;
         }
         if (o->kind == OBJ_CABINET && !o->state) {
+            // a coin cabinet: `code` Antique Coins buy what it holds (item
+            // x qty), or 4 more slots when it holds nothing
             int cost = o->code > 0 ? o->code : 1;
-            if (inventory_capacity() < INV_SLOTS && inventory_count_of(ITEM_COIN) >= cost) {
-                for (int k = 0; k < cost; k++) inventory_remove(ITEM_COIN);
+            if (gear_count(ITEM_COIN) < cost) return true;
+            if (o->qty > 0) {
+                if (!gear_pickup(o->item_type, o->qty)) return true;  // no room: she keeps her coins
+                gear_spend(ITEM_COIN, cost);
+                o->state = 1;
+            } else if (inventory_capacity() < INV_SLOTS) {
+                gear_spend(ITEM_COIN, cost);
                 inventory_expand(4);
                 o->state = 1;
             }
@@ -369,9 +389,21 @@ bool interact_check_complete(void) {
     int px, py; player_cell(&px, &py);
     for (int i = 0; i < in.level->obj_count; i++) {
         const obj_t* o = &in.level->objs[i];
-        if (o->kind == OBJ_GOAL && o->x == px && o->y == py) { in.complete = true; return true; }
+        if (o->kind == OBJ_GOAL && o->x == px && o->y == py) {
+            in.complete = true;
+            // through the door the fuse powers: Leon hands Grace the
+            // Requiem, one round in the cylinder
+            if (!inventory_has(ITEM_GUN_REQUIEM)) gear_pickup(ITEM_GUN_REQUIEM, 1);
+            return true;
+        }
     }
     return false;
+}
+
+bool interact_take_itembox(void) {
+    bool open = in.itembox;
+    in.itembox = false;
+    return open;
 }
 
 bool interact_take_save_menu(void) {

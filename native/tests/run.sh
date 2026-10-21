@@ -18,9 +18,20 @@ cc -std=c11 -O1 -Wall -Isrc -o .fibs/tests/stream_test tests/stream_test.c src/s
 cc -std=c11 -O1 -Wall -Isrc -Ilibs -o .fibs/tests/levelscript_test tests/levelscript_test.c src/levelscript.c src/level.c src/grid.c
 .fibs/tests/levelscript_test
 cc -std=c11 -O1 -Wall -Isrc -Ilibs -o .fibs/tests/levelscript tools/levelscript.c src/levelscript.c src/level.c
-# Playthrough: the reachability fixpoint must reach every floor cell and pickup.
+# Playthrough: Grace's route reaches all of floors 1 and 2; on floor 3 only
+# the rooms behind the Warped Door (Leon's hatchet, jammed for her) stay
+# shut, with the one Med Injector in them. She buys at the Parlor and gets
+# the Requiem at the goal.
 sh tools/build_reach.sh
-.fibs/tests/reach src/level_01.json > .fibs/tests/reach.txt
-test "$(grep -c '(100.0%)' .fibs/tests/reach.txt)" -eq 3 || { cat .fibs/tests/reach.txt; echo "reach: not 100%"; exit 1; }
-test "$(sed -n '/^Pickups she never reaches/{n;p;}' .fibs/tests/reach.txt)" = "  none" || { echo "reach: unreached pickups"; exit 1; }
-echo "reach: 100% on every floor"
+R=.fibs/tests/reach.txt
+.fibs/tests/reach src/level_01.json > $R
+fail() { cat $R; echo "reach: $1"; exit 1; }
+grep -q '  floor 1: .*(100.0%)' $R || fail "floor 1 not 100%"
+grep -q '  floor 2: .*(100.0%)' $R || fail "floor 2 not 100%"
+test "$(sed -n '/^Sections with floor/,/^$/p' $R | grep -c '^  F')" -eq 4 || fail "unexpected unreached sections"
+test "$(sed -n '/^Sections with floor/,/^$/p' $R | grep -vc "^  F3 \(Lounge\|Alcove\|Director's Office\|Meeting Room\) \|^Sections\|^$")" -eq 0 || fail "unreached section outside the Warped Door rooms"
+test "$(sed -n '/^Pickups she never reaches/,/^$/p' $R | grep -c '^  ')" -eq 1 || fail "unreached pickups"
+grep -q '^  Med Injector  *at  46, 34 (F3)' $R || fail "unexpected unreached pickup"
+grep -q 'Requiem: received at the goal' $R || fail "no Requiem at the goal"
+grep -q 'Parlor cabinets bought: [34] of 4' $R || fail "Parlor cabinets"
+echo "reach: floors 1-2 100%, F3 Warped Door rooms shut (Leon's), Requiem at the goal"

@@ -6,7 +6,7 @@ import { GameStateProvider } from "../src/GameState";
 import { GraceActions } from "../src/GraceActions";
 import { MapCanvas } from "../src/MapCanvas";
 import { AimStick, Stick } from "../src/Stick";
-import { CodeKeypad, Crafting, Files, GameOver, Inventory, LevelComplete, PauseMenu, RunPanel, SaveLoadMenu } from "../src/panes";
+import { CodeKeypad, Crafting, Files, GameOver, Inventory, ItemBox, LevelComplete, PauseMenu, RunPanel, SaveLoadMenu } from "../src/panes";
 import { setPaused as setGamePaused, takeSaveMenu } from "../src/wasmBridge";
 import { onMenuShortcut, useMenuNav } from "../src/menuNav";
 import { useGameState } from "../src/GameState";
@@ -197,6 +197,7 @@ export default function HomePage() {
         <GameOver onLoad={() => setSaveMenu(true)} />
         <LevelComplete onLoad={() => setSaveMenu(true)} />
         <CodeKeypad />
+        <ItemBox />
         <SaveLoadMenu open={saveMenu} onClose={() => setSaveMenu(false)} />
       </GameStateProvider>
     </>

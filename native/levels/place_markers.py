@@ -21,10 +21,13 @@ TRACED_TITLES = {"Fuse", "Lighter", "Screwdriver", "Cherub Key"}
 
 # (title regex, item id, default qty). First match wins; the qty in
 # brackets on the marker, e.g. "Handgun Ammo (10)", overrides the default.
+# Item None: not placed. Shells, the MSBG 500, Chainsaw, grenades,
+# Compensator and Connoisseur charm are Leon's (GameSpot weapons list,
+# GameRant charms); the Red Jewel comes out of the Unicorn Trinket Box.
 ITEMS = [
     (r"Handgun Ammo", "handgun_ammo", 5),
     (r"12\.7x", "magnum_ammo", 1),
-    (r"Shotgun Shells", "shotgun_shells", 2),
+    (r"Shotgun Shells", None, 0),
     (r"Infected Blood", "infected_blood", 20),
     (r"Transfusion Bag", "transfusion_bag", 1),
     (r"^Scrap", "scrap", 1),
@@ -34,13 +37,13 @@ ITEMS = [
     (r"Specimen \(Denatured\)", "specimen_denatured", 1),
     (r"Specimen \(Converged\)", "specimen_converged", 1),
     (r"Specimen \(Reversible\)", "specimen_reversible", 1),
-    (r"Connoisseur", "charm_connoisseur", 1),
+    (r"Connoisseur", None, 0),
     (r"Eye Spy", "charm_eye_spy", 1),
     (r"Stakeout", "charm_stakeout", 1),
     (r"S&S M232", "gun_m232", 1),
     (r"B934", "gun_b934", 1),
-    (r"MSBG 500", "gun_msbg500", 1),
-    (r"Chainsaw", "chainsaw", 1),
+    (r"MSBG 500", None, 0),
+    (r"Chainsaw", None, 0),
     (r"Hemolytic", "hemolytic_injector", 1),
     (r"Hunting Knife", "hunting_knife", 1),
     (r"Makeshift Knife", "makeshift_knife", 1),
@@ -53,7 +56,7 @@ ITEMS = [
     (r"Star Quartz", "star_quartz", 1),
     (r"Moon Quartz", "moon_quartz", 1),
     (r"Sun Quartz", "sun_quartz", 1),
-    (r"Red Jewel", "red_jewel", 1),
+    (r"Red Jewel", None, 0),
     (r"Artificial Heart", "artificial_heart", 1),
     (r"Organ Transport Box", "organ_box", 1),
     (r"Severed Hand", "severed_hand", 1),
@@ -67,8 +70,8 @@ ITEMS = [
     (r"Unicorn Trinket Box", "unicorn_box", 1),
     (r"Leatherbound Notebook", "notebook", 1),
     (r"Med Injector", "injector", 1),
-    (r"Hand Grenade", "hand_grenade", 1),
-    (r"Compensator", "compensator", 1),
+    (r"Hand Grenade", None, 0),
+    (r"Compensator", None, 0),
     (r"Mr\. Raccoon", "mr_raccoon", 1),
 ]
 
@@ -85,7 +88,9 @@ LOCKS = {
     "Security Point Lv. 3": "key=wristband_3",
     "Door with Indent": "key=red_jewel",
     "Door with Indents": "key=moon_quartz key2=sun_quartz key3=star_quartz",
-    "Sturdy Lock": "key=wrench",
+    # the Sturdy Lock is the Sun puzzle box's padlock; Corrosive eats it
+    # (GameRant, IGN)
+    "Sturdy Lock": "key=corrosive",
     # Room 202's broken light: the room is open, just dark (bring the Lighter)
     "Broken Light": "lock=none",
     # warped doors open only for Leon's hatchet; blocked, broken and barred
@@ -99,9 +104,16 @@ LOCKS = {
 }
 LOCK_REACH = 4  # cells from the marker to the door it labels
 
-# Puzzle boxes (GameSpot/Prima solutions; Moon=1 Sun=2 Star=3) and the
-# quartz each holds.
-PUZZLES = {"moon_quartz": 1231, "star_quartz": 3212, "sun_quartz": 3312}
+# Puzzle boxes, by the quartz each holds -> the item that opens it. No
+# puzzles (Dylan): carrying the item the puzzle needs opens the box. Moon:
+# the Pencil (rub the notepad); Star: the Level 3 Wristband (the box in the
+# Level 3 ward); Sun: Corrosive (its Sturdy Lock padlock).
+PUZZLES = {"moon_quartz": "pencil", "star_quartz": "wristband_3", "sun_quartz": "corrosive"}
+
+# Parlor (F1 rooms 50..66 x 186..200): its prizes sit in coin cabinets at
+# the Parlor price (GameSpot, Evil Resource, VGC).
+PARLOR = {"hip_pouch": 3, "stabilizer": 4, "steroids": 4, "override_manual": 6}
+PARLOR_BOX = (50, 186, 66, 200)
 
 
 def floor_of(cy):
@@ -186,6 +198,8 @@ def main(base_path, markers_path, out_dir):
     markers = json.load(open(markers_path))["markers"]
     items, fixtures, locks, left = [], [], [], {}
     placed = []  # (item, x, y) for puzzles and drawers
+    parlor = []  # (x, y, item): Parlor prizes, sold from coin cabinets
+    boxes = []  # Item Box cells
     for m in markers:
         cx = int((m["x"] * 8192 - X0) // CELL)
         cy = int((m["y"] * 8192 - Y0) // CELL)
@@ -203,6 +217,13 @@ def main(base_path, markers_path, out_dir):
             locks.append((fl, cx, cy, title, props))
             continue
         hit = next(((it, q) for rx, it, q in ITEMS if re.search(rx, title)), None)
+        if hit and hit[0] is None:
+            k = f"skipped (Leon's, or Grace gets it another way): {title}"
+            left[k] = left.get(k, 0) + 1
+            continue
+        if hit and hit[0] in PARLOR and fl == 1 and PARLOR_BOX[0] <= cx <= PARLOR_BOX[2] and PARLOR_BOX[1] <= cy <= PARLOR_BOX[3]:
+            parlor.append((cx, cy, hit[0]))
+            continue
         if hit:
             it, qty = hit
             n = re.search(r"\((\d+)\)", title)
@@ -247,10 +268,36 @@ def main(base_path, markers_path, out_dir):
             near = sorted((abs(x - cx) + abs(y - cy), it, x, y) for it, x, y, f in placed if f == fl and it in PUZZLES)
             if near and near[0][0] <= 12:
                 _, it, x, y = near[0]
-                out_fix.append(f"obj safe {x} {y} code={PUZZLES[it]} name=Puzzle_Box  # F{fl} holds {it}")
+                out_fix.append(f"obj safe {x} {y} key={PUZZLES[it]} name=Puzzle_Box  # F{fl} holds {it}")
+                continue
+        elif layer == "Item Box":
+            pos = wall_cell(*snap(cx, cy, fl))
+            if pos:
+                taken.add(pos)
+                boxes.append(pos)
+                out_fix.append(f"obj itembox {pos[0]} {pos[1]} name=Item_Box  # F{fl} Polygon marker")
                 continue
         key = f"F{fl} {layer}: {title}"
         left[key] = left.get(key, 0) + 1
+
+    # the Parlor prizes: a coin cabinet each, against the wall by the marker
+    for cx, cy, it in parlor:
+        pos = wall_cell(*snap(cx, cy, 1))
+        if not pos:
+            left[f"F1 Parlor {it} (no wall)"] = left.get(f"F1 Parlor {it} (no wall)", 0) + 1
+            continue
+        taken.add(pos)
+        out_fix.append(f"obj cabinet {pos[0]} {pos[1]} item={it} qty=1 code={PARLOR[it]} name=Coin_Cabinet  # F1 Parlor")
+
+    # an Item Box beside each typewriter the map has no Item Box near (RE's
+    # safe-room storage trunks)
+    for t in [o for o in lv["objects"] if o["kind"] == "typewriter"]:
+        if any(abs(bx - t["x"]) + abs(by - t["y"]) <= 10 for bx, by in boxes):
+            continue
+        pos = wall_cell(t["x"], t["y"])
+        if pos:
+            taken.add(pos)
+            out_fix.append(f"obj itembox {pos[0]} {pos[1]} name=Item_Box  # F{floor_of(t['y'])} by the typewriter at {t['x']},{t['y']}")
 
     out_locks = []
     used = set()

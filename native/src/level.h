@@ -32,6 +32,8 @@ typedef enum {
     OBJ_STAIRS,
     // a Laser Microscope: analysing a Blood Specimen teaches recipes
     OBJ_MICROSCOPE,
+    // an Item Box: slot items stored here are in every box
+    OBJ_ITEMBOX,
     OBJ_KIND_COUNT,
 } obj_kind_t;
 
@@ -50,7 +52,6 @@ typedef enum {
     // data: append only.
     ITEM_HANDGUN_AMMO = 10,
     ITEM_MAGNUM_AMMO,
-    ITEM_SHOTGUN_SHELLS,
     ITEM_INFECTED_BLOOD,
     ITEM_TRANSFUSION_BAG,
     ITEM_SCRAP,
@@ -60,14 +61,11 @@ typedef enum {
     ITEM_SPECIMEN_DENATURED,
     ITEM_SPECIMEN_CONVERGED,
     ITEM_SPECIMEN_REVERSIBLE,
-    ITEM_CHARM_CONNOISSEUR,
     ITEM_CHARM_EYE_SPY,
     ITEM_CHARM_STAKEOUT,
     ITEM_GUN_M232,
     ITEM_GUN_B934,
     ITEM_GUN_REQUIEM,
-    ITEM_GUN_MSBG500,
-    ITEM_CHAINSAW,
     ITEM_HEMOLYTIC_INJECTOR,
     ITEM_HUNTING_KNIFE,
     ITEM_MAKESHIFT_KNIFE,
@@ -93,8 +91,6 @@ typedef enum {
     ITEM_PENCIL,
     ITEM_UNICORN_BOX,
     ITEM_NOTEBOOK,
-    ITEM_HAND_GRENADE,
-    ITEM_COMPENSATOR,
     ITEM_MR_RACCOON,
     ITEM_COUNT,
 } item_t;
@@ -124,7 +120,7 @@ _Static_assert(ITEM_LIGHTER == 7, "save ordinal");
 _Static_assert(ITEM_CHERUB_KEY == 8, "save ordinal");
 _Static_assert(ITEM_MIXED_HERB == 9, "save ordinal");
 _Static_assert(ITEM_HANDGUN_AMMO == 10, "save ordinal");
-_Static_assert(ITEM_MR_RACCOON == 57, "save ordinal");
+_Static_assert(ITEM_MR_RACCOON == 51, "save ordinal");
 #ifdef __cplusplus
 #undef _Static_assert
 #endif

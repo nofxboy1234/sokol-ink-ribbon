@@ -687,7 +687,7 @@ static void aim_update(void) {
     app.aim_enemy = false;
     // snap onto the enemy when the reticle passes close to it: the aim
     // direction bends to its centre, and the hitscan confirms the line
-    if (grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
+    if (enemy_alive() && grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
         float ex = enemy_x() - app.aim_wx, ey = enemy_y() - app.aim_wy;
         if (ex * ex + ey * ey <= 0.75f * 0.75f) {
             float edx = enemy_x() - player_x(), edy = enemy_y() - player_y();
@@ -785,14 +785,14 @@ static void handle_click(void) {
 // A hit worsens Grace's health one step. A hit while in Danger sends her back
 // to the last save point (or the start) at full health.
 static void grace_hurt(void) {
-    int health = health_state();
-    if (gear_absorb_hit()) {
-        // Steroids grit takes the hit; her health holds
-    } else if (health >= HEALTH_DANGER) {
-        // a hit in Danger kills her (the timer stops) unless the Eye Spy Charm saves her once
-        app.dead = !gear_survive_fatal();
-    } else {
-        health_set(health + 1);
+    // each hit costs a point (Steroids raise her maximum); the last one
+    // kills her (the timer stops) unless the Eye Spy Charm saves her once
+    if (health_hurt()) {
+        if (gear_survive_fatal()) {
+            health_heal(1);
+        } else {
+            app.dead = true;
+        }
     }
     app.grace_flash_until = app.clock + GRACE_FLASH_SECONDS;
     app.grace_stress_until = app.clock + GRACE_STRESS_SECONDS;
@@ -906,7 +906,8 @@ static const obj_t* hover_interactable(void) {
         const obj_t* o = &lv->objs[i];
         if (o->kind != OBJ_ITEM && o->kind != OBJ_DOOR && o->kind != OBJ_SWITCH &&
             o->kind != OBJ_TYPEWRITER && o->kind != OBJ_FUSEBOX &&
-            o->kind != OBJ_FILE && o->kind != OBJ_SAFE && !(o->kind == OBJ_OBSTACLE && o->openable)) {
+            o->kind != OBJ_FILE && o->kind != OBJ_SAFE && o->kind != OBJ_ITEMBOX && o->kind != OBJ_CABINET &&
+            o->kind != OBJ_MICROSCOPE && !(o->kind == OBJ_OBSTACLE && o->openable)) {
             continue;
         }
         if (!grid_is_revealed(o->x, o->y)) {
@@ -1021,6 +1022,26 @@ void _dbgui_extra(void) {
             !inventory_has(ITEM_BLOOD_COLLECTOR)) {
             name = "Needs the Blood Collector";
         }
+        static char what[96];
+        bool short_coins = false, needs_item = false;
+        if (hl->kind == OBJ_CABINET) {
+            int cost = hl->code > 0 ? hl->code : 1;
+            short_coins = !hl->state && gear_count(ITEM_COIN) < cost;
+            if (hl->state) {
+                snprintf(what, sizeof what, "Empty");
+            } else {
+                snprintf(what, sizeof what, "%s: %d Antique Coins",
+                         hl->qty > 0 ? item_display_name(hl->item_type) : "+4 slots", cost);
+            }
+            name = what;
+        } else if (hl->kind == OBJ_ITEMBOX) {
+            name = "Item Box";
+        } else if (hl->kind == OBJ_SAFE && !hl->open && hl->key_id > 0) {
+            needs_item = !doors_has_key(hl->key_id);
+            snprintf(what, sizeof what, needs_item ? "Needs the %s" : "Open with the %s",
+                     item_display_name(hl->key_id));
+            name = what;
+        }
         int px, py;
         player_cell(&px, &py);
         bool alert = (hl->kind == OBJ_ITEM && !gear_counted(hl->item_type) &&
@@ -1028,7 +1049,7 @@ void _dbgui_extra(void) {
                      (hl->kind == OBJ_ITEM && item_category(hl->item_type) == ICAT_BLOOD &&
                       !inventory_has(ITEM_BLOOD_COLLECTOR)) ||
                      (hl->kind == OBJ_DOOR && hl->state == DOOR_LOCKED && !doors_unlockable(hl, px, py)) ||
-                     (hl->kind == OBJ_TYPEWRITER && !inventory_has(ITEM_INK_RIBBON));
+                     (hl->kind == OBJ_TYPEWRITER && !inventory_has(ITEM_INK_RIBBON)) || short_coins || needs_item;
         game_tooltip(name, app.mouse_x + 14.0f, app.mouse_y + 14.0f, alert);
     }
 }
@@ -1113,6 +1134,7 @@ static void frame(void) {
         }
         player_note_time((int)(app.elapsed * 1000.0));
         player_update(dt);
+        if (gear_update(dt)) { bump_revision(); }  // a reload finished
         if (interact_check_complete()) { bump_revision(); }
         float noise = !player_is_moving() ? 0.0f
             : player_move_mode() == PLAYER_RUN ? GRACE_NOISE_RUN : GRACE_NOISE_WALK;
@@ -1259,6 +1281,11 @@ static void event(const sapp_event* e) {
                 case SAPP_KEYCODE_Z:
                     if (down && !e->key_repeat) {
                         quick_toggle();
+                    }
+                    break;
+                case SAPP_KEYCODE_R:
+                    if (down && !e->key_repeat && !app.paused && !app.dead && gear_reload()) {
+                        bump_revision();
                     }
                     break;
                 default: break;
@@ -2122,6 +2149,52 @@ WEB_EXPORT int web_equipped_item(void) {
     return throw_equipped() ? ITEM_BOTTLE : -1;
 }
 
+// Reload the equipped gun (R on desktop, the Reload button on a phone).
+WEB_EXPORT int web_reload(void) {
+    if (app.paused || app.dead || !gear_reload()) return 0;
+    bump_revision();
+    return 1;
+}
+
+WEB_EXPORT int web_enemy_alive(void) {
+    return enemy_alive() ? 1 : 0;
+}
+
+TEST_EXPORT float web_enemy_hp(void) {
+    return enemy_hp();
+}
+
+TEST_EXPORT void web_test_gear_seed(int seed) {
+    gear_seed((unsigned int)seed);
+}
+
+// The Item Box: open (once) after she used a box; contents for the UI.
+WEB_EXPORT int web_take_itembox(void) {
+    return interact_take_itembox() ? 1 : 0;
+}
+
+WEB_EXPORT int web_itembox_count(void) {
+    return inventory_box_count();
+}
+
+WEB_EXPORT int web_itembox_item(int index) {
+    return inventory_box_item(index);
+}
+
+WEB_EXPORT int web_itembox_store(int slot) {
+    if (inventory_slot(slot) == gear_equipped()) gear_unequip();
+    if (inventory_slot(slot) == ITEM_BOTTLE && inventory_count_of(ITEM_BOTTLE) == 1) throw_set_equipped(false);
+    if (!inventory_box_store(slot)) return 0;
+    bump_revision();
+    return 1;
+}
+
+WEB_EXPORT int web_itembox_take(int index) {
+    if (!inventory_box_take(index)) return 0;
+    bump_revision();
+    return 1;
+}
+
 WEB_EXPORT int web_weapon_active(void) {
     return weapon_active() ? 1 : 0;
 }
@@ -2150,11 +2223,14 @@ WEB_EXPORT int web_key_item(int index) {
     return inventory_key(index);
 }
 
-// Counted gear for the HUD: 0-2 ammo kinds, 3 blood, 4 blood limit, 5 scrap,
-// 6 rare metal, 7 steroid doses, 8 stabilizer doses, 9 Mr. Raccoons, 10 grit.
+// Counted gear for the HUD: 0 handgun / 1 12.7mm reserve, 3 blood, 4 blood
+// limit, 5 scrap, 6 rare metal, 7 steroid doses, 8 stabilizer doses,
+// 9 Mr. Raccoons, 10 health, 11 max health, 12 rounds loaded in the
+// equipped gun (-1 none), 13 its magazine size, 14 reloading.
 WEB_EXPORT int web_gear_stat(int which) {
     switch (which) {
-        case 0: case 1: case 2: return gear_ammo(which);
+        case 0: case 1: return gear_ammo(which);
+        case 2: return 0;  // (shotgun shells: Leon's, gone)
         case 3: return gear_blood();
         case 4: return gear_blood_cap();
         case 5: return gear_count(ITEM_SCRAP);
@@ -2162,7 +2238,12 @@ WEB_EXPORT int web_gear_stat(int which) {
         case 7: return gear_doses_steroids();
         case 8: return gear_doses_stabilizer();
         case 9: return gear_collectibles();
-        case 10: return gear_grit();
+        case 10: return health_hp();
+        case 11: return health_max();
+        case 12: return gear_loaded(gear_equipped());
+        case 13: { const weapon_t* w = gear_weapon(gear_equipped()); return w ? w->mag : 0; }
+        case 14: return gear_reloading() ? 1 : 0;
+        case 15: return gear_count(ITEM_COIN);
         default: return 0;
     }
 }

@@ -27,7 +27,7 @@
 // last save slot is tracked in the app (not the slot); older slots get the
 // defaults (8 slots, recipe 0 only, not complete, on the floor).
 // 6 adds gear (ammo, blood, materials, doses, the weapon in hand).
-#define SAVE_VERSION 6
+#define SAVE_VERSION 7
 
 typedef struct {
     bool used;
@@ -57,6 +57,9 @@ typedef struct {
     int gear[GEAR_SAVE_INTS];
     int key_count;
     int keys[INV_KEY_RING];
+    int hp, hp_max;
+    int box_count;
+    int box[INV_BOX_MAX];
 } save_slot_t;
 
 static save_slot_t g_slots[SAVE_SLOTS];
@@ -107,6 +110,10 @@ bool savegame_save(int slot, double elapsed_ms) {
     gear_export(s->gear);
     s->key_count = inventory_key_count();
     for (int i = 0; i < s->key_count; i++) s->keys[i] = inventory_key(i);
+    s->hp = health_hp();
+    s->hp_max = health_max();
+    s->box_count = inventory_box_count();
+    for (int i = 0; i < s->box_count; i++) s->box[i] = inventory_box_item(i);
     return true;
 }
 
@@ -135,12 +142,16 @@ bool savegame_load(int slot, double* elapsed_ms) {
     bool keep_empty = s->version >= 3;
     bool equipped = v2 && s->equipped && (keep_empty || inventory_has(ITEM_BOTTLE));
     throw_restore(equipped, equipped && s->active);
-    if (s->version >= 6) {
+    if (s->version >= 7) {
         gear_import(s->gear);
         inventory_set_keys(s->key_count, s->keys);
+        health_restore(s->hp, s->hp_max);
+        inventory_box_set(s->box_count, s->box);
     } else {
+        // item ids moved in version 7 (Leon-only items left the catalog)
         gear_init();
-        inventory_set_keys(0, 0);  // older slots kept key items in slots
+        inventory_set_keys(0, 0);
+        inventory_box_set(0, 0);
     }
     bool v4 = s->version >= 4;
     items_import_seen(v4 ? s->item_seen : NULL, LEVEL_MAX_OBJECTS);

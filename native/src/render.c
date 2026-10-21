@@ -401,7 +401,19 @@ static void draw_objects_pass(int item_pass) {
             }
             case OBJ_CABINET: {
                 fill_rect(sx + scale * 0.15f, sy + scale * 0.1f, scale * 0.7f, scale * 0.8f, PAL_GRAY, 1.0f);
-                ring_circle(sx + scale * 0.5f, sy + scale * 0.5f, scale * 0.18f, scale * 0.07f, C_YELLOW_R);
+                if (o->qty > 0 && !o->state) {
+                    // the prize behind the glass, in its item colour
+                    float cr, cg, cb;
+                    item_color(o->item_type, &cr, &cg, &cb);
+                    fill_rect(sx + scale * 0.3f, sy + scale * 0.2f, scale * 0.4f, scale * 0.35f, cr, cg, cb, 1.0f);
+                }
+                ring_circle(sx + scale * 0.5f, sy + scale * 0.7f, scale * 0.12f, scale * 0.06f, C_YELLOW_R);
+                break;
+            }
+            case OBJ_ITEMBOX: {
+                // a brown trunk with a dark lid line
+                fill_rect(sx + scale * 0.1f, sy + scale * 0.25f, scale * 0.8f, scale * 0.6f, 0.45f, 0.28f, 0.12f, 1.0f);
+                thick_line(sx + scale * 0.1f, sy + scale * 0.42f, sx + scale * 0.9f, sy + scale * 0.42f, scale * 0.06f, C_INK_R);
                 break;
             }
             case OBJ_MICROSCOPE: {
@@ -508,7 +520,8 @@ static void draw_discovery_markers(void) {
         const obj_t* o = &lv->objs[i];
         if (o->kind != OBJ_ITEM && o->kind != OBJ_DOOR && o->kind != OBJ_SWITCH &&
             o->kind != OBJ_TYPEWRITER && o->kind != OBJ_FUSEBOX &&
-            o->kind != OBJ_FILE && o->kind != OBJ_SAFE && !(o->kind == OBJ_OBSTACLE && o->openable) &&
+            o->kind != OBJ_FILE && o->kind != OBJ_SAFE && o->kind != OBJ_ITEMBOX && o->kind != OBJ_CABINET &&
+            o->kind != OBJ_MICROSCOPE && !(o->kind == OBJ_OBSTACLE && o->openable) &&
             !(o->kind == OBJ_OBSTACLE && o->climbable)) {
             continue;
         }
@@ -665,7 +678,15 @@ void render_scene(int hover_x, int hover_y, const path_t* path, const path_t* ro
 
     draw_discovery_markers();
 
-    if (grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y())) &&
+    if (!enemy_alive()) {
+        // killed: a grey dot that fades away, then nothing
+        float fade = enemy_alpha();
+        if (fade > 0.0f && grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
+            float ex, ey;
+            camera_cell_to_screen(enemy_x(), enemy_y(), &ex, &ey);
+            fill_circle(ex, ey, scale * 0.64f, 0.45f, 0.45f, 0.45f, fade);
+        }
+    } else if (grid_is_revealed((int)floorf(enemy_x()), (int)floorf(enemy_y())) &&
         !light_cell_lit((int)floorf(enemy_x()), (int)floorf(enemy_y()))) {
         // In the dark the enemy is always just a black outline of its dot:
         // a hollow circle, no fill, whatever Grace can hear or smell. (This

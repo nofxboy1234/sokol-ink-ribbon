@@ -736,6 +736,7 @@ static void draw_map(void) {
                 case OBJ_GOAL: r = 0.118f; g = 0.118f; b = 0.118f; break;
                 case OBJ_RECIPE: r = 1.0f; g = 1.0f; b = 1.0f; break;    // paper sheet
                 case OBJ_CABINET: r = 0.616f; g = 0.616f; b = 0.616f; break;  // PAL_GRAY
+                case OBJ_ITEMBOX: r = 0.45f; g = 0.30f; b = 0.15f; break;    // the brown trunk
                 default: break;
             }
             float size = scale * 0.3f;
@@ -1015,6 +1016,24 @@ static void ui_properties(void) {
             if (o->openable) changed |= ImGui::Checkbox("open", (bool*)&o->open);
         } else if (o->kind == OBJ_FILE || o->kind == OBJ_SAFE) {
             changed |= ImGui::InputInt("code", &o->code);
+            if (o->kind == OBJ_SAFE) {
+                // a puzzle box: holding this item opens it (no puzzle)
+                const char* keys[ITEM_COUNT];
+                keys[0] = "(code instead)";
+                for (int i = 1; i < ITEM_COUNT; i++) keys[i] = item_name((item_t)i);
+                changed |= ImGui::Combo("opened by", &o->key_id, keys, ITEM_COUNT);
+            }
+        } else if (o->kind == OBJ_CABINET) {
+            // a coin cabinet: `code` Antique Coins buy item x qty (qty 0:
+            // +4 inventory slots instead)
+            changed |= ImGui::InputInt("price (coins)", &o->code);
+            const char* items[ITEM_COUNT];
+            for (int i = 0; i < ITEM_COUNT; i++) items[i] = item_name((item_t)i);
+            changed |= ImGui::Combo("sells", &o->item_type, items, ITEM_COUNT);
+            changed |= ImGui::InputInt("qty", &o->qty);
+            if (o->qty <= 0) ImGui::TextDisabled("qty 0: sells +4 inventory slots");
+        } else if (o->kind == OBJ_ITEMBOX) {
+            ImGui::TextDisabled("Item Box: every box shares one store");
         }
         changed |= ImGui::InputInt("link", &o->link_id);
         ed.dirty |= changed;
