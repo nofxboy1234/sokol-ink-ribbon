@@ -1,4 +1,5 @@
 #include "crafting.h"
+#include "gear.h"
 #include "inventory.h"
 #include "level.h"
 
@@ -19,6 +20,12 @@ static const recipe_t recipes[] = {
     { .inputs = { { ITEM_HERB, 2 } }, .input_count = 1, .output = { ITEM_MIXED_HERB, 1 } },
     // taught by a recipe item in a later level; none is placed in level 1
     { .inputs = { { ITEM_HERB, 3 } }, .input_count = 1, .output = { ITEM_INJECTOR, 1 } },
+    // taught by Blood Specimens at a Laser Microscope (gear_analyse_specimen)
+    { .inputs = { { ITEM_SCRAP, 1 }, { ITEM_INFECTED_BLOOD, 60 } }, .input_count = 2, .output = { ITEM_HEMOLYTIC_INJECTOR, 1 } },
+    { .inputs = { { ITEM_SCRAP, 1 }, { ITEM_INFECTED_BLOOD, 20 } }, .input_count = 2, .output = { ITEM_HANDGUN_AMMO, 6 } },
+    { .inputs = { { ITEM_INFECTED_BLOOD, 40 } }, .input_count = 1, .output = { ITEM_INK_RIBBON, 1 } },
+    { .inputs = { { ITEM_INJECTOR, 1 }, { ITEM_INFECTED_BLOOD, 130 } }, .input_count = 2, .output = { ITEM_STEROIDS, 1 } },
+    { .inputs = { { ITEM_INJECTOR, 1 }, { ITEM_INFECTED_BLOOD, 130 } }, .input_count = 2, .output = { ITEM_STABILIZER, 1 } },
 };
 // bit i set = recipe i known; recipe 0 is known from the start
 static unsigned int known_mask = 1u;
@@ -92,7 +99,7 @@ static bool ingredients_ready(int index) {
         return false;
     }
     for (int i = 0; i < recipe->input_count; i++) {
-        if (inventory_count_of(recipe->inputs[i].item) < recipe->inputs[i].qty) {
+        if (gear_count(recipe->inputs[i].item) < recipe->inputs[i].qty) {
             return false;
         }
     }
@@ -110,6 +117,10 @@ bool crafting_ready(int index) {
     return crafting_known(index) && ingredients_ready(index);
 }
 
+static int slots_for(recipe_part_t part) {
+    return gear_counted(part.item) ? 0 : part.qty;
+}
+
 bool craft(int index) {
     const recipe_t* recipe = 0;
     if (!recipe_at(index, &recipe) || !crafting_ready(index)) {
@@ -117,29 +128,13 @@ bool craft(int index) {
     }
     int freed = 0;
     for (int i = 0; i < recipe->input_count; i++) {
-        freed += recipe->inputs[i].qty;
+        freed += slots_for(recipe->inputs[i]);
     }
-    int holes = INV_SLOTS - inventory_count();
-    if (holes + freed < recipe->output.qty) {
+    if (inventory_capacity() - inventory_count() + freed < slots_for(recipe->output)) {
         return false;
     }
-    int saved[INV_SLOTS];
-    for (int i = 0; i < INV_SLOTS; i++) {
-        saved[i] = inventory_slot(i);
-    }
     for (int i = 0; i < recipe->input_count; i++) {
-        for (int n = 0; n < recipe->inputs[i].qty; n++) {
-            if (!inventory_remove(recipe->inputs[i].item)) {
-                inventory_set(INV_SLOTS, saved);
-                return false;
-            }
-        }
+        gear_spend(recipe->inputs[i].item, recipe->inputs[i].qty);
     }
-    for (int n = 0; n < recipe->output.qty; n++) {
-        if (!inventory_add(recipe->output.item)) {
-            inventory_set(INV_SLOTS, saved);
-            return false;
-        }
-    }
-    return true;
+    return gear_give(recipe->output.item, recipe->output.qty);
 }

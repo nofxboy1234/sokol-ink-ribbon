@@ -952,7 +952,32 @@ static void ui_properties(void) {
                 changed = true;
             }
             changed |= ImGui::Checkbox("open", (bool*)&o->open);
-            changed |= ImGui::InputInt("key_id", &o->key_id);
+            // Lock: what opens the door. Keys are item ids; 0 (the bottle,
+            // never a key) reads as "none".
+            const char* locks[LOCK_KIND_COUNT];
+            for (int i = 0; i < LOCK_KIND_COUNT; i++) {
+                locks[i] = door_lock_name(i);
+            }
+            changed |= ImGui::Combo("lock", &o->lock, locks, LOCK_KIND_COUNT);
+            const char* keys[ITEM_COUNT];
+            keys[0] = "(none)";
+            for (int i = 1; i < ITEM_COUNT; i++) {
+                keys[i] = item_name((item_t)i);
+            }
+            if (o->lock == LOCK_KEY) {
+                changed |= ImGui::Combo("key", &o->key_id, keys, ITEM_COUNT);
+                changed |= ImGui::Combo("key2", &o->key2_id, keys, ITEM_COUNT);
+                changed |= ImGui::Combo("key3", &o->key3_id, keys, ITEM_COUNT);
+            } else if (o->lock == LOCK_OTHER_SIDE) {
+                int side = o->side < 0 ? 0 : 1;
+                const char* sides[2] = { "before (y-1 / x-1)", "after (y / x)" };
+                if (ImGui::Combo("opens from", &side, sides, 2)) {
+                    o->side = side ? 1 : -1;
+                    changed = true;
+                }
+            } else if (o->lock == LOCK_NONE) {
+                changed |= ImGui::InputInt("key_id", &o->key_id);
+            }
             changed |= ImGui::InputInt("span", &o->span);
             changed |= ImGui::InputFloat("auto_close", &o->auto_close);
             changed |= ImGui::Checkbox("breakable", (bool*)&o->breakable);
@@ -962,6 +987,8 @@ static void ui_properties(void) {
                 items[i] = item_name((item_t)i);
             }
             changed |= ImGui::Combo("item", &o->item_type, items, ITEM_COUNT);
+            changed |= ImGui::InputInt("qty", &o->qty);
+            ImGui::TextWrapped("%s", item_text(o->item_type));
         } else if (o->kind == OBJ_LIGHT) {
             changed |= ImGui::SliderFloat("light radius", &o->radius, LIGHT_RADIUS_MIN, LIGHT_RADIUS_MAX, "%.1f cells");
             ImGui::TextDisabled("game: unlit items are hidden");

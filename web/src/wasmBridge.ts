@@ -90,6 +90,14 @@ export type EmscriptenModule = {
   _web_item_label?: (item: number) => number;
   _web_item_color?: (item: number) => number;
   _web_item_icon?: (item: number) => number;
+  _web_item_text?: (item: number) => number;
+  _web_item_actions?: (item: number) => number;
+  _web_equipped_item?: () => number;
+  _web_weapon_active?: () => number;
+  _web_equip_item?: (item: number, on: number) => number;
+  _web_gear_stat?: (which: number) => number;
+  _web_key_count?: () => number;
+  _web_key_item?: (index: number) => number;
   _replay_length?: () => number;
   _replay_x?: (index: number) => number;
   _replay_y?: (index: number) => number;
@@ -161,6 +169,9 @@ export type GameSnapshot = {
   onTop: boolean;
   bottleEquipped: boolean;
   bottleEmpty: boolean;
+  equippedItem: number;
+  keyItems: number[];
+  gear: GearStats;
 };
 
 const EMPTY_INVENTORY = Array.from({ length: 16 }, () => -1);
@@ -194,6 +205,9 @@ export function readSnapshot(revision: number): GameSnapshot {
       onTop: false,
       bottleEquipped: false,
       bottleEmpty: false,
+      equippedItem: -1,
+      keyItems: [],
+      gear: EMPTY_GEAR,
     };
   }
   const capacity = m._web_inventory_capacity?.() ?? 8;
@@ -227,7 +241,52 @@ export function readSnapshot(revision: number): GameSnapshot {
     onTop: (m._web_on_top?.() ?? 0) !== 0,
     bottleEquipped: (m._web_bottle_equipped?.() ?? 0) !== 0,
     bottleEmpty: (m._web_bottle_empty?.() ?? 0) !== 0,
+    equippedItem: m._web_equipped_item?.() ?? -1,
+    keyItems: Array.from({ length: m._web_key_count?.() ?? 0 }, (_, i) => m._web_key_item?.(i) ?? -1),
+    gear: readGear(m),
   };
+}
+
+// Counted gear (see web_gear_stat in main.c).
+export type GearStats = {
+  handgunAmmo: number;
+  magnumAmmo: number;
+  shells: number;
+  blood: number;
+  bloodCap: number;
+  scrap: number;
+  rareMetal: number;
+  steroids: number;
+  stabilizer: number;
+  raccoons: number;
+  grit: number;
+};
+
+const EMPTY_GEAR: GearStats = {
+  handgunAmmo: 0, magnumAmmo: 0, shells: 0, blood: 0, bloodCap: 0, scrap: 0,
+  rareMetal: 0, steroids: 0, stabilizer: 0, raccoons: 0, grit: 0,
+};
+
+function readGear(m: EmscriptenModule): GearStats {
+  const stat = (i: number) => m._web_gear_stat?.(i) ?? 0;
+  return {
+    handgunAmmo: stat(0), magnumAmmo: stat(1), shells: stat(2), blood: stat(3),
+    bloodCap: stat(4), scrap: stat(5), rareMetal: stat(6), steroids: stat(7),
+    stabilizer: stat(8), raccoons: stat(9), grit: stat(10),
+  };
+}
+
+export function itemText(item: number): string {
+  return copyCString(module()?._web_item_text?.(item) ?? 0);
+}
+
+// Bitmask from web_item_actions: 1 Move, 2 Use, 4 Equip, 8 Discard.
+export function itemActionBits(item: number): number {
+  return module()?._web_item_actions?.(item) ?? 0;
+}
+
+export function equipItem(item: number, on: boolean): boolean {
+  return (module()?._web_equip_item?.(item, on ? 1 : 0) ?? 0) !== 0;
 }
 
 export type FoundFile = { name: string; code: number };
@@ -280,6 +339,8 @@ export type GraceView = {
   bottleEquipped: boolean;
   bottleActive: boolean;
   bottleEmpty: boolean;
+  equippedItem: number;
+  weaponActive: boolean;
   hasLighter: boolean;
   lighterOn: boolean;
   throwAllowed: boolean;
@@ -303,6 +364,8 @@ export function readGrace(): GraceView {
     bottleEquipped: (m?._web_bottle_equipped?.() ?? 0) !== 0,
     bottleActive: (m?._web_bottle_active?.() ?? 0) !== 0,
     bottleEmpty: (m?._web_bottle_empty?.() ?? 0) !== 0,
+    equippedItem: m?._web_equipped_item?.() ?? -1,
+    weaponActive: (m?._web_weapon_active?.() ?? 0) !== 0,
     hasLighter: (m?._web_inventory_has?.(ITEM_LIGHTER) ?? 0) !== 0,
     lighterOn: (m?._lighter_value?.() ?? 0) !== 0,
     throwAllowed: (m?._web_throw_allowed?.() ?? 0) !== 0,

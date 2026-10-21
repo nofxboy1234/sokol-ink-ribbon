@@ -113,6 +113,21 @@ static int apply_props(ctx_t* c, obj_t* o, char** argv, int first, int argc) {
             o->state = num ? n : door_state_from_name(v);
         } else if (strcmp(k, "item") == 0) {
             o->item_type = item_from_name(v);
+        } else if (strcmp(k, "key") == 0 || strcmp(k, "key2") == 0 || strcmp(k, "key3") == 0) {
+            // key=ITEM: the item that opens this door (implies lock=key)
+            int it = item_from_name(v);
+            if (strcmp(item_name((item_t)it), v) != 0) return fail(c, "%s: unknown item '%s'", k, v);
+            if (k[3] == '2') o->key2_id = it;
+            else if (k[3] == '3') o->key3_id = it;
+            else o->key_id = it;
+            if (o->lock == LOCK_NONE) o->lock = LOCK_KEY;
+            o->state = DOOR_LOCKED;
+        } else if (strcmp(k, "lock") == 0) {
+            int l = door_lock_from_name(v);
+            if (l < 0) return fail(c, "lock must be none, key, other_side or jammed, got '%s'", v);
+            o->lock = l;
+            o->state = l == LOCK_NONE ? DOOR_UNLOCKED : DOOR_LOCKED;
+            if (l == LOCK_NONE) o->key_id = o->key2_id = o->key3_id = 0;
         } else if (strcmp(k, "link") == 0) {
             const obj_t* t = find_named(c->lv, v);
             if (!t) return fail(c, "link: no object named '%s'", v);
@@ -135,6 +150,8 @@ static int apply_props(ctx_t* c, obj_t* o, char** argv, int first, int argc) {
         else if (strcmp(k, "movable") == 0) o->movable = n;
         else if (strcmp(k, "openable") == 0) o->openable = n;
         else if (strcmp(k, "code") == 0) o->code = n;
+        else if (strcmp(k, "qty") == 0) o->qty = n;
+        else if (strcmp(k, "side") == 0) o->side = n;
         else return fail(c, "unknown property '%s'", k);
     }
     return 0;

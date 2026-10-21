@@ -1,0 +1,32 @@
+# Progression fixes found by the reachability tool (tools/reach.c). Runs last.
+#
+# The Fuse from Room 201's fuse box powers the gate out of the east patient
+# wing (Prima and rogue.site: Grace takes the Fuse back to the gate and it
+# opens). The map's only way west from Room 203's wing is the plain Locked
+# Door at 79,107, so that door is the gate and its fuse box sits beside it.
+set 79 107 lock=none state=locked name=gate
+obj fusebox 80 109 name=fusebox
+
+# The F2 south-east stairs drop Grace into a walled landing on floor 1 whose
+# only way on is the map's Locked Door at 141,240. Grace has to come
+# through it from the landing (it is how her side of the Care Center joins
+# the Elevator corridor and the Medication Room, where the West Wing
+# Keycard is), so it opens from the landing side.
+set 141 240 side=1
+
+# Cold Storage is pried open with the Wrench (research: "Cold Storage
+# (Sturdy Lock): Wrench"). The map marks its door as a Broken Door; the
+# Artificial Heart is inside, so the Wrench opens it.
+set 17 160 lock=key key=wrench
+
+# Floor 3's west rooms (Lounge, Director's Office, Meeting Room) sit behind a
+# Warped Door. In RE Requiem only Leon's hatchet breaks warped wood; Grace
+# has no hatchet here, so the Chainsaw (floor 1) cuts through this one door.
+# The warped closets stay shut.
+set 26 27 lock=key key=chainsaw
+
+# Requiem (RE Requiem: Grace's 12.7x55mm revolver). Polygon has no marker for
+# it, so it sits in Room 203 with one round, as the M232's bigger partner.
+# Default pending Dylan's call on where it should really be found.
+item 156 72 gun_requiem name=Requiem
+item 157 72 magnum_ammo qty=1 name=12.7x55mm_Ammo_(1)

@@ -7,6 +7,7 @@
 #include "doors.h"
 #include "enemy.h"
 #include "grid.h"
+#include "gear.h"
 #include "health.h"
 #include "interact.h"
 #include "inventory.h"
@@ -25,7 +26,8 @@
 // 5 adds inventory capacity, known recipes, level-complete, on-top and the
 // last save slot is tracked in the app (not the slot); older slots get the
 // defaults (8 slots, recipe 0 only, not complete, on the floor).
-#define SAVE_VERSION 5
+// 6 adds gear (ammo, blood, materials, doses, the weapon in hand).
+#define SAVE_VERSION 6
 
 typedef struct {
     bool used;
@@ -52,6 +54,9 @@ typedef struct {
     unsigned int known_recipes;
     bool complete;
     bool on_top;
+    int gear[GEAR_SAVE_INTS];
+    int key_count;
+    int keys[INV_KEY_RING];
 } save_slot_t;
 
 static save_slot_t g_slots[SAVE_SLOTS];
@@ -99,6 +104,9 @@ bool savegame_save(int slot, double elapsed_ms) {
     s->inv_capacity = inventory_capacity();
     s->known_recipes = crafting_known_mask();
     s->on_top = player_on_top();
+    gear_export(s->gear);
+    s->key_count = inventory_key_count();
+    for (int i = 0; i < s->key_count; i++) s->keys[i] = inventory_key(i);
     return true;
 }
 
@@ -127,6 +135,13 @@ bool savegame_load(int slot, double* elapsed_ms) {
     bool keep_empty = s->version >= 3;
     bool equipped = v2 && s->equipped && (keep_empty || inventory_has(ITEM_BOTTLE));
     throw_restore(equipped, equipped && s->active);
+    if (s->version >= 6) {
+        gear_import(s->gear);
+        inventory_set_keys(s->key_count, s->keys);
+    } else {
+        gear_init();
+        inventory_set_keys(0, 0);  // older slots kept key items in slots
+    }
     bool v4 = s->version >= 4;
     items_import_seen(v4 ? s->item_seen : NULL, LEVEL_MAX_OBJECTS);
     inventory_set_capacity(s->version >= 5 ? s->inv_capacity : INV_BASE_SLOTS);

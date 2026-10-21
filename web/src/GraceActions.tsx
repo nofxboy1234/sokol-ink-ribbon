@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   GraceMode,
+  ITEM_BOTTLE,
+  itemAppearance,
   quickSelect,
   radialSlot,
   readGrace,
@@ -286,6 +288,18 @@ export function GraceActions() {
           ? "Lighter · on (pick to put it out)"
           : "Lighter · off (pick to light it)",
         onClick: () => quickSelect(0),
+      };
+    }
+    if (i === 1 && grace.equippedItem >= 0 && grace.equippedItem !== ITEM_BOTTLE) {
+      const look = itemAppearance(grace.equippedItem);
+      return {
+        label: look.label,
+        icon: (
+          <span className="grace-gear" aria-hidden="true" style={{ background: look.color }} />
+        ),
+        pressed: grace.weaponActive,
+        title: grace.weaponActive ? `${look.label} · active` : `${look.label} · make active`,
+        onClick: () => quickSelect(1),
       };
     }
     if (i === 1 && grace.bottleEquipped) {

@@ -702,11 +702,16 @@ int main(int argc, char** argv) {
         int fuse_i = -1;
         for (int i = 0; i < level.obj_count; i++) {
             obj_t* o = (obj_t*)&grid_level()->objs[i];
-            if (o->kind == OBJ_OBSTACLE && o->openable) box = o;
+            if (o->kind == OBJ_ITEM && o->item_type == ITEM_FUSE) fuse_i = i;
+        }
+        for (int i = 0; i < level.obj_count && fuse_i >= 0; i++) {
+            obj_t* o = (obj_t*)&grid_level()->objs[i];
+            const obj_t* f = &grid_level()->objs[fuse_i];
+            // the box is the openable on the fuse's cell
+            if (o->kind == OBJ_OBSTACLE && o->openable && o->x == f->x && o->y == f->y) box = o;
             if (o->kind == OBJ_FUSEBOX) fusebox = o;
             if (o->kind == OBJ_DOOR && strcmp(o->name, "gate") == 0 && !gate) gate = o;
             if (o->kind == OBJ_GOAL) goal = o;
-            if (o->kind == OBJ_ITEM && o->item_type == ITEM_FUSE) fuse_i = i;
         }
         CHECK(box && fusebox && gate && goal && fuse_i >= 0, "fuse chain objects exist (cabinet, fusebox, gate, goal)");
         // stand on a floor neighbour of the cabinet

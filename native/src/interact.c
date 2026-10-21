@@ -1,6 +1,7 @@
 #include "interact.h"
 #include "doors.h"
 #include "grid.h"
+#include "gear.h"
 #include "inventory.h"
 #include "crafting.h"
 #include "items.h"
@@ -162,8 +163,11 @@ bool interact_at(int x, int y) {
             return true;
         }
         if ((o->kind == OBJ_OBSTACLE && o->openable) && !o->open) {
+            if (o->lock == LOCK_JAMMED) {
+                return true;  // warped shut: Grace can't open it
+            }
             int keytype = doors_key_type(o);
-            if (keytype >= 0 && !inventory_has(keytype)) {
+            if (keytype >= 0 && !doors_has_key(keytype)) {
                 return true; // needs the linked key
             }
             o->open = 1;
@@ -189,6 +193,10 @@ bool interact_at(int x, int y) {
         }
         if (o->kind == OBJ_SAFE && !o->open) {
             in.pending_safe = i;  // React opens the keypad; interact_try_safe_code checks it
+            return true;
+        }
+        if (o->kind == OBJ_MICROSCOPE) {
+            gear_analyse_specimen();
             return true;
         }
         if (o->kind == OBJ_RECIPE && !o->state) {

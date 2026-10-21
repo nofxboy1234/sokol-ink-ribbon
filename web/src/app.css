@@ -356,6 +356,53 @@ button.recipe:disabled {
   position: relative;
 }
 
+.glyph-triangle {
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.glyph-diamond {
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+.glyph-plus {
+  clip-path: polygon(35% 0, 65% 0, 65% 35%, 100% 35%, 100% 65%, 65% 65%, 65% 100%, 35% 100%, 35% 65%, 0 65%, 0 35%, 35% 35%);
+}
+
+.glyph-frame {
+  border: 3px solid var(--ink);
+  background: transparent;
+}
+
+.gun-slot-item {
+  display: grid;
+  place-items: center;
+}
+
+.gear-line {
+  margin: 6px 0 0;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.key-ring {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.key-ring-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.key-ring-item .glyph {
+  width: 12px;
+  height: 12px;
+}
+
 .glyph-hole {
   position: absolute;
   inset: 28%;
@@ -830,6 +877,12 @@ button.recipe[aria-disabled="true"] {
   height: 42%;
   border-radius: 50%;
   background: #0008ff;
+}
+
+.grace-gear {
+  width: 42%;
+  height: 42%;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
 
 .grace-status-badge {

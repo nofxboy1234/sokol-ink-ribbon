@@ -1,5 +1,6 @@
 #include "items.h"
 #include "grid.h"
+#include "gear.h"
 #include "inventory.h"
 #include "level.h"
 #include "player.h"
@@ -25,7 +26,7 @@ bool items_take(int object_index) {
     if (o->kind != OBJ_ITEM) {
         return false;
     }
-    if (!inventory_add(o->item_type)) {
+    if (!gear_pickup(o->item_type, o->qty)) {
         return false;
     }
     it.taken[object_index] = 1;
