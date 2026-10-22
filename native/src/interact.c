@@ -25,6 +25,8 @@ static struct {
 } in;
 
 static bool rect_covers(const obj_t* o, int x, int y);
+static bool file_found(int obj_index);
+static bool use_object(int i);
 
 bool cell_on_climbable(int x, int y) {
     const level_t* lv = in.level;
@@ -147,13 +149,13 @@ static bool pickup_at(int x, int y) {
     return false;
 }
 
-bool interact_nearby(bool items_only) {
+// The press's search order: the faced cell, her own, then the rest.
+static int search_cells(int cells[10][2]) {
     int px, py;
     player_cell(&px, &py);
     static const int facing_dx[4] = { 0, 1, 0, -1 };
     static const int facing_dy[4] = { -1, 0, 1, 0 };
     int f = player_facing();
-    int cells[10][2];
     int n = 0;
     cells[n][0] = px + facing_dx[f]; cells[n][1] = py + facing_dy[f]; n++;
     cells[n][0] = px; cells[n][1] = py; n++;
@@ -163,9 +165,208 @@ bool interact_nearby(bool items_only) {
             cells[n][0] = px + dx; cells[n][1] = py + dy; n++;
         }
     }
-    for (int i = 0; i < n; i++) {
-        int x = cells[i][0], y = cells[i][1];
-        if (pickup_at(x, y) || (!items_only && (doors_interact(x, y) || interact_at(x, y)))) return true;
+    return n;
+}
+
+static bool can_carry(int item) {
+    if (item_category(item) == ICAT_BLOOD) return inventory_has(ITEM_BLOOD_COLLECTOR) && gear_blood() < gear_blood_cap();
+    if (item_category(item) == ICAT_POUCH || gear_counted(item)) return true;
+    return inventory_count() < inventory_capacity();
+}
+
+static bool file_linked_found(int link_id) {
+    for (int k = 0; k < in.level->obj_count; k++) {
+        if (in.level->objs[k].id == link_id && in.level->objs[k].kind == OBJ_FILE && file_found(k)) return true;
+    }
+    return false;
+}
+
+// Whether pressing on object i would do something now (not just say why not).
+static bool usable(int i) {
+    const obj_t* o = &in.level->objs[i];
+    switch (o->kind) {
+        case OBJ_ITEM: return can_carry(o->item_type);
+        case OBJ_OBSTACLE: {
+            if (!o->openable || o->open || o->lock == LOCK_JAMMED) return false;
+            int keytype = doors_key_type(o);
+            return keytype < 0 || doors_has_key(keytype);
+        }
+        case OBJ_SWITCH:
+        case OBJ_ITEMBOX:
+        case OBJ_MICROSCOPE: return true;
+        case OBJ_TYPEWRITER: return inventory_has(ITEM_INK_RIBBON);
+        case OBJ_FILE: return !file_found(i);
+        case OBJ_SAFE:
+            if (o->open) return false;
+            if (o->key_id > 0) return doors_has_key(o->key_id);
+            if (o->link_id > 0) return file_linked_found(o->link_id);
+            return true;
+        case OBJ_RECIPE: return !o->state;
+        case OBJ_CABINET: {
+            int cost = o->code > 0 ? o->code : 1;
+            if (o->state || gear_count(ITEM_COIN) < cost) return false;
+            return o->qty > 0 ? can_carry(o->item_type) : inventory_capacity() < INV_SLOTS;
+        }
+        case OBJ_FUSEBOX: return !in.goal && inventory_has(ITEM_FUSE);
+        default: return false;
+    }
+}
+
+// The object on cell x,y a press would act on: an item she can carry
+// first, then a door, then anything else usable. -1 when none.
+static int target_at(int x, int y) {
+    bool reach = interact_cell_reachable(x, y);
+    for (int pass = 0; pass < 3; pass++) {
+        if (pass == 1) {
+            int d = doors_target_at(x, y);
+            if (d >= 0) return d;
+            continue;
+        }
+        if (!reach) continue;
+        for (int i = 0; i < in.level->obj_count; i++) {
+            const obj_t* o = &in.level->objs[i];
+            if ((o->kind == OBJ_ITEM) != (pass == 0) || o->kind == OBJ_DOOR) continue;
+            bool covered = o->kind == OBJ_OBSTACLE ? rect_covers(o, x, y) : (o->x == x && o->y == y);
+            if (!covered || interact_distance(i) > 1) continue;
+            if (o->kind == OBJ_ITEM &&
+                (items_taken(i) || openable_covers_closed(o->x, o->y) || !light_item_visible(i))) continue;
+            if (usable(i)) return i;
+        }
+    }
+    return -1;
+}
+
+int interact_target(void) {
+    int cells[10][2];
+    int n = search_cells(cells);
+    for (int c = 0; c < n; c++) {
+        int t = target_at(cells[c][0], cells[c][1]);
+        if (t >= 0) return t;
+    }
+    return -1;
+}
+
+bool interact_nearby(void) {
+    int cells[10][2];
+    int n = search_cells(cells);
+    for (int c = 0; c < n; c++) {
+        int x = cells[c][0], y = cells[c][1];
+        int t = target_at(x, y);
+        if (t < 0) continue;
+        if (in.level->objs[t].kind == OBJ_DOOR) return doors_interact(x, y);
+        return use_object(t);
+    }
+    // nothing usable: the old press still climbs or says why not
+    for (int c = 0; c < n; c++) {
+        int x = cells[c][0], y = cells[c][1];
+        if (pickup_at(x, y) || doors_interact(x, y) || interact_at(x, y)) return true;
+    }
+    return false;
+}
+
+// Do what object i does when pressed. True when the press is spent.
+static bool use_object(int i) {
+    obj_t* o = &in.level->objs[i];
+    if (o->kind == OBJ_ITEM) {
+        // a taken item, or one she can't carry, must not swallow the
+        // press: a later object or cell may still take it
+        if (items_take(i)) return true;
+        return false;
+    }
+    if ((o->kind == OBJ_OBSTACLE && o->openable) && !o->open) {
+        if (o->lock == LOCK_JAMMED) {
+            return true;  // warped shut: Grace can't open it
+        }
+        int keytype = doors_key_type(o);
+        if (keytype >= 0 && !doors_has_key(keytype)) {
+            return true; // needs the linked key
+        }
+        o->open = 1;
+        doors_drop_key_if_done(keytype);
+        return true;
+    }
+    if (o->kind == OBJ_SWITCH) {
+        toggle_switch(o);
+        return true;
+    }
+    if (o->kind == OBJ_TYPEWRITER) {
+        // saving spends an ink ribbon, so the menu only opens with one
+        if (inventory_has(ITEM_INK_RIBBON)) {
+            in.save_menu = true;
+        }
+        return true;
+    }
+    if (o->kind == OBJ_FILE && !file_found(i)) {
+        if (in.file_count < LEVEL_MAX_OBJECTS) {
+            in.file_obj[in.file_count++] = i;
+        }
+        return true;
+    }
+    if (o->kind == OBJ_SAFE && !o->open && o->key_id > 0) {
+        // no puzzles: holding the item it is for opens it
+        if (doors_has_key(o->key_id)) {
+            o->open = 1;
+            doors_drop_key_if_done(o->key_id);
+        }
+        return true;
+    }
+    if (o->kind == OBJ_SAFE && !o->open && o->link_id > 0) {
+        // no dial: the safe opens once she has picked up its code file
+        // (the file it links to); until then it stays locked
+        for (int k = 0; k < in.level->obj_count; k++) {
+            if (in.level->objs[k].id == o->link_id && in.level->objs[k].kind == OBJ_FILE && file_found(k)) {
+                o->open = 1;
+            }
+        }
+        return true;
+    }
+    if (o->kind == OBJ_SAFE && !o->open) {
+        in.pending_safe = i;  // React opens the keypad; interact_try_safe_code checks it
+        return true;
+    }
+    if (o->kind == OBJ_ITEMBOX) {
+        in.itembox = true;  // the UI opens the box; see interact_take_itembox
+        return true;
+    }
+    if (o->kind == OBJ_MICROSCOPE) {
+        gear_analyse_specimen();
+        return true;
+    }
+    if (o->kind == OBJ_RECIPE && !o->state) {
+        crafting_learn(o->code);
+        o->state = 1;
+        return true;
+    }
+    if (o->kind == OBJ_CABINET && !o->state) {
+        // a coin cabinet: `code` Antique Coins buy what it holds (item
+        // x qty), or 4 more slots when it holds nothing
+        int cost = o->code > 0 ? o->code : 1;
+        if (gear_count(ITEM_COIN) < cost) return true;
+        if (o->qty > 0) {
+            if (!gear_pickup(o->item_type, o->qty)) return true;  // no room: she keeps her coins
+            gear_spend(ITEM_COIN, cost);
+            o->state = 1;
+        } else if (inventory_capacity() < INV_SLOTS) {
+            gear_spend(ITEM_COIN, cost);
+            inventory_expand(4);
+            o->state = 1;
+        }
+        return true;
+    }
+    if (o->kind == OBJ_FUSEBOX && !in.goal) {
+        // the box by the gate is already open: it only needs the Fuse
+        if (!inventory_has(ITEM_FUSE)) {
+            return true;
+        }
+        inventory_remove(ITEM_FUSE);
+        in.goal = true;
+        for (int k = 0; k < in.level->obj_count; k++) {
+            obj_t* d = &in.level->objs[k];
+            if (d->kind == OBJ_DOOR && strcmp(d->name, "gate") == 0) {
+                d->state = DOOR_BROKEN;  // powered: the gate slab is gone (fade in React)
+            }
+        }
+        return true;
     }
     return false;
 }
@@ -194,107 +395,7 @@ bool interact_at(int x, int y) {
         if (interact_distance(i) > 1) {
             continue;
         }
-        if (o->kind == OBJ_ITEM) {
-            // a taken item, or one she can't carry, must not swallow the
-            // press: a later object or cell may still take it
-            if (items_take(i)) return true;
-            continue;
-        }
-        if ((o->kind == OBJ_OBSTACLE && o->openable) && !o->open) {
-            if (o->lock == LOCK_JAMMED) {
-                return true;  // warped shut: Grace can't open it
-            }
-            int keytype = doors_key_type(o);
-            if (keytype >= 0 && !doors_has_key(keytype)) {
-                return true; // needs the linked key
-            }
-            o->open = 1;
-            doors_drop_key_if_done(keytype);
-            return true;
-        }
-        if (o->kind == OBJ_SWITCH) {
-            toggle_switch(o);
-            return true;
-        }
-        if (o->kind == OBJ_TYPEWRITER) {
-            // saving spends an ink ribbon, so the menu only opens with one
-            if (inventory_has(ITEM_INK_RIBBON)) {
-                in.save_menu = true;
-            }
-            return true;
-        }
-        if (o->kind == OBJ_FILE && !file_found(i)) {
-            if (in.file_count < LEVEL_MAX_OBJECTS) {
-                in.file_obj[in.file_count++] = i;
-            }
-            return true;
-        }
-        if (o->kind == OBJ_SAFE && !o->open && o->key_id > 0) {
-            // no puzzles: holding the item it is for opens it
-            if (doors_has_key(o->key_id)) {
-                o->open = 1;
-                doors_drop_key_if_done(o->key_id);
-            }
-            return true;
-        }
-        if (o->kind == OBJ_SAFE && !o->open && o->link_id > 0) {
-            // no dial: the safe opens once she has picked up its code file
-            // (the file it links to); until then it stays locked
-            for (int k = 0; k < in.level->obj_count; k++) {
-                if (in.level->objs[k].id == o->link_id && in.level->objs[k].kind == OBJ_FILE && file_found(k)) {
-                    o->open = 1;
-                }
-            }
-            return true;
-        }
-        if (o->kind == OBJ_SAFE && !o->open) {
-            in.pending_safe = i;  // React opens the keypad; interact_try_safe_code checks it
-            return true;
-        }
-        if (o->kind == OBJ_ITEMBOX) {
-            in.itembox = true;  // the UI opens the box; see interact_take_itembox
-            return true;
-        }
-        if (o->kind == OBJ_MICROSCOPE) {
-            gear_analyse_specimen();
-            return true;
-        }
-        if (o->kind == OBJ_RECIPE && !o->state) {
-            crafting_learn(o->code);
-            o->state = 1;
-            return true;
-        }
-        if (o->kind == OBJ_CABINET && !o->state) {
-            // a coin cabinet: `code` Antique Coins buy what it holds (item
-            // x qty), or 4 more slots when it holds nothing
-            int cost = o->code > 0 ? o->code : 1;
-            if (gear_count(ITEM_COIN) < cost) return true;
-            if (o->qty > 0) {
-                if (!gear_pickup(o->item_type, o->qty)) return true;  // no room: she keeps her coins
-                gear_spend(ITEM_COIN, cost);
-                o->state = 1;
-            } else if (inventory_capacity() < INV_SLOTS) {
-                gear_spend(ITEM_COIN, cost);
-                inventory_expand(4);
-                o->state = 1;
-            }
-            return true;
-        }
-        if (o->kind == OBJ_FUSEBOX && !in.goal) {
-            // the box by the gate is already open: it only needs the Fuse
-            if (!inventory_has(ITEM_FUSE)) {
-                return true;
-            }
-            inventory_remove(ITEM_FUSE);
-            in.goal = true;
-            for (int k = 0; k < in.level->obj_count; k++) {
-                obj_t* d = &in.level->objs[k];
-                if (d->kind == OBJ_DOOR && strcmp(d->name, "gate") == 0) {
-                    d->state = DOOR_BROKEN;  // powered: the gate slab is gone (fade in React)
-                }
-            }
-            return true;
-        }
+        if (use_object(i)) return true;
     }
     return false;
 }

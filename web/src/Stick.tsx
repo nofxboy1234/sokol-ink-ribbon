@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  aimToggle,
   aimDeadZone,
   aimInput,
   interactTrigger,
@@ -332,6 +333,10 @@ export function AimStick() {
       closeEquip(); // a centre tap while the menu is open cancels it
       return;
     }
+    if (readGrace().aiming) {
+      aimToggle(); // while aiming, a centre tap closes aiming
+      return;
+    }
     interactTrigger();
   };
 
@@ -363,7 +368,7 @@ export function AimStick() {
       role="application"
       aria-label={
         state.bottleActive
-          ? "Aim stick. Push to aim, release to throw or fire. Tap centre to interact, hold centre for Quick Equip."
+          ? "Aim stick. Push to aim, release to throw or fire. Tap centre to close aiming (or interact when not aiming), hold centre for Quick Equip."
           : "Interact stick. Tap centre to interact, hold centre for Quick Equip. No bottle or weapon active, so aiming is unavailable."
       }
       onPointerDown={onDown}

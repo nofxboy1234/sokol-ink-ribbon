@@ -438,13 +438,13 @@ int main(int argc, char** argv) {
     CHECK(card >= 0 && blood >= 0, "the Medication Room holds the West Wing Keycard at 70,211 and blood at 71,212");
     player_set_cell(71, 212);
     CHECK(!interact_at(71, 212), "blood she can't carry is not an interaction");
-    CHECK(interact_nearby(false) && items_taken(card) && inventory_has(ITEM_WEST_WING_KEYCARD),
+    CHECK(interact_nearby() && items_taken(card) && inventory_has(ITEM_WEST_WING_KEYCARD),
           "standing on the blood, the press takes the keycard beside it");
     CHECK(!interact_at(70, 211), "a taken item is not an interaction either");
     items_init();
     inventory_init();
     player_set_cell(70, 212);
-    CHECK(interact_nearby(true) && items_taken(card), "moving (items only), the press still picks it up");
+    CHECK(interact_nearby() && items_taken(card), "from the next cell the press still picks it up");
 
     printf("%s: %d failure(s)\n", failures ? "FAIL" : "OK", failures);
     return failures ? 1 : 0;

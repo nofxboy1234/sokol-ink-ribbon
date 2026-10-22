@@ -618,21 +618,12 @@ static bool grace_do(grace_action_t action) {
 // The unified interact trigger (Space key on desktop, a tap on the right
 // stick's centre on mobile): use whatever she faces, then her own cell, then the
 // cells around her -- pickups, switches, doors, and the climb prompt alike.
-static bool input_held(void) {
-    return app.key_w || app.key_a || app.key_s || app.key_d ||
-           app.stick_x * app.stick_x + app.stick_y * app.stick_y >= 0.12f * 0.12f;
-}
-
 static bool interact_trigger(void) {
     if (app.grace == GRACE_HURT || player_climbing()) {
         return false;
     }
-    // moving, she only picks things up and keeps going; standing, anything
-    bool moving = input_held();
-    if (!moving) {
-        player_stop();
-    }
-    if (interact_nearby(moving)) {
+    // anything works on the move; she keeps going
+    if (interact_nearby()) {
         bump_revision();
         return true;
     }
@@ -1010,32 +1001,53 @@ static bool prompt_text(const obj_t* o, char* out, size_t cap) {
     return false;
 }
 
+// Which visible prompt wins: the closest object, ties broken the way the
+// interact press searches (the faced cell, then her own, then the rest).
+static int prompt_rank(int i) {
+    static const int fdx[4] = { 0, 1, 0, -1 };
+    static const int fdy[4] = { -1, 0, 1, 0 };
+    const obj_t* o = &app.level.objs[i];
+    int px, py, f = player_facing();
+    player_cell(&px, &py);
+    int order = (o->x == px + fdx[f] && o->y == py + fdy[f]) ? 0 : (o->x == px && o->y == py) ? 1 : 2;
+    return interact_distance(i) * 4 + order;
+}
+
+// One prompt at a time, so labels never overlap.
 static void draw_prompts(void) {
     prompts.count = 0;
     if (app.paused || app.dead || level_complete()) {
         return;
     }
-    for (int i = 0; i < app.level.obj_count && prompts.count < PROMPT_MAX; i++) {
-        if (!prompt_visible(i)) {
-            continue;
+    // the label names what Space would act on; with nothing usable, the
+    // nearest prompt (so a red "why not" still shows)
+    int best = interact_target();
+    if (best < 0 || !prompt_visible(best)) {
+        best = -1;
+        int best_rank = 0;
+        for (int i = 0; i < app.level.obj_count; i++) {
+            if (!prompt_visible(i)) continue;
+            int r = prompt_rank(i);
+            if (best < 0 || r < best_rank) { best = i; best_rank = r; }
         }
-        const obj_t* o = &app.level.objs[i];
-        int k = prompts.count++;
-        prompts.obj[k] = i;
-        prompts.alert[k] = prompt_text(o, prompts.text[k], sizeof prompts.text[k]);
-        // above the object: a rect's top centre, or the door slab's midpoint
-        float mx = (float)o->x + 0.5f, my = (float)o->y;
-        if (o->kind == OBJ_OBSTACLE) {
-            mx = (float)o->x + 0.5f * (float)(o->w > 0 ? o->w : 1);
-        } else if (o->kind == OBJ_DOOR) {
-            int span = o->span > 0 ? o->span : 1;
-            mx = o->horizontal ? (float)o->x + span * 0.5f : (float)o->x;
-            my = o->horizontal ? (float)o->y - 0.5f : (float)o->y;
-        }
-        float sx, sy;
-        camera_cell_to_screen(mx, my, &sx, &sy);
-        game_label(prompts.text[k], sx, sy - 6.0f, prompts.alert[k]);
     }
+    if (best < 0) return;
+    const obj_t* o = &app.level.objs[best];
+    prompts.count = 1;
+    prompts.obj[0] = best;
+    prompts.alert[0] = prompt_text(o, prompts.text[0], sizeof prompts.text[0]);
+    // above the object: a rect's top centre, or the door slab's midpoint
+    float mx = (float)o->x + 0.5f, my = (float)o->y;
+    if (o->kind == OBJ_OBSTACLE) {
+        mx = (float)o->x + 0.5f * (float)(o->w > 0 ? o->w : 1);
+    } else if (o->kind == OBJ_DOOR) {
+        int span = o->span > 0 ? o->span : 1;
+        mx = o->horizontal ? (float)o->x + span * 0.5f : (float)o->x;
+        my = o->horizontal ? (float)o->y - 0.5f : (float)o->y;
+    }
+    float sx, sy;
+    camera_cell_to_screen(mx, my, &sx, &sy);
+    game_label(prompts.text[0], sx, sy - 6.0f, prompts.alert[0]);
 }
 
 // Extra dear-imgui UI drawn inside the dbgui frame.
