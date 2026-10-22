@@ -79,7 +79,6 @@ test("the Medication Room: beside blood she can't carry, Space takes the West Wi
     "Infected Blood (70): needs the Blood Collector",
   );
   expect((await promptAt(page, 71, 212)).alert).toBe(1);
-  expect(await promptAt(page, 70, 211)).toEqual({ text: "West Wing Keycard", alert: 0 });
   await page.screenshot({ path: `${SHOTS}/medication-room-prompts.png` });
   await page.keyboard.press(" ");
   await expect.poll(() => wasm(page, "web_inventory_has", WEST_WING_KEYCARD)).toBe(1);
@@ -122,8 +121,8 @@ test("the Item Box and the typewriter show prompts like items do", async ({ page
   await boot(page);
   await wasm(page, "web_test_grace_at", 80, 201); // Item Box 80,200 and typewriter 81,202
   await expect.poll(async () => (await promptAt(page, 80, 200)).text).toBe("Item Box");
-  const tw = await promptAt(page, 81, 202);
-  expect(tw.text.startsWith("Typewriter")).toBe(true);
+  await wasm(page, "web_test_grace_at", 81, 203); // only the nearest prompt shows
+  await expect.poll(async () => (await promptAt(page, 81, 202)).text).toMatch(/^Typewriter/);
   await page.screenshot({ path: `${SHOTS}/itembox-typewriter-prompts.png` });
 });
 

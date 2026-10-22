@@ -8,10 +8,10 @@ void interact_init(void);
 bool interact_at(int x, int y);
 
 // The interact press: the cell she faces, her own, then the rest around her.
-// On each cell an item she can carry comes first, then (unless items_only:
-// she is moving) doors, switches and the rest. An item she can't take, or
+// On each cell an item she can carry comes first, then doors, switches and
+// the rest, moving or not. An item she can't take, or
 // one already taken, never ends the search.
-bool interact_nearby(bool items_only);
+bool interact_nearby(void);
 
 // True if Grace can actually reach the given cell to interact with it:
 // her own cell, or an adjacent cell whose connecting edge is not blocked

@@ -147,7 +147,7 @@ static bool pickup_at(int x, int y) {
     return false;
 }
 
-bool interact_nearby(bool items_only) {
+bool interact_nearby(void) {
     int px, py;
     player_cell(&px, &py);
     static const int facing_dx[4] = { 0, 1, 0, -1 };
@@ -165,7 +165,7 @@ bool interact_nearby(bool items_only) {
     }
     for (int i = 0; i < n; i++) {
         int x = cells[i][0], y = cells[i][1];
-        if (pickup_at(x, y) || (!items_only && (doors_interact(x, y) || interact_at(x, y)))) return true;
+        if (pickup_at(x, y) || doors_interact(x, y) || interact_at(x, y)) return true;
     }
     return false;
 }
