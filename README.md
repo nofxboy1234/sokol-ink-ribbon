@@ -5,7 +5,7 @@ graph lists what the character can do from where they stand: move, take, use,
 unlock, read. Confirm a node and the capsule walks there. When it arrives the
 graph rearranges around the new possibilities.
 
-The game has three views over one 3D room.
+The game has five views over one 3D room.
 
 - **Game view** is three.js. White room, ink-black wall lines, a blue player
   capsule, the pink ink-ribbon sphere, and the green herb sphere.
@@ -14,6 +14,9 @@ The game has three views over one 3D room.
 - **3D decisions** is a full-screen three.js cloud of spheres. Drag to orbit,
   click a sphere, confirm with Enter.
 - **Map** is a tldraw drawing of the rooms with a live blue player dot.
+- **Level editor** is a tldraw canvas that edits the game objects used to
+  generate the 3D room. Dragging an object, adding an object, then choosing
+  Apply and play rebuilds the three.js scene from the edited level.
 
 ## Controls
 
@@ -23,11 +26,19 @@ The game has three views over one 3D room.
 | `T` | Open or close the 3D decision graph |
 | `M` | Open or close the map |
 | `I` | Open or close the inventory |
+| `E` | Open the tldraw level editor |
 | `Enter` | Confirm the selected decision |
 | `Esc` | Close the current view |
 
-Click a node to select it. Click Confirm, or press Enter, to commit. The view
-closes, the capsule walks its path, and the graph updates when you open it again.
+Click a node to select it. The selected node turns player blue and the parent
+chain is shown as the route in the confirm bar. Click Confirm, or press Enter,
+to commit. The view closes, the capsule walks its path using A* pathing, and the
+graph updates when you open it again.
+
+The level editor loads the current level as tldraw game objects. Drag the player
+or item dots, add objects from the bottom toolbar, then choose Apply and play.
+The level is saved in localStorage and the 3D scene is rebuilt from the edited
+level. Room and wall geometry stays fixed in this version.
 
 ## The decision model
 
@@ -63,15 +74,16 @@ npm run typecheck
 npm test
 ```
 
-The Playwright test drives the real app: it opens the graph with the keyboard,
-clicks nodes, confirms, waits for the capsule to arrive, and checks inventory and
-graph changes.
+The Playwright suite drives the real app: it opens the graph with the keyboard,
+clicks nodes, confirms, waits for the capsule to arrive, checks inventory and
+graph changes, drags an object in the tldraw level editor, applies the level, and
+checks the new position survives a reload.
 
 ## Layout
 
 ```
 web/src/game/       level data, navigation, discovery, graph derivation, store
 web/src/scene/      three.js room, capsule, items, camera, path walking
-web/src/views/      2D tldraw graph, 3D three.js graph, tldraw map
+web/src/views/      2D tldraw graph, 3D three.js graph, tldraw map, level editor
 web/src/App.tsx     view switching, keyboard input, HUD, confirm flow
 ```

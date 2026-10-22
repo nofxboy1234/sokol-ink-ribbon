@@ -268,8 +268,11 @@ export function DecisionGraph3D({ graph, selectedId, onSelect }: DecisionGraph3D
     const applySelection = () => {
       for (const view of views.values()) {
         const selected = view.id === activeId;
+        const style = NODE_STYLE[view.kind];
         view.targetScale = selected ? SELECT_SCALE : 1;
-        view.mesh.material.emissiveIntensity = selected ? 0.8 : 0;
+        view.mesh.material.color.setHex(selected ? PLAYER_COLOR : style.color);
+        view.mesh.material.emissiveIntensity = selected ? 0.55 : 0;
+        if (view.rim) view.rim.visible = !selected;
         const color = selected ? LABEL_SELECTED_COLOR : LABEL_COLOR;
         if (view.label.color !== color) drawLabel(view.label, view.label.text, color);
         view.label.material.opacity = selected ? 1 : 0.92;
@@ -520,6 +523,23 @@ export function DecisionGraph3D({ graph, selectedId, onSelect }: DecisionGraph3D
       last = now;
       const spring = 1 - Math.exp(-delta * SPRING_RATE);
       const scaleSpring = 1 - Math.exp(-delta * SCALE_RATE);
+
+      if (dragView) {
+        for (const view of views.values()) {
+          if (view === dragView) continue;
+          const dx = view.current.x - dragView.current.x;
+          const dy = view.current.y - dragView.current.y;
+          const dz = view.current.z - dragView.current.z;
+          const length = Math.hypot(dx, dy, dz);
+          const minimum = 1.2;
+          if (length > 0.001 && length < minimum) {
+            const push = (minimum - length) * Math.min(0.35, 1 - Math.exp(-delta * 8));
+            view.current.x += (dx / length) * push;
+            view.current.y += (dy / length) * push;
+            view.current.z += (dz / length) * push;
+          }
+        }
+      }
 
       for (const view of views.values()) {
         if (view !== dragView) view.current.lerp(view.target, spring);

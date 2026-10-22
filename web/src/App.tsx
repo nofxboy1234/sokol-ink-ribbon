@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { GameStore } from "./game/store";
 import { deriveDecisionGraph } from "./game/decisions";
-import { level } from "./game/level";
-import type { Decision, DecisionGraph, GameState, Vec2 } from "./game/types";
+import { cloneLevel, defaultLevel, loadStoredLevel, saveLevel } from "./game/levelStorage";
+import type { Decision, DecisionGraph, GameState, Level, Vec2 } from "./game/types";
 import { ThreeScene } from "./scene/ThreeScene";
 import { MapView } from "./views/MapView";
 import { DecisionGraph2D } from "./views/DecisionGraph2D";
 import { DecisionGraph3D } from "./views/DecisionGraph3D";
+import { LevelEditor } from "./views/LevelEditor";
 
-type View = "none" | "graph2d" | "graph3d" | "map" | "inventory";
+type View = "none" | "graph2d" | "graph3d" | "map" | "inventory" | "editor";
 
 declare global {
   interface Window {
@@ -21,6 +22,7 @@ declare global {
       confirm: () => void;
       close: () => void;
       reset: () => void;
+      level: () => Level;
     };
     __ink3d?: { point: (nodeId: string) => { x: number; y: number } | null };
   }
@@ -31,6 +33,7 @@ const KEY_LABELS: { key: string; label: string; view: View }[] = [
   { key: "T", label: "3D graph", view: "graph3d" },
   { key: "M", label: "Map", view: "map" },
   { key: "I", label: "Items", view: "inventory" },
+  { key: "E", label: "Editor", view: "editor" },
 ];
 
 const itemColor: Record<string, string> = {
@@ -41,10 +44,12 @@ const itemColor: Record<string, string> = {
 
 function ConfirmBar({
   node,
+  route,
   onConfirm,
   onCancel,
 }: {
   node: Decision | null;
+  route: Decision[];
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -53,6 +58,7 @@ function ConfirmBar({
       <div className="confirm-copy">
         <span className="confirm-kicker">{node ? "decision" : "choose a node"}</span>
         <strong>{node ? node.label : "What can you do from here?"}</strong>
+        {route.length > 1 ? <span className="route-line">{route.map((entry) => entry.label).join(" → ")}</span> : null}
       </div>
       <button className="primary-button" onClick={onConfirm} disabled={!node}>
         Confirm <kbd>Enter</kbd>
@@ -91,7 +97,7 @@ function ViewHeader({
   );
 }
 
-function InventoryOverlay({ state, onClose }: { state: GameState; onClose: () => void }) {
+function InventoryOverlay({ state, level, onClose }: { state: GameState; level: Level; onClose: () => void }) {
   return (
     <div className="view-screen inventory-view">
       <ViewHeader kicker="What you carry" title="Inventory" onClose={onClose} closeKey="I" />
@@ -130,10 +136,12 @@ function InventoryOverlay({ state, onClose }: { state: GameState; onClose: () =>
 
 function Hud({
   state,
+  level,
   pendingLabel,
   onOpen,
 }: {
   state: GameState;
+  level: Level;
   pendingLabel: string | null;
   onOpen: (view: View) => void;
 }) {
@@ -194,17 +202,35 @@ function Hud({
 }
 
 export function App() {
+  const [startingLevel] = useState<Level>(() => loadStoredLevel() ?? cloneLevel(defaultLevel));
   const storeRef = useRef<GameStore | null>(null);
-  if (!storeRef.current) storeRef.current = new GameStore(level);
+  if (!storeRef.current) storeRef.current = new GameStore(startingLevel);
   const store = storeRef.current;
+  const level = store.level;
 
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const tracker = useRef<Vec2>({ ...state.player.pos });
   const [view, setView] = useState<View>("none");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const graph = useMemo(() => deriveDecisionGraph(level, state), [state]);
+  const graph = useMemo(() => deriveDecisionGraph(level, state), [level, state]);
   const selected = graph.nodes.find((node) => node.id === selectedId && node.kind !== "player") ?? null;
+  const route = useMemo(() => {
+    const chain: Decision[] = [];
+    let current = selected;
+    while (current && current.kind !== "player") {
+      chain.unshift(current);
+      current = graph.nodes.find((node) => node.id === current?.parentId) ?? null;
+    }
+    return chain;
+  }, [graph, selected]);
+
+  const levelRef = useRef(level);
+  useEffect(() => {
+    if (levelRef.current === level) return;
+    levelRef.current = level;
+    tracker.current = { ...state.player.pos };
+  }, [level, state.player.pos]);
 
   const close = (): void => {
     setView("none");
@@ -216,6 +242,14 @@ export function App() {
     store.clearMessage();
     setSelectedId(null);
     setView(next);
+  };
+
+  const applyLevel = (next: Level): void => {
+    store.loadLevel(next);
+    saveLevel(next);
+    setSelectedId(null);
+    setView("none");
+    store.say("Level saved. The room was rebuilt from tldraw.", "good");
   };
 
   const confirm = (): void => {
@@ -250,9 +284,10 @@ export function App() {
     const onKey = (event: KeyboardEvent): void => {
       if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
 
       const key = event.key.toLowerCase();
+      if (view === "editor" && key !== "e" && key !== "escape") return;
       if (key === "escape") {
         if (view !== "none") {
           event.preventDefault();
@@ -279,7 +314,7 @@ export function App() {
   }, [view, state.pending]);
 
   useEffect(() => {
-    store.say("You cannot walk. Decide, then confirm. Press G to open the graph.", "info");
+    store.say("You cannot walk. Decide, then confirm. G opens the graph, E edits the level.", "info");
   }, [store]);
 
   window.__ink = {
@@ -291,6 +326,7 @@ export function App() {
     confirm: () => confirmRef.current(),
     close,
     reset: () => store.reset(),
+    level: () => store.level,
   };
 
   const pendingLabel = state.pending?.label ?? null;
@@ -298,7 +334,7 @@ export function App() {
   return (
     <div className="app">
       <ThreeScene store={store} tracker={tracker} />
-      <Hud state={state} pendingLabel={pendingLabel} onOpen={open} />
+      <Hud state={state} level={level} pendingLabel={pendingLabel} onOpen={open} />
 
       {state.message ? (
         <div className={`toast toast-${state.message.tone}`} key={state.message.id}>
@@ -317,7 +353,7 @@ export function App() {
           >
             <p className="view-hint">Click a node, then confirm the route.</p>
           </ViewHeader>
-          <ConfirmBar node={selected} onConfirm={confirm} onCancel={close} />
+          <ConfirmBar node={selected} route={route} onConfirm={confirm} onCancel={close} />
         </div>
       ) : null}
 
@@ -332,13 +368,17 @@ export function App() {
           >
             <p className="view-hint">Drag to orbit. Click a sphere. Confirm the route.</p>
           </ViewHeader>
-          <ConfirmBar node={selected} onConfirm={confirm} onCancel={close} />
+          <ConfirmBar node={selected} route={route} onConfirm={confirm} onCancel={close} />
         </div>
       ) : null}
 
       {view === "map" ? <MapView store={store} tracker={tracker} onClose={close} /> : null}
 
-      {view === "inventory" ? <InventoryOverlay state={state} onClose={close} /> : null}
+      {view === "inventory" ? <InventoryOverlay state={state} level={level} onClose={close} /> : null}
+
+      {view === "editor" ? (
+        <LevelEditor level={level} onApply={applyLevel} onCancel={close} />
+      ) : null}
     </div>
   );
 }

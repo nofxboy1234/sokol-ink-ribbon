@@ -43,6 +43,10 @@ test("starts with only the reachable ink-ribbon and green herb trees", async ({ 
   await expect(page.getByRole("button", { name: "Decision: move to green herb" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Decision: take green herb" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Decision: move to ink-ribbon" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Decision: take ink-ribbon" }).click();
+  await expect(page.locator(".route-line")).toContainText("move to ink-ribbon");
+  await expect(page.locator(".route-line")).toContainText("take ink-ribbon");
 });
 
 test("moving to the herb rearranges the graph around the player's new position", async ({ page }) => {
@@ -129,4 +133,39 @@ test("map, inventory and 3D graph open full screen and confirm a route", async (
   expect((await snapshot(page)).player.pos.x).toBeCloseTo(9.2, 1);
   await page.keyboard.press("t");
   await expect(page.locator(".graph-view-3d")).toBeVisible();
+});
+
+test("level editor maps a dragged object into the three.js level and persists it", async ({ page }) => {
+  await page.keyboard.press("e");
+  await expect(page.getByRole("heading", { name: "Level editor" })).toBeVisible();
+
+  const shape = page.locator('[data-shape-id="shape:game-entity-ink-ribbon"]');
+  await expect(shape).toBeVisible();
+  const box = await shape.boundingBox();
+  expect(box).not.toBeNull();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 110, startY + 50, { steps: 8 });
+  await page.mouse.up();
+
+  await page.getByRole("button", { name: "Apply & play" }).click();
+  await expect(page.getByRole("heading", { name: "Level editor" })).toBeHidden();
+
+  const moved = await page.evaluate(() => {
+    const entity = window.__ink!.level().entities.find((candidate) => candidate.id === "ink-ribbon");
+    return entity ? entity.pos : null;
+  });
+  expect(moved).not.toBeNull();
+  expect(moved!.x).toBeGreaterThan(6.8);
+
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForFunction(() => Boolean(window.__ink));
+  const persisted = await page.evaluate(() => {
+    const entity = window.__ink!.level().entities.find((candidate) => candidate.id === "ink-ribbon");
+    return entity ? entity.pos : null;
+  });
+  expect(persisted).not.toBeNull();
+  expect(persisted!.x).toBeCloseTo(moved!.x, 1);
 });

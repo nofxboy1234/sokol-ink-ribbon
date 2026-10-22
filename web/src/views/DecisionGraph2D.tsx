@@ -117,19 +117,26 @@ export function DecisionGraph2D({ graph, selectedId, onSelect }: DecisionGraph2D
 
   useEffect(() => {
     if (!editor) return;
+    const routeIds = new Set<string>();
+    let cursor = selectedId;
+    while (cursor) {
+      routeIds.add(cursor);
+      cursor = graph.nodes.find((node) => node.id === cursor)?.parentId ?? null;
+    }
     try {
       editor.updateInstanceState({ isReadonly: false });
       for (const node of graph.nodes) {
         const id = shapeIds.current[node.id];
         if (!id) continue;
         const selected = node.id === selectedId;
+        const inRoute = routeIds.has(node.id);
         editor.updateShape({
           id,
           type: "geo",
           props: {
-            fill: selected ? "semi" : node.kind === "player" ? "fill" : "none",
+            fill: selected || node.kind === "player" ? "fill" : inRoute ? "semi" : "none",
             size: selected ? "m" : "s",
-            color: node.kind === "player" ? "light-blue" : node.kind === "inventory" ? "grey" : "blue",
+            color: inRoute || node.kind === "player" ? "light-blue" : node.kind === "inventory" ? "grey" : "blue",
           },
         });
       }

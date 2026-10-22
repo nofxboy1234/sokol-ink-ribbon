@@ -141,7 +141,7 @@ export class GameStore {
   private listeners = new Set<() => void>();
   private messageSeq = 0;
 
-  constructor(readonly level: Level) {
+  constructor(public level: Level) {
     this.state = initialState(level);
   }
 
@@ -214,6 +214,12 @@ export class GameStore {
     if (!this.state.message) return;
     if (id !== undefined && this.state.message.id !== id) return;
     this.state = { ...this.state, message: null };
+    this.emit();
+  }
+
+  loadLevel(level: Level): void {
+    this.level = level;
+    this.state = initialState(level);
     this.emit();
   }
 
