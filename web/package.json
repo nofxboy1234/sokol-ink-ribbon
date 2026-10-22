@@ -1,53 +1,28 @@
 {
-  "name": "sokol-ink-ribbon",
+  "name": "ink-ribbon",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "npm --prefix .. run build:wasm && npm --prefix .. run copy:wasm",
     "build": "vite build",
-    "build:test": "npm --prefix .. run wasm:test && vite build",
-    "predeploy:cloudflare": "npm --prefix .. run build:wasm && npm --prefix .. run copy:wasm",
-    "deploy:cloudflare": "void deploy --platform cloudflare",
-    "prepreview": "void db migrate",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
     "test": "playwright test",
-    "test:install": "playwright install chromium",
-    "lint": "oxlint",
-    "fmt": "oxfmt --write .",
-    "typecheck": "tsc --noEmit"
+    "test:install": "playwright install chromium"
   },
   "dependencies": {
-    "hono": "^4.13.13",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "valibot": "^1.5.0"
+    "three": "^0.186.1",
+    "tldraw": "^5.5.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
-    "@rolldown/plugin-babel": "^0.2.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.2",
-    "@void/react": "^0.26.0",
-    "babel-plugin-react-compiler": "^1.0.0",
-    "oxc-transform-react": "^0.152.0",
-    "oxfmt": "^0.72.0",
-    "oxlint": "^1.87.0",
-    "oxlint-tsgolint": "^7.0.2003",
     "typescript": "^7.0.2",
-    "vite": "^8.3.3",
-    "void": "^0.26.0",
-    "wrangler": "^4.148.0"
-  },
-  "allowScripts": {
-    "better-sqlite3@13.0.3": true,
-    "workerd@1.20260930.2": true,
-    "workerd@1.20261001.1": true,
-    "workerd@1.20261006.1": true,
-    "esbuild@0.18.20": true,
-    "esbuild@0.25.12": true,
-    "esbuild@0.28.1": true,
-    "esbuild@0.28.2": true
+    "vite": "^8.3.3"
   }
 }

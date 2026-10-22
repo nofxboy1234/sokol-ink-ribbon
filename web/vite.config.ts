@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
-import { voidPlugin } from "void";
-import { voidReact } from "@void/react/plugin";
+import react from "@vitejs/plugin-react";
 
 export default defineConfig({
-  plugins: [voidPlugin(), voidReact({ react: { compiler: true } })],
+  plugins: [react()],
+  server: { port: 4173 },
 });

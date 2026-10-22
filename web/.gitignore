@@ -1,12 +1,6 @@
-node_modules
-dist
-.void
-.wrangler
-.void-wrangler.jsonc
-.env
-.env.*
-!.env.example
+node_modules/
+dist/
+test-results/
+playwright-report/
 *.tsbuildinfo
 .DS_Store
-
-public/wasm

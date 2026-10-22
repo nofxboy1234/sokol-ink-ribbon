@@ -23,9 +23,9 @@ const INVENTORY_COLOR = 0x9da0af;
 const EDGE_COLOR = 0xc9cedb;
 const LABEL_COLOR = "#9da0af";
 const LABEL_SELECTED_COLOR = "#3266ee";
-const LABEL_FONT_PX = 34;
+const LABEL_FONT_PX = 26;
 const LABEL_PADDING_PX = 14;
-const LABEL_HEIGHT = 0.34;
+const LABEL_HEIGHT = 0.15;
 const LABEL_FONT = `500 ${LABEL_FONT_PX}px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
 const RIM_SCALE = 1.1;
 const SELECT_SCALE = 1.35;
@@ -75,6 +75,7 @@ type NodeView = {
 type Controls = {
   setGraph: (graph: DecisionGraph) => void;
   setSelected: (nodeId: string | null) => void;
+  project: (nodeId: string) => { x: number; y: number } | null;
   dispose: () => void;
 };
 
@@ -373,6 +374,19 @@ export function DecisionGraph3D({ graph, selectedId, onSelect }: DecisionGraph3D
       applySelection();
     };
 
+    const project = (nodeId: string): { x: number; y: number } | null => {
+      const view = views.get(nodeId);
+      if (!view) return null;
+      group.updateMatrixWorld(true);
+      camera.updateMatrixWorld(true);
+      const point = view.current.clone().applyMatrix4(group.matrixWorld).project(camera);
+      const rect = host.getBoundingClientRect();
+      return {
+        x: rect.left + ((point.x + 1) / 2) * rect.width,
+        y: rect.top + ((1 - point.y) / 2) * rect.height,
+      };
+    };
+
     let pointerDown = false;
     let dragView: NodeView | null = null;
     let dragMoved = false;
@@ -566,10 +580,15 @@ export function DecisionGraph3D({ graph, selectedId, onSelect }: DecisionGraph3D
       renderer.dispose();
       renderer.forceContextLoss();
       canvas.remove();
+      if (debugWindow.__ink3d?.point === project) delete debugWindow.__ink3d;
       if (controlsRef.current === controls) controlsRef.current = null;
     };
 
-    const controls: Controls = { setGraph, setSelected, dispose };
+    const controls: Controls = { setGraph, setSelected, project, dispose };
+    const debugWindow = window as unknown as {
+      __ink3d?: { point: (nodeId: string) => { x: number; y: number } | null };
+    };
+    debugWindow.__ink3d = { point: project };
 
     const observer = new ResizeObserver(() => resize());
     observer.observe(host);

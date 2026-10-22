@@ -1,12 +1,11 @@
 {
-  "name": "sokol-ink-ribbon",
+  "name": "ink-ribbon",
   "private": true,
   "type": "module",
   "scripts": {
-    "test:native": "sh native/tests/run.sh",
-    "build:wasm": "cd native && ./fibs config sapp-gles-emsc-ninja-release && ./fibs build main",
-    "copy:wasm": "node scripts/copy-wasm.mjs",
-    "wasm": "npm run build:wasm && npm run copy:wasm",
-    "wasm:test": "TEST_HOOKS=1 npm run build:wasm && npm run copy:wasm"
+    "dev": "npm --prefix web run dev",
+    "build": "npm --prefix web run build",
+    "test": "npm --prefix web run test",
+    "typecheck": "npm --prefix web run typecheck"
   }
 }

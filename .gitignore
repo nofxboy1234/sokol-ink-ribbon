@@ -1,25 +1,12 @@
-# node
 node_modules/
 
-# web (void + vite)
 web/dist/
-web/.void/
-web/.wrangler/
-web/.void-wrangler.jsonc
-web/public/wasm/
 web/playwright-report/
 web/test-results/
 web/*.tsbuildinfo
 
-# native fibs build artifacts
-native/.fibs/
-native/CMakeLists.txt
-native/CMakePresets.json
-native/compile_commands.json
-native/deno.lock
-native/src/levels.h
-
-# misc
 .DS_Store
 *.swp
 ref/
+ref-*.png
+.ref-view.html

@@ -1,14 +1,15 @@
 {
-  "extends": "./.void/tsconfig.json",
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
+    "jsx": "react-jsx",
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["void/env", "vite/client"],
-    "jsx": "react-jsx"
+    "noEmit": true,
+    "types": ["vite/client"]
   },
-  "include": ["src", "pages", "routes", "middleware", "crons", "queues", "db"]
+  "include": ["src", "tests", "playwright.config.ts", "vite.config.ts"]
 }
