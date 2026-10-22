@@ -1013,17 +1013,23 @@ static int prompt_rank(int i) {
     return interact_distance(i) * 4 + order;
 }
 
-// Only the nearest prompt shows, so labels never overlap.
+// One prompt at a time, so labels never overlap.
 static void draw_prompts(void) {
     prompts.count = 0;
     if (app.paused || app.dead || level_complete()) {
         return;
     }
-    int best = -1, best_rank = 0;
-    for (int i = 0; i < app.level.obj_count; i++) {
-        if (!prompt_visible(i)) continue;
-        int r = prompt_rank(i);
-        if (best < 0 || r < best_rank) { best = i; best_rank = r; }
+    // the label names what Space would act on; with nothing usable, the
+    // nearest prompt (so a red "why not" still shows)
+    int best = interact_target();
+    if (best < 0 || !prompt_visible(best)) {
+        best = -1;
+        int best_rank = 0;
+        for (int i = 0; i < app.level.obj_count; i++) {
+            if (!prompt_visible(i)) continue;
+            int r = prompt_rank(i);
+            if (best < 0 || r < best_rank) { best = i; best_rank = r; }
+        }
     }
     if (best < 0) return;
     const obj_t* o = &app.level.objs[best];

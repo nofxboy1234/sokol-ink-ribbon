@@ -75,10 +75,7 @@ async function pixel(page: Page, box: { x: number; y: number }, cx: number, cy: 
 test("the Medication Room: beside blood she can't carry, Space takes the West Wing Keycard", async ({ page }) => {
   await boot(page);
   await wasm(page, "web_test_grace_at", 71, 212); // on the Infected Blood, the keycard at 70,211
-  await expect.poll(async () => (await promptAt(page, 71, 212)).text).toBe(
-    "Infected Blood (70): needs the Blood Collector",
-  );
-  expect((await promptAt(page, 71, 212)).alert).toBe(1);
+  await expect.poll(async () => (await promptAt(page, 70, 211)).text).toBe("West Wing Keycard");
   await page.screenshot({ path: `${SHOTS}/medication-room-prompts.png` });
   await page.keyboard.press(" ");
   await expect.poll(() => wasm(page, "web_inventory_has", WEST_WING_KEYCARD)).toBe(1);

@@ -13,6 +13,10 @@ bool interact_at(int x, int y);
 // one already taken, never ends the search.
 bool interact_nearby(void);
 
+// The object the next press would act on (what the prompt label shows),
+// or -1 when nothing nearby is usable right now.
+int interact_target(void);
+
 // True if Grace can actually reach the given cell to interact with it:
 // her own cell, or an adjacent cell whose connecting edge is not blocked
 // by a wall or a blocking (locked/unknown, shut) door -- diagonally, at

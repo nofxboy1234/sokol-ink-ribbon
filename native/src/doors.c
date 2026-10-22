@@ -276,7 +276,9 @@ bool doors_try_code(int code) {
     o->state = DOOR_UNLOCKED; o->open = 0; dr.discovered[pending_code_door] = 1; pending_code_door = -1;
     return true;
 }
-bool doors_interact(int x, int y) {
+// The door a press on this cell would work, or -1 when none would (a
+// locked door she can't open stops the search).
+int doors_target_at(int x, int y) {
     // A door is worked from beside its edge, so an edge that IS a door
     // never makes its own cells unreachable (she can unlock it from
     // either side); any other wall or blocking door in the way does.
@@ -284,7 +286,7 @@ bool doors_interact(int x, int y) {
     player_cell(&px, &py);
     bool own_door_edge = (x - px == 0 || y - py == 0) && doors_on_edge(px, py, x, y);
     if (!own_door_edge && !interact_cell_reachable(x, y)) {
-        return false;
+        return -1;
     }
     level_t* lv = dr.level;
     for (int i = 0; i < lv->obj_count; i++) {
@@ -299,21 +301,29 @@ bool doors_interact(int x, int y) {
         if (!covered || interact_distance(i) > 2) {
             continue;
         }
-        if (o->state == DOOR_LOCKED && o->code > 0) { pending_code_door = i; return true; }
-        if (doors_unlockable(o, px, py)) {
-            doors_unlock(i);
-            return true;
-        }
-        if (o->state == DOOR_UNLOCKED) {
-            o->open = !o->open;
-            if (o->open && o->auto_close > 0.0f) {
-                dr.close_timer[i] = o->auto_close;
-            }
-            return true;
-        }
-        return false;
+        bool works = (o->state == DOOR_LOCKED && o->code > 0) || doors_unlockable(o, px, py) ||
+                     o->state == DOOR_UNLOCKED;
+        return works ? i : -1;
     }
-    return false;
+    return -1;
+}
+
+bool doors_interact(int x, int y) {
+    int i = doors_target_at(x, y);
+    if (i < 0) return false;
+    obj_t* o = &dr.level->objs[i];
+    int px, py;
+    player_cell(&px, &py);
+    if (o->state == DOOR_LOCKED && o->code > 0) { pending_code_door = i; return true; }
+    if (doors_unlockable(o, px, py)) {
+        doors_unlock(i);
+        return true;
+    }
+    o->open = !o->open;
+    if (o->open && o->auto_close > 0.0f) {
+        dr.close_timer[i] = o->auto_close;
+    }
+    return true;
 }
 
 bool doors_update(float dt) {

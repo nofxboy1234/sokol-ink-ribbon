@@ -18,6 +18,7 @@ bool doors_interact(int x, int y);
 int doors_key_type(const obj_t* o);
 bool doors_has_key(int item);
 bool doors_unlockable(const obj_t* o, int px, int py);
+int doors_target_at(int x, int y);
 void doors_unlock(int index);
 // Removes one key once no locked door or closed openable still takes it.
 void doors_drop_key_if_done(int item_type);

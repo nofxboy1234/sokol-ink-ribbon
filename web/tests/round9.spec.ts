@@ -116,11 +116,6 @@ test("only the nearest prompt shows when several objects are in reach", async ({
   expect(await wasm(page, "web_test_item_labels")).toBe(1);
   expect((await promptAt(page, 80, 200)).text).toBe("");
   await page.screenshot({ path: `${SHOTS}/nearest-prompt-typewriter.png` });
-  // the Medication Room: on the blood, its prompt wins over the keycard beside it
-  await wasm(page, "web_test_grace_at", 71, 212);
-  await expect.poll(async () => (await promptAt(page, 71, 212)).text).toMatch(/^Infected Blood/);
-  expect(await wasm(page, "web_test_item_labels")).toBe(1);
-  expect((await promptAt(page, 70, 211)).text).toBe("");
 });
 
 test("a door unlocks while she walks, and she keeps walking", async ({ page }) => {
@@ -159,4 +154,21 @@ test("phone: a door unlocks from the aim-stick tap while the move stick is held"
   expect(path[path.length - 1].x - path[0].x).toBeGreaterThan(0.2);
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await context.close();
+});
+
+test("the label names what Space acts on: the keycard beats blood she can't carry", async ({ page }) => {
+  await boot(page);
+  await wasm(page, "web_test_grace_at", 71, 212); // on the Infected Blood, no Blood Collector
+  await expect.poll(async () => (await promptAt(page, 70, 211)).text).toBe("West Wing Keycard");
+  expect(await wasm(page, "web_test_item_labels")).toBe(1);
+  expect((await promptAt(page, 71, 212)).text).toBe("");
+  await page.screenshot({ path: `${SHOTS}/label-matches-space.png` });
+  await page.keyboard.press(" ");
+  await expect.poll(() => wasm(page, "web_inventory_has", WEST_WING_KEYCARD)).toBe(1);
+  // with only the blood in reach, its red "why not" label shows
+  await expect.poll(async () => (await promptAt(page, 71, 212)).text).toBe(
+    "Infected Blood (70): needs the Blood Collector",
+  );
+  expect((await promptAt(page, 71, 212)).alert).toBe(1);
+  expect(await wasm(page, "web_test_item_labels")).toBe(1);
 });
