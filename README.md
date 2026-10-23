@@ -14,9 +14,10 @@ The game has five views over one 3D room.
 - **3D decisions** is a full-screen three.js cloud of spheres. Drag to orbit,
   click a sphere, confirm with Enter.
 - **Map** is a tldraw drawing of the rooms with a live blue player dot.
-- **Level editor** is a tldraw canvas that edits the game objects used to
-  generate the 3D room. Dragging an object, adding an object, then choosing
-  Apply and play rebuilds the three.js scene from the edited level.
+- **Level editor** is a tldraw canvas that edits the whole level: rooms,
+  walls, doors, the player start, and the game objects. Move and resize a room,
+  drag wall or door handles, place objects, then choose Apply and play. The
+  three.js scene, map, and navigation grid are rebuilt from the edited level.
 
 ## Controls
 
@@ -30,15 +31,21 @@ The game has five views over one 3D room.
 | `Enter` | Confirm the selected decision |
 | `Esc` | Close the current view |
 
-Click a node to select it. The selected node turns player blue and the parent
-chain is shown as the route in the confirm bar. Click Confirm, or press Enter,
-to commit. The view closes, the capsule walks its path using A* pathing, and the
-graph updates when you open it again.
+Click a node to start a route. Clicking another move node appends it as a
+waypoint. Clicking an action node appends it to the current waypoint chain. The
+selected node turns player blue, the route is shown as removable chips, and
+Confirm closes the view and walks every waypoint with A* pathing before running
+the final action.
 
-The level editor loads the current level as tldraw game objects. Drag the player
-or item dots, add objects from the bottom toolbar, then choose Apply and play.
-The level is saved in localStorage and the 3D scene is rebuilt from the edited
-level. Room and wall geometry stays fixed in this version.
+When a target can be reached through more than one open door, the confirm bar
+offers each route, for example `via the study door` and `via the arch`. Choosing
+one inserts its door waypoints into the walk. The scene draws small rings at the
+intermediate waypoints.
+
+The level editor starts from the current level. Drag rooms to move them, resize
+them with the selection handles, drag wall and door endpoints, or add new rooms,
+walls, and doors from the bottom toolbar. The level is saved in localStorage and
+the scene, map, and navigation grid are rebuilt from the edited level.
 
 ## The decision model
 
@@ -51,7 +58,11 @@ hand-authored node list.
 - A held ink-ribbon adds type-writer decisions. A held green herb adds `use green
   herb`.
 - A discovered door adds `move to door` plus `unlock door` when the key is held.
-  An open door adds `enter the study` until the room has been seen.
+- Discovered travel through open doors adds `enter the study` for unseen rooms
+  and `move to the atelier` for rooms already seen. These room targets can have
+  several door routes.
+- Reading the daybook reveals the study cabinet. Opening it with the daybook
+  passcode wins the game.
 - The player node anchors to the player's world position, and decision nodes
   anchor to their objects, so the 2D layout is a small floor plan of intent.
 
@@ -75,9 +86,10 @@ npm test
 ```
 
 The Playwright suite drives the real app: it opens the graph with the keyboard,
-clicks nodes, confirms, waits for the capsule to arrive, checks inventory and
-graph changes, drags an object in the tldraw level editor, applies the level, and
-checks the new position survives a reload.
+chains move nodes into a multi-waypoint route, picks between two door routes,
+confirms, waits for the capsule, checks inventory and graph changes, reads the
+daybook to reveal the cabinet, opens it to reach the goal, and edits rooms, walls,
+and objects in tldraw before checking the new geometry survives a reload.
 
 ## Layout
 

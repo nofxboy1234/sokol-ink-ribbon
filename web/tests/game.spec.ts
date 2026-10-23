@@ -45,8 +45,23 @@ test("starts with only the reachable ink-ribbon and green herb trees", async ({ 
   await expect(page.getByRole("button", { name: "Decision: move to ink-ribbon" })).toBeVisible();
 
   await page.getByRole("button", { name: "Decision: take ink-ribbon" }).click();
-  await expect(page.locator(".route-line")).toContainText("move to ink-ribbon");
-  await expect(page.locator(".route-line")).toContainText("take ink-ribbon");
+  await expect(page.locator(".route-chips")).toContainText("move to ink-ribbon");
+  await expect(page.locator(".route-chips")).toContainText("take ink-ribbon");
+});
+
+test("move nodes can be chained into a multi-waypoint route", async ({ page }) => {
+  await page.keyboard.press("g");
+  await page.getByRole("button", { name: "Decision: move to green herb" }).click();
+  await page.getByRole("button", { name: "Decision: move to ink-ribbon" }).click();
+  await expect(page.locator(".route-chip")).toHaveCount(2);
+  await page.getByRole("button", { name: /^Confirm/ }).click();
+  const pending = await page.evaluate(() => window.__ink!.snapshot().pending);
+  expect(pending?.label).toContain("move to green herb");
+  expect(pending?.label).toContain("move to ink-ribbon");
+  await waitUntilStill(page);
+  const finalPosition = (await snapshot(page)).player.pos;
+  expect(finalPosition.x).toBeCloseTo(6, 1);
+  expect(finalPosition.z).toBeCloseTo(6.2, 1);
 });
 
 test("moving to the herb rearranges the graph around the player's new position", async ({ page }) => {
@@ -99,14 +114,30 @@ test("collecting and using the herb, then typing, reveals the key and opens the 
   expect(unlocked.doors["study-door"].locked).toBe(false);
   expect(await labels(page)).toContain("enter the study");
 
-  await choose(page, "enter the study");
+  await page.keyboard.press("g");
+  await page.getByRole("button", { name: "Decision: enter the study" }).click();
+  await expect(page.locator(".route-option")).toHaveCount(2);
+  await expect(page.locator(".route-option", { hasText: "via the arch" })).toBeVisible();
+  await expect(page.locator(".route-option", { hasText: "via the study door" })).toBeVisible();
+  await page.locator(".route-option", { hasText: "via the arch" }).click();
+  await page.getByRole("button", { name: /^Confirm/ }).click();
+  const routePending = await page.evaluate(() => window.__ink!.snapshot().pending);
+  expect(routePending?.label).toContain("via the arch");
+  await waitUntilStill(page);
   expect((await snapshot(page)).player.roomId).toBe("study");
   expect(await labels(page)).toContain("move to daybook");
   expect(await labels(page)).toContain("read daybook");
+  expect(await labels(page)).not.toContain("open the drawer");
 
   await choose(page, "read daybook");
   expect((await snapshot(page)).flags.readDaybook).toBe(true);
   expect(await labels(page)).not.toContain("read daybook");
+  expect(await labels(page)).toContain("open the drawer");
+
+  await choose(page, "move to study cabinet");
+  await choose(page, "open the drawer");
+  expect((await snapshot(page)).status).toBe("won");
+  await expect(page.getByRole("heading", { name: "The Drawer Opens" })).toBeVisible();
 });
 
 test("map, inventory and 3D graph open full screen and confirm a route", async ({ page }) => {
@@ -139,6 +170,10 @@ test("level editor maps a dragged object into the three.js level and persists it
   await page.keyboard.press("e");
   await expect(page.getByRole("heading", { name: "Level editor" })).toBeVisible();
 
+  await page.getByRole("button", { name: "Room", exact: true }).click();
+  await page.getByRole("button", { name: "Wall", exact: true }).click();
+  await page.waitForTimeout(250);
+
   const shape = page.locator('[data-shape-id="shape:game-entity-ink-ribbon"]');
   await expect(shape).toBeVisible();
   const box = await shape.boundingBox();
@@ -150,22 +185,53 @@ test("level editor maps a dragged object into the three.js level and persists it
   await page.mouse.move(startX + 110, startY + 50, { steps: 8 });
   await page.mouse.up();
 
+  const wallShape = page.locator('[data-shape-id="shape:wall-wall-study-north"]');
+  const wallBox = await wallShape.boundingBox();
+  expect(wallBox).not.toBeNull();
+  const wallX = wallBox!.x + wallBox!.width * 0.35;
+  const wallY = wallBox!.y + wallBox!.height / 2;
+  await page.mouse.move(wallX, wallY);
+  await page.mouse.down();
+  await page.mouse.move(wallX + 20, wallY - 35, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+
   await page.getByRole("button", { name: "Apply & play" }).click();
   await expect(page.getByRole("heading", { name: "Level editor" })).toBeHidden();
 
   const moved = await page.evaluate(() => {
-    const entity = window.__ink!.level().entities.find((candidate) => candidate.id === "ink-ribbon");
-    return entity ? entity.pos : null;
+    const level = window.__ink!.level();
+    const entity = level.entities.find((candidate) => candidate.id === "ink-ribbon");
+    return {
+      pos: entity ? entity.pos : null,
+      rooms: level.rooms.length,
+      walls: level.walls.length,
+      wallZ: level.walls.find((wall) => wall.id === "wall-study-north")?.a.z ?? null,
+    };
   });
-  expect(moved).not.toBeNull();
-  expect(moved!.x).toBeGreaterThan(6.8);
+  expect(moved.pos).not.toBeNull();
+  expect(moved.pos!.x).toBeGreaterThan(6.8);
+  expect(moved.rooms).toBe(3);
+  expect(moved.walls).toBe(10);
+  expect(moved.wallZ).not.toBeNull();
+  expect(moved.wallZ!).toBeLessThan(-7.1);
 
   await page.reload({ waitUntil: "networkidle" });
   await page.waitForFunction(() => Boolean(window.__ink));
   const persisted = await page.evaluate(() => {
-    const entity = window.__ink!.level().entities.find((candidate) => candidate.id === "ink-ribbon");
-    return entity ? entity.pos : null;
+    const level = window.__ink!.level();
+    const entity = level.entities.find((candidate) => candidate.id === "ink-ribbon");
+    return {
+      pos: entity ? entity.pos : null,
+      rooms: level.rooms.length,
+      walls: level.walls.length,
+      wallZ: level.walls.find((wall) => wall.id === "wall-study-north")?.a.z ?? null,
+    };
   });
-  expect(persisted).not.toBeNull();
-  expect(persisted!.x).toBeCloseTo(moved!.x, 1);
+  expect(persisted.pos).not.toBeNull();
+  expect(persisted.pos!.x).toBeCloseTo(moved.pos!.x, 1);
+  expect(persisted.rooms).toBe(3);
+  expect(persisted.walls).toBe(10);
+  expect(persisted.wallZ).not.toBeNull();
+  expect(persisted.wallZ!).toBeCloseTo(moved.wallZ!, 1);
 });

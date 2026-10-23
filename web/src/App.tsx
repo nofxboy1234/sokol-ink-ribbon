@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { GameStore } from "./game/store";
-import { deriveDecisionGraph } from "./game/decisions";
+import { deriveDecisionGraph, routeOptions, type RoomRoute } from "./game/decisions";
 import { cloneLevel, defaultLevel, loadStoredLevel, saveLevel } from "./game/levelStorage";
 import type { Decision, DecisionGraph, GameState, Level, Vec2 } from "./game/types";
 import { ThreeScene } from "./scene/ThreeScene";
@@ -42,30 +42,105 @@ const itemColor: Record<string, string> = {
   "brass-key": "#d9a441",
 };
 
-function ConfirmBar({
-  node,
+function RouteBar({
   route,
+  options,
+  chosenRouteId,
+  onChooseRoute,
+  onRemove,
+  onClear,
   onConfirm,
   onCancel,
 }: {
-  node: Decision | null;
   route: Decision[];
+  options: RoomRoute[];
+  chosenRouteId: string | null;
+  onChooseRoute: (id: string) => void;
+  onRemove: (index: number) => void;
+  onClear: () => void;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const last = route[route.length - 1] ?? null;
   return (
-    <div className="confirm-bar">
+    <div className="confirm-bar route-bar">
       <div className="confirm-copy">
-        <span className="confirm-kicker">{node ? "decision" : "choose a node"}</span>
-        <strong>{node ? node.label : "What can you do from here?"}</strong>
-        {route.length > 1 ? <span className="route-line">{route.map((entry) => entry.label).join(" → ")}</span> : null}
+        <span className="confirm-kicker">{route.length > 0 ? `route · ${route.length} step${route.length === 1 ? "" : "s"}` : "choose a node"}</span>
+        <strong>{last ? last.label : "What can you do from here?"}</strong>
+        {route.length > 0 ? (
+          <div className="route-chips">
+            {route.map((entry, index) => (
+              <button key={`${entry.id}-${index}`} className="route-chip" onClick={() => onRemove(index)}>
+                <span>{index + 1}</span>
+                {entry.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span className="route-hint">Click move nodes to add waypoints, then choose an action.</span>
+        )}
+        {options.length > 1 ? (
+          <div className="route-options">
+            <span className="route-options-label">Routes to target</span>
+            {options.map((option) => (
+              <button
+                key={option.id}
+                className={`route-option ${option.id === chosenRouteId ? "selected" : ""}`}
+                onClick={() => onChooseRoute(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
-      <button className="primary-button" onClick={onConfirm} disabled={!node}>
+      {route.length > 0 ? (
+        <button className="ghost-button" onClick={onClear}>
+          Clear
+        </button>
+      ) : null}
+      <button className="primary-button" onClick={onConfirm} disabled={route.length === 0}>
         Confirm <kbd>Enter</kbd>
       </button>
       <button className="ghost-button" onClick={onCancel}>
         Back <kbd>Esc</kbd>
       </button>
+    </div>
+  );
+}
+
+function GoalOverlay({
+  state,
+  onContinue,
+  onRestart,
+}: {
+  state: GameState;
+  onContinue: () => void;
+  onRestart: () => void;
+}) {
+  const taken = Object.keys(state.collected).length;
+  return (
+    <div className="goal-overlay">
+      <div className="goal-card">
+        <p className="view-kicker">The study</p>
+        <h2>The Drawer Opens</h2>
+        <p className="goal-lead">
+          You read the daybook, turned the dial to 1-9-2-6, and opened what the house forgot.
+        </p>
+        <div className="goal-stats">
+          <span><strong>{taken}</strong> objects taken</span>
+          <span><strong>{state.flags.typedClue ? "yes" : "no"}</strong> ribbon spent</span>
+          <span><strong>{state.flags.readDaybook ? "yes" : "no"}</strong> clue read</span>
+        </div>
+        <div className="goal-actions">
+          <button className="primary-button" onClick={onContinue}>
+            Keep exploring
+          </button>
+          <button className="ghost-button" onClick={onRestart}>
+            Start again
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -127,6 +202,7 @@ function InventoryOverlay({ state, level, onClose }: { state: GameState; level: 
           <ul>
             <li className={state.flags.typedClue ? "done" : ""}>A type-writer waits in the Atelier.</li>
             <li className={state.flags.readDaybook ? "done" : ""}>The study keeps what the house forgets.</li>
+            {state.flags.readDaybook ? <li className="code-note">The drawer answers to 1-9-2-6.</li> : null}
           </ul>
         </aside>
       </div>
@@ -194,7 +270,7 @@ function Hud({
       {pendingLabel ? (
         <div className="walk-banner">
           <span className="walk-dot" />
-          walking to {pendingLabel.replace(/^move to /, "")}
+          walking to {(pendingLabel.split(" → ").pop() ?? pendingLabel).replace(/^move to /, "")}
         </div>
       ) : null}
     </>
@@ -211,19 +287,28 @@ export function App() {
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const tracker = useRef<Vec2>({ ...state.player.pos });
   const [view, setView] = useState<View>("none");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [routeIds, setRouteIds] = useState<string[]>([]);
+  const [chosenRouteId, setChosenRouteId] = useState<string | null>(null);
+  const [goalDismissed, setGoalDismissed] = useState(false);
 
   const graph = useMemo(() => deriveDecisionGraph(level, state), [level, state]);
-  const selected = graph.nodes.find((node) => node.id === selectedId && node.kind !== "player") ?? null;
-  const route = useMemo(() => {
-    const chain: Decision[] = [];
-    let current = selected;
-    while (current && current.kind !== "player") {
-      chain.unshift(current);
-      current = graph.nodes.find((node) => node.id === current?.parentId) ?? null;
+  const route = useMemo(
+    () => routeIds.map((id) => graph.nodes.find((node) => node.id === id)).filter((node): node is Decision => Boolean(node)),
+    [graph, routeIds],
+  );
+  const finalTarget = route.length > 0 ? route[route.length - 1].target : null;
+  const options = useMemo(
+    () => (finalTarget ? routeOptions(level, state, state.player.pos, finalTarget) : []),
+    [level, state, finalTarget],
+  );
+
+  useEffect(() => {
+    if (options.length === 0) {
+      setChosenRouteId(null);
+      return;
     }
-    return chain;
-  }, [graph, selected]);
+    setChosenRouteId((current) => (current && options.some((option) => option.id === current) ? current : options[0].id));
+  }, [options]);
 
   const levelRef = useRef(level);
   useEffect(() => {
@@ -234,34 +319,68 @@ export function App() {
 
   const close = (): void => {
     setView("none");
-    setSelectedId(null);
+    setRouteIds([]);
+    setChosenRouteId(null);
   };
 
   const open = (next: View): void => {
     if (state.pending && next !== "map" && next !== "inventory") return;
     store.clearMessage();
-    setSelectedId(null);
+    setRouteIds([]);
+    setChosenRouteId(null);
     setView(next);
   };
 
   const applyLevel = (next: Level): void => {
     store.loadLevel(next);
     saveLevel(next);
-    setSelectedId(null);
+    setRouteIds([]);
     setView("none");
     store.say("Level saved. The room was rebuilt from tldraw.", "good");
   };
 
+  const ancestorIds = (node: Decision): string[] => {
+    const ids: string[] = [];
+    let current: Decision | undefined = node;
+    while (current && current.kind !== "player") {
+      ids.unshift(current.id);
+      current = current.parentId ? graph.nodes.find((candidate) => candidate.id === current?.parentId) : undefined;
+    }
+    return ids;
+  };
+
+  const toggleNode = (id: string): void => {
+    const node = graph.nodes.find((candidate) => candidate.id === id);
+    if (!node || node.kind === "player") return;
+    setRouteIds((previous) => {
+      const existing = previous.indexOf(id);
+      if (existing >= 0) return previous.slice(0, existing);
+      if (previous.length === 0) return ancestorIds(node);
+      const last = graph.nodes.find((candidate) => candidate.id === previous[previous.length - 1]);
+      if (node.kind === "move" && last?.kind === "move") return [...previous, id];
+      if (node.kind !== "move" && last?.kind === "move") {
+        if (node.parentId === last.id || node.parentId === "player") return [...previous, id];
+      }
+      return ancestorIds(node);
+    });
+  };
+
+  const removeRouteStep = (index: number): void => {
+    setRouteIds((previous) => previous.slice(0, index));
+  };
+
   const confirm = (): void => {
-    if (!selected) return;
-    const result = store.choose(selected);
+    if (route.length === 0) return;
+    const selectedRoute = options.find((option) => option.id === chosenRouteId) ?? null;
+    const result = store.chooseRoute(route, selectedRoute?.waypoints ?? [], selectedRoute?.label);
     if (result === "inventory") {
-      setSelectedId(null);
+      setRouteIds([]);
       setView("inventory");
       return;
     }
     if (result === "started") {
-      setSelectedId(null);
+      setRouteIds([]);
+      setChosenRouteId(null);
       setView("none");
     }
   };
@@ -270,8 +389,15 @@ export function App() {
   confirmRef.current = confirm;
 
   useEffect(() => {
-    if (selectedId && !graph.nodes.some((node) => node.id === selectedId)) setSelectedId(null);
-  }, [graph, selectedId]);
+    setRouteIds((previous) => {
+      const next = previous.filter((id) => graph.nodes.some((node) => node.id === id));
+      return next.length === previous.length ? previous : next;
+    });
+  }, [graph]);
+
+  useEffect(() => {
+    if (state.status !== "won") setGoalDismissed(false);
+  }, [state.status]);
 
   useEffect(() => {
     const message = state.message;
@@ -287,6 +413,14 @@ export function App() {
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
 
       const key = event.key.toLowerCase();
+      if (state.status === "won" && !goalDismissed) {
+        if (key === "escape" || key === "enter") {
+          event.preventDefault();
+          event.stopPropagation();
+          setGoalDismissed(true);
+        }
+        return;
+      }
       if (view === "editor" && key !== "e" && key !== "escape") return;
       if (key === "escape") {
         if (view !== "none") {
@@ -311,7 +445,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [view, state.pending]);
+  }, [view, state.pending, state.status, goalDismissed]);
 
   useEffect(() => {
     store.say("You cannot walk. Decide, then confirm. G opens the graph, E edits the level.", "info");
@@ -322,7 +456,7 @@ export function App() {
     graph: () => store.graph(),
     player: () => tracker.current,
     open,
-    select: setSelectedId,
+    select: (id) => setRouteIds(id ? [id] : []),
     confirm: () => confirmRef.current(),
     close,
     reset: () => store.reset(),
@@ -344,7 +478,7 @@ export function App() {
 
       {view === "graph2d" ? (
         <div className="view-screen graph-view">
-          <DecisionGraph2D graph={graph} selectedId={selectedId} onSelect={setSelectedId} />
+          <DecisionGraph2D graph={graph} selectedIds={routeIds} onSelect={toggleNode} />
           <ViewHeader
             kicker="2D · tldraw"
             title="Decisions"
@@ -353,13 +487,22 @@ export function App() {
           >
             <p className="view-hint">Click a node, then confirm the route.</p>
           </ViewHeader>
-          <ConfirmBar node={selected} route={route} onConfirm={confirm} onCancel={close} />
+          <RouteBar
+            route={route}
+            options={options}
+            chosenRouteId={chosenRouteId}
+            onChooseRoute={setChosenRouteId}
+            onRemove={removeRouteStep}
+            onClear={() => setRouteIds([])}
+            onConfirm={confirm}
+            onCancel={close}
+          />
         </div>
       ) : null}
 
       {view === "graph3d" ? (
         <div className="view-screen graph-view graph-view-3d">
-          <DecisionGraph3D graph={graph} selectedId={selectedId} onSelect={setSelectedId} />
+          <DecisionGraph3D graph={graph} selectedIds={routeIds} onSelect={toggleNode} />
           <ViewHeader
             kicker="3D · three.js"
             title="Decisions"
@@ -368,7 +511,16 @@ export function App() {
           >
             <p className="view-hint">Drag to orbit. Click a sphere. Confirm the route.</p>
           </ViewHeader>
-          <ConfirmBar node={selected} route={route} onConfirm={confirm} onCancel={close} />
+          <RouteBar
+            route={route}
+            options={options}
+            chosenRouteId={chosenRouteId}
+            onChooseRoute={setChosenRouteId}
+            onRemove={removeRouteStep}
+            onClear={() => setRouteIds([])}
+            onConfirm={confirm}
+            onCancel={close}
+          />
         </div>
       ) : null}
 
@@ -378,6 +530,19 @@ export function App() {
 
       {view === "editor" ? (
         <LevelEditor level={level} onApply={applyLevel} onCancel={close} />
+      ) : null}
+
+      {state.status === "won" && !goalDismissed ? (
+        <GoalOverlay
+          state={state}
+          onContinue={() => setGoalDismissed(true)}
+          onRestart={() => {
+            store.reset();
+            setGoalDismissed(true);
+            setView("none");
+            setRouteIds([]);
+          }}
+        />
       ) : null}
     </div>
   );

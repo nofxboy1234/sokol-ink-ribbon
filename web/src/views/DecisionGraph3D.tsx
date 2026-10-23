@@ -5,7 +5,7 @@ import type { Decision, DecisionGraph, DecisionKind } from "../game/types";
 
 export type DecisionGraph3DProps = {
   graph: DecisionGraph;
-  selectedId: string | null;
+  selectedIds: string[];
   onSelect: (nodeId: string) => void;
 };
 
@@ -75,24 +75,29 @@ type NodeView = {
 type Controls = {
   setGraph: (graph: DecisionGraph) => void;
   setSelected: (nodeId: string | null) => void;
+  setRoute: (nodeIds: string[]) => void;
   project: (nodeId: string) => { x: number; y: number } | null;
   dispose: () => void;
 };
 
-export function DecisionGraph3D({ graph, selectedId, onSelect }: DecisionGraph3DProps): JSX.Element {
+export function DecisionGraph3D({ graph, selectedIds, onSelect }: DecisionGraph3DProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<Controls | null>(null);
   const onSelectRef = useRef(onSelect);
-  const selectedRef = useRef<string | null>(selectedId);
+  const selectedRef = useRef<string | null>(selectedIds[selectedIds.length - 1] ?? null);
+  const routeRef = useRef<Set<string>>(new Set(selectedIds));
 
   useEffect(() => {
     onSelectRef.current = onSelect;
   }, [onSelect]);
 
   useEffect(() => {
+    const selectedId = selectedIds[selectedIds.length - 1] ?? null;
     selectedRef.current = selectedId;
+    routeRef.current = new Set(selectedIds);
     controlsRef.current?.setSelected(selectedId);
-  }, [selectedId]);
+    controlsRef.current?.setRoute(selectedIds);
+  }, [selectedIds]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -265,17 +270,20 @@ export function DecisionGraph3D({ graph, selectedId, onSelect }: DecisionGraph3D
       view.label.material.dispose();
     };
 
+    let activeRoute = new Set<string>(routeRef.current);
+
     const applySelection = () => {
       for (const view of views.values()) {
         const selected = view.id === activeId;
+        const inRoute = activeRoute.has(view.id);
         const style = NODE_STYLE[view.kind];
         view.targetScale = selected ? SELECT_SCALE : 1;
-        view.mesh.material.color.setHex(selected ? PLAYER_COLOR : style.color);
-        view.mesh.material.emissiveIntensity = selected ? 0.55 : 0;
-        if (view.rim) view.rim.visible = !selected;
-        const color = selected ? LABEL_SELECTED_COLOR : LABEL_COLOR;
+        view.mesh.material.color.setHex(selected || inRoute ? PLAYER_COLOR : style.color);
+        view.mesh.material.emissiveIntensity = selected ? 0.55 : inRoute ? 0.18 : 0;
+        if (view.rim) view.rim.visible = !selected && !inRoute;
+        const color = selected || inRoute ? LABEL_SELECTED_COLOR : LABEL_COLOR;
         if (view.label.color !== color) drawLabel(view.label, view.label.text, color);
-        view.label.material.opacity = selected ? 1 : 0.92;
+        view.label.material.opacity = selected || inRoute ? 1 : 0.92;
       }
     };
 
@@ -374,6 +382,11 @@ export function DecisionGraph3D({ graph, selectedId, onSelect }: DecisionGraph3D
 
     const setSelected = (nodeId: string | null) => {
       activeId = nodeId;
+      applySelection();
+    };
+
+    const setRoute = (nodeIds: string[]) => {
+      activeRoute = new Set(nodeIds);
       applySelection();
     };
 
@@ -604,7 +617,7 @@ export function DecisionGraph3D({ graph, selectedId, onSelect }: DecisionGraph3D
       if (controlsRef.current === controls) controlsRef.current = null;
     };
 
-    const controls: Controls = { setGraph, setSelected, project, dispose };
+    const controls: Controls = { setGraph, setSelected, setRoute, project, dispose };
     const debugWindow = window as unknown as {
       __ink3d?: { point: (nodeId: string) => { x: number; y: number } | null };
     };

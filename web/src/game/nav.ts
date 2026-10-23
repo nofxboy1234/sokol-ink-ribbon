@@ -76,9 +76,18 @@ export class NavGrid {
     for (const door of level.doors) {
       if (doorsOpen[door.id]) continue;
       const half = door.width / 2;
-      const a = { x: door.pos.x - half, z: door.pos.z };
-      const b = { x: door.pos.x + half, z: door.pos.z };
+      const a = { x: door.pos.x - door.dir.x * half, z: door.pos.z - door.dir.z * half };
+      const b = { x: door.pos.x + door.dir.x * half, z: door.pos.z + door.dir.z * half };
       if (distanceToSegment(point, a, b) < CLEARANCE) return false;
+    }
+
+    for (const entity of level.entities) {
+      if (!entity.footprint) continue;
+      const halfW = entity.footprint.w / 2 + CLEARANCE;
+      const halfD = entity.footprint.d / 2 + CLEARANCE;
+      if (Math.abs(point.x - entity.pos.x) <= halfW && Math.abs(point.z - entity.pos.z) <= halfD) {
+        return false;
+      }
     }
 
     return true;

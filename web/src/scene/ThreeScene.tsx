@@ -139,10 +139,11 @@ export function ThreeScene({ store, tracker }: Props) {
     const walls = new LineSegments2(wallGeometry, lineMaterial);
     scene.add(walls);
 
-    const doorMeshes = new Map<string, { pivot: THREE.Group; open: () => boolean }>();
+    const doorMeshes = new Map<string, { pivot: THREE.Group; baseAngle: number; open: () => boolean }>();
     for (const door of level.doors) {
       const pivot = new THREE.Group();
       pivot.position.set(door.hinge.x, 0, door.hinge.z);
+      const baseAngle = -Math.atan2(door.dir.z, door.dir.x);
       const panel = edgedBox(door.width, 2.35, 0.09, 0xffffff, inkLine, 0.9);
       panel.position.set(door.width / 2, 1.175, 0);
       pivot.add(panel);
@@ -155,8 +156,11 @@ export function ThreeScene({ store, tracker }: Props) {
       pivot.add(handle);
       scene.add(pivot);
 
+      const isOpen = Boolean(store.getSnapshot().doors[door.id]?.open);
+      pivot.rotation.y = baseAngle + (isOpen ? Math.PI * 0.62 : 0);
       doorMeshes.set(door.id, {
         pivot,
+        baseAngle,
         open: () => Boolean(store.getSnapshot().doors[door.id]?.open),
       });
     }
@@ -206,7 +210,20 @@ export function ThreeScene({ store, tracker }: Props) {
 
     const makeStation = (entity: Entity): THREE.Group => {
       const group = new THREE.Group();
-      if (entity.station === "typewriter") {
+      if (entity.station === "cabinet") {
+        const body = edgedBox(1.05, 1.9, 0.66, 0xfdfdfd);
+        body.position.y = 0.95;
+        group.add(body);
+        const drawer = edgedBox(0.8, 0.34, 0.04, 0xf5f7fa, inkLine, 0.7);
+        drawer.position.set(0, 1.05, 0.36);
+        group.add(drawer);
+        const handle = new THREE.Mesh(
+          new THREE.SphereGeometry(0.045, 16, 12),
+          new THREE.MeshStandardMaterial({ color: 0xd9a441, roughness: 0.35, metalness: 0.5 }),
+        );
+        handle.position.set(0, 1.05, 0.4);
+        group.add(handle);
+      } else if (entity.station === "typewriter") {
         const desk = edgedBox(1.7, 0.82, 1.05, 0xfdfdfd);
         desk.position.y = 0.41;
         group.add(desk);
@@ -266,6 +283,27 @@ export function ThreeScene({ store, tracker }: Props) {
     destination.material.opacity = 0;
     scene.add(destination);
 
+    const routeMarkers = new THREE.Group();
+    scene.add(routeMarkers);
+    const clearRouteMarkers = (): void => {
+      for (const child of [...routeMarkers.children]) {
+        routeMarkers.remove(child);
+        if (child instanceof THREE.Mesh) {
+          child.geometry.dispose();
+          child.material.dispose();
+        }
+      }
+    };
+    const showRouteMarkers = (targets: Vec2[]): void => {
+      clearRouteMarkers();
+      targets.slice(0, -1).forEach((point) => {
+        const marker = ringMesh(0.44, 0x589be6);
+        marker.material.opacity = 0.3;
+        marker.position.set(point.x, 0.014, point.z);
+        routeMarkers.add(marker);
+      });
+    };
+
     const motion: Vec2 = { ...store.getSnapshot().player.pos };
     let nav = new NavGrid(level, Object.fromEntries(level.doors.map((door) => [door.id, store.getSnapshot().doors[door.id]?.open ?? false])));
     let doorSignature = level.doors.map((door) => `${door.id}:${store.getSnapshot().doors[door.id]?.open}`).join("|");
@@ -280,6 +318,7 @@ export function ThreeScene({ store, tracker }: Props) {
         let visible = !state.collected[entity.id];
         if (entity.itemId === "brass-key") visible = visible && Boolean(state.discovered[entity.id]);
         if (entity.station === "daybook") visible = visible && Boolean(state.discovered[entity.id]);
+        if (entity.station === "cabinet") visible = visible && Boolean(state.discovered[entity.id]);
         group.visible = visible;
       }
 
@@ -294,22 +333,36 @@ export function ThreeScene({ store, tracker }: Props) {
 
       if (state.pending && state.pending.nodeId !== currentPendingId) {
         currentPendingId = state.pending.nodeId;
-        const path = nav.findPath(motion, state.pending.target);
-        if (!path || path.length === 0) {
+        const combined: Vec2[] = [];
+        let cursor = { ...motion };
+        let blocked = false;
+        for (const target of state.pending.targets) {
+          const leg = nav.findPath(cursor, target);
+          if (!leg || leg.length === 0) {
+            blocked = true;
+            break;
+          }
+          combined.push(...(combined.length > 0 ? leg.slice(1) : leg));
+          cursor = target;
+        }
+        const finalTarget = state.pending.targets[state.pending.targets.length - 1];
+        if (blocked || combined.length === 0) {
           queueMicrotask(() => store.failPending("There is no way through from here."));
           walk = null;
+          clearRouteMarkers();
         } else {
-          walk = { path, index: 1, target: state.pending.target, nodeId: state.pending.nodeId };
-          if (path.length === 1) walk.index = 0;
+          walk = { path: combined, index: combined.length > 1 ? 1 : 0, target: finalTarget, nodeId: state.pending.nodeId };
           arriveAt = 0;
-          destination.position.set(state.pending.target.x, 0.012, state.pending.target.z);
+          destination.position.set(finalTarget.x, 0.012, finalTarget.z);
           destination.material.opacity = 0.55;
+          showRouteMarkers(state.pending.targets);
         }
       }
 
       if (!state.pending) {
         currentPendingId = null;
         walk = null;
+        clearRouteMarkers();
       }
     };
 
@@ -392,7 +445,7 @@ export function ThreeScene({ store, tracker }: Props) {
       for (const door of level.doors) {
         const entry = doorMeshes.get(door.id);
         if (!entry) continue;
-        const targetAngle = entry.open() ? Math.PI * 0.62 : 0;
+        const targetAngle = entry.baseAngle + (entry.open() ? Math.PI * 0.62 : 0);
         entry.pivot.rotation.y += (targetAngle - entry.pivot.rotation.y) * Math.min(1, delta * 4.5);
       }
 

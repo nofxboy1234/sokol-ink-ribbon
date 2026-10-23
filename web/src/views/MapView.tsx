@@ -33,11 +33,28 @@ export function MapView({ store, tracker, onClose }: Props) {
     editor.updateInstanceState({ isReadonly: false });
 
     const state = store.getSnapshot();
-    const walls = store.level.walls;
     const entities = store.level.entities;
 
     editor.run(() => {
-      walls.forEach((wall, index) => {
+      for (const room of store.level.rooms) {
+        editor.createShape({
+          id: createShapeId(`map-room-${room.id}`),
+          type: "geo",
+          x: mapX(room.box.minX),
+          y: mapZ(room.box.minZ),
+          props: {
+            geo: "rectangle",
+            w: (room.box.maxX - room.box.minX) * SCALE,
+            h: (room.box.maxZ - room.box.minZ) * SCALE,
+            color: "grey",
+            fill: "none",
+            dash: "dashed",
+            richText: toRichText(""),
+          },
+        });
+      }
+
+      store.level.walls.forEach((wall, index) => {
         editor.createShape({
           id: createShapeId(`map-wall-${index}`),
           type: "arrow",
@@ -57,14 +74,16 @@ export function MapView({ store, tracker, onClose }: Props) {
       for (const door of store.level.doors) {
         if (state.doors[door.id]?.open) continue;
         const half = door.width / 2;
+        const start = { x: door.pos.x - door.dir.x * half, z: door.pos.z - door.dir.z * half };
+        const end = { x: door.pos.x + door.dir.x * half, z: door.pos.z + door.dir.z * half };
         editor.createShape({
           id: createShapeId(`map-door-${door.id}`),
           type: "arrow",
-          x: mapX(door.pos.x - half),
-          y: mapZ(door.pos.z),
+          x: mapX(start.x),
+          y: mapZ(start.z),
           props: {
             start: { x: 0, y: 0 },
-            end: { x: door.width * SCALE, y: 0 },
+            end: { x: (end.x - start.x) * SCALE, y: (end.z - start.z) * SCALE },
             color: "black",
             size: "s",
             arrowheadStart: "none",
@@ -77,8 +96,7 @@ export function MapView({ store, tracker, onClose }: Props) {
         if (entity.kind !== "item") continue;
         if (state.collected[entity.id]) continue;
         if (entity.itemId === "brass-key" && !state.discovered[entity.id]) continue;
-        if (entity.station === "daybook" && !state.discovered[entity.id]) continue;
-        const size = entity.kind === "item" ? 11 : 9;
+        const size = 11;
         editor.createShape({
           id: createShapeId(`map-entity-${entity.id}`),
           type: "geo",
@@ -111,11 +129,9 @@ export function MapView({ store, tracker, onClose }: Props) {
       });
 
       editor.bringToFront([playerDotId.current]);
-      editor.zoomToBounds(
-        { x: OFFSET_X - 40, y: OFFSET_Z - 7 * SCALE - 40, w: 18 * SCALE + 80, h: 18 * SCALE + 80 },
-        { inset: 40 },
-      );
     });
+    const bounds = editor.getCurrentPageBounds();
+    if (bounds) editor.zoomToBounds(bounds, { inset: 100 });
     editor.updateInstanceState({ isReadonly: true });
 
     const interval = window.setInterval(() => {

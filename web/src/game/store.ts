@@ -7,16 +7,18 @@ import type {
   Interaction,
   Level,
   PendingAction,
+  Vec2,
 } from "./types";
 
 const initialState = (level: Level): GameState => {
   const base: GameState = {
     player: { pos: { ...level.start.pos }, roomId: level.start.roomId },
+    status: "playing",
     inventory: [],
     collected: {},
     used: {},
     doors: Object.fromEntries(
-      level.doors.map((door) => [door.id, { open: false, locked: door.locked }]),
+      level.doors.map((door) => [door.id, { open: door.initiallyOpen ?? false, locked: door.locked }]),
     ),
     discovered: {},
     roomsSeen: { [level.start.roomId]: true },
@@ -101,8 +103,23 @@ const applyInteraction = (level: Level, state: GameState, interaction: Interacti
           used: { ...state.used, [interaction.entityId]: true },
           flags: { ...state.flags, readDaybook: true },
         },
-        text: "The daybook ends: “Leave the ribbon. Take the key. The study keeps what the house forgets.”",
+        text: "The daybook ends: “The drawer answers to 1-9-2-6. Leave the ribbon. Take the key. The study keeps what the house forgets.”",
         tone: "info",
+      };
+    }
+
+    case "open-cabinet": {
+      if (!state.flags.readDaybook) {
+        return { state, text: "The drawer has no handle. Something in the study must name it.", tone: "warn" };
+      }
+      return {
+        state: {
+          ...state,
+          used: { ...state.used, [interaction.entityId]: true },
+          status: "won",
+        },
+        text: "You turn the dial to 1-9-2-6. The drawer opens. The study gives up what the house forgot.",
+        tone: "good",
       };
     }
 
@@ -161,13 +178,38 @@ export class GameStore {
   }
 
   choose(decision: Decision): "inventory" | "started" | "ignored" {
-    if (decision.interaction.type === "inventory") return "inventory";
-    if (decision.interaction.type === "none" || this.state.pending) return "ignored";
+    return this.chooseRoute([decision], []);
+  }
+
+  chooseRoute(
+    decisions: Decision[],
+    waypoints: Vec2[],
+    routeLabel?: string,
+  ): "inventory" | "started" | "ignored" {
+    if (decisions.length === 0) return "ignored";
+    const last = decisions[decisions.length - 1];
+    if (last.interaction.type === "inventory") return "inventory";
+    if (last.interaction.type === "none" || this.state.pending) return "ignored";
+
+    const rawTargets = decisions.map((decision) => ({ ...decision.target }));
+    const deduped = rawTargets.filter(
+      (target, index) =>
+        index === 0 ||
+        Math.hypot(target.x - rawTargets[index - 1].x, target.z - rawTargets[index - 1].z) > 0.05,
+    );
+    const finalTarget = deduped[deduped.length - 1];
+    const targets = [
+      ...deduped.slice(0, -1),
+      ...waypoints.map((point) => ({ ...point })),
+      finalTarget,
+    ];
+    const label = decisions.map((decision) => decision.label).join(" → ");
+
     const pending: PendingAction = {
-      nodeId: decision.id,
-      label: decision.label,
-      target: { ...decision.target },
-      interaction: decision.interaction,
+      nodeId: last.id,
+      label: routeLabel ? `${label} ${routeLabel}` : label,
+      targets,
+      interaction: last.interaction,
     };
     this.state = { ...this.state, pending };
     this.emit();
@@ -178,10 +220,11 @@ export class GameStore {
     const pending = this.state.pending;
     if (!pending) return;
 
-    const room = roomAt(this.level, pending.target) ?? this.state.player.roomId;
+    const target = pending.targets[pending.targets.length - 1];
+    const room = roomAt(this.level, target) ?? this.state.player.roomId;
     let next: GameState = {
       ...this.state,
-      player: { pos: { ...pending.target }, roomId: room },
+      player: { pos: { ...target }, roomId: room },
       pending: null,
     };
 

@@ -16,7 +16,34 @@ export const isLevel = (value: unknown): value is Level => {
   if (!candidate.palette || typeof candidate.palette.paper !== "string") return false;
   if (!finite(candidate.start.pos?.x) || !finite(candidate.start.pos?.z)) return false;
   const items = candidate.items as Record<string, { id?: string }>;
-  return candidate.entities.every(
+  const walls = candidate.walls.every(
+    (wall) =>
+      wall &&
+      typeof wall.id === "string" &&
+      finite(wall.a?.x) &&
+      finite(wall.a?.z) &&
+      finite(wall.b?.x) &&
+      finite(wall.b?.z),
+  );
+  const doors = candidate.doors.every(
+    (door) =>
+      door &&
+      typeof door.id === "string" &&
+      typeof door.roomA === "string" &&
+      typeof door.roomB === "string" &&
+      finite(door.pos?.x) &&
+      finite(door.pos?.z) &&
+      finite(door.hinge?.x) &&
+      finite(door.hinge?.z) &&
+      finite(door.width) &&
+      finite(door.dir?.x) &&
+      finite(door.dir?.z) &&
+      finite(door.throughA?.x) &&
+      finite(door.throughA?.z) &&
+      finite(door.throughB?.x) &&
+      finite(door.throughB?.z),
+  );
+  const entities = candidate.entities.every(
     (entity) =>
       entity &&
       typeof entity.id === "string" &&
@@ -27,6 +54,7 @@ export const isLevel = (value: unknown): value is Level => {
       finite(entity.standAt?.z) &&
       (entity.kind !== "item" || Boolean(entity.itemId && items[entity.itemId])),
   );
+  return walls && doors && entities;
 };
 
 export function loadStoredLevel(): Level | null {

@@ -1,6 +1,8 @@
+import { NavGrid } from "./nav";
 import type {
   Decision,
   DecisionGraph,
+  DoorId,
   Entity,
   GameState,
   ItemId,
@@ -65,7 +67,11 @@ export function withDiscovery(level: Level, state: GameState): GameState {
       discovered[entity.id] = true;
       continue;
     }
-    if (entity.discovery === "clue" && state.flags.typedClue) {
+    if (entity.discovery === "flag") {
+      if (entity.revealFlag && state.flags[entity.revealFlag]) discovered[entity.id] = true;
+      continue;
+    }
+    if (entity.discovery === "clue" && entity.revealFlag && state.flags[entity.revealFlag]) {
       discovered[entity.id] = true;
       continue;
     }
@@ -76,6 +82,142 @@ export function withDiscovery(level: Level, state: GameState): GameState {
   }
 
   return { ...state, roomsSeen, discovered };
+}
+
+const roomCenter = (level: Level, roomId: RoomId): Vec2 => {
+  const room = level.rooms.find((candidate) => candidate.id === roomId);
+  if (!room) return { x: 0, z: 0 };
+  return { x: (room.box.minX + room.box.maxX) / 2, z: (room.box.minZ + room.box.maxZ) / 2 };
+};
+
+const discoveredTravelRooms = (level: Level, state: GameState): Set<RoomId> => {
+  const reached = new Set<RoomId>([state.player.roomId]);
+  const doorEntity = new Map<DoorId, Entity>();
+  for (const entity of level.entities) {
+    if (entity.doorId && state.discovered[entity.id]) doorEntity.set(entity.doorId, entity);
+  }
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const door of level.doors) {
+      if (!state.doors[door.id]?.open || !doorEntity.has(door.id)) continue;
+      if (reached.has(door.roomA) && !reached.has(door.roomB)) {
+        reached.add(door.roomB);
+        grew = true;
+      }
+      if (reached.has(door.roomB) && !reached.has(door.roomA)) {
+        reached.add(door.roomA);
+        grew = true;
+      }
+    }
+  }
+  return reached;
+};
+
+export type RoomRoute = {
+  id: string;
+  label: string;
+  doorIds: DoorId[];
+  waypoints: Vec2[];
+  length: number;
+};
+
+export function routeOptions(level: Level, state: GameState, from: Vec2, to: Vec2): RoomRoute[] {
+  const fromRoom = roomAt(level, from);
+  const toRoom = roomAt(level, to);
+  if (!fromRoom || !toRoom || fromRoom === toRoom) return [];
+
+  const knownDoors = new Set(
+    level.entities
+      .filter((entity) => entity.doorId && state.discovered[entity.id])
+      .map((entity) => entity.doorId),
+  );
+  const openDoors = level.doors.filter(
+    (door) =>
+      state.doors[door.id]?.open &&
+      knownDoors.has(door.id) &&
+      level.rooms.some((room) => room.id === door.roomA) &&
+      level.rooms.some((room) => room.id === door.roomB),
+  );
+  const byRoom = new Map<RoomId, typeof openDoors>();
+  for (const door of openDoors) {
+    for (const roomId of [door.roomA, door.roomB]) {
+      const list = byRoom.get(roomId) ?? [];
+      list.push(door);
+      byRoom.set(roomId, list);
+    }
+  }
+
+  const paths: typeof openDoors[] = [];
+  const visit = (room: RoomId, usedDoors: Set<DoorId>, doors: typeof openDoors): void => {
+    if (doors.length > 5) return;
+    if (room === toRoom) {
+      paths.push([...doors]);
+      return;
+    }
+    for (const door of byRoom.get(room) ?? []) {
+      if (usedDoors.has(door.id)) continue;
+      const nextRoom = door.roomA === room ? door.roomB : door.roomA;
+      usedDoors.add(door.id);
+      doors.push(door);
+      visit(nextRoom, usedDoors, doors);
+      doors.pop();
+      usedDoors.delete(door.id);
+    }
+  };
+  visit(fromRoom, new Set(), []);
+
+  const nav = new NavGrid(
+    level,
+    Object.fromEntries(level.doors.map((door) => [door.id, state.doors[door.id]?.open ?? false])),
+  );
+  const routes: RoomRoute[] = [];
+  const seen = new Set<string>();
+
+  for (const path of paths) {
+    const id = path.map((door) => door.id).join("|");
+    if (seen.has(id)) continue;
+    let currentRoom = fromRoom;
+    const waypoints: Vec2[] = [];
+    for (const door of path) {
+      if (door.roomA === currentRoom) {
+        waypoints.push(door.throughB);
+        currentRoom = door.roomB;
+      } else {
+        waypoints.push(door.throughA);
+        currentRoom = door.roomA;
+      }
+    }
+    if (currentRoom !== toRoom) continue;
+
+    let cursor = from;
+    let length = 0;
+    let valid = true;
+    for (const point of [...waypoints, to]) {
+      const leg = nav.findPath(cursor, point);
+      if (!leg) {
+        valid = false;
+        break;
+      }
+      for (let index = 1; index < leg.length; index++) {
+        length += Math.hypot(leg[index].x - leg[index - 1].x, leg[index].z - leg[index - 1].z);
+      }
+      cursor = point;
+    }
+    if (!valid) continue;
+
+    seen.add(id);
+    const names = path.map((door) => door.name);
+    routes.push({
+      id,
+      label: `via the ${names.join(" then the ")}`,
+      doorIds: path.map((door) => door.id),
+      waypoints: waypoints.map((point) => ({ ...point })),
+      length,
+    });
+  }
+
+  return routes.sort((a, b) => a.length - b.length);
 }
 
 const hasItem = (state: GameState, itemId: ItemId): boolean => state.inventory.includes(itemId);
@@ -185,6 +327,32 @@ export function deriveDecisionGraph(level: Level, state: GameState): DecisionGra
         parentId,
       });
     }
+
+    if (entity.station === "cabinet") {
+      if (!state.flags.readDaybook || state.used[entity.id]) continue;
+      const moveId = `move:${entity.id}`;
+      const parentId = at(entity) ? "player" : moveId;
+      if (!at(entity)) {
+        add({
+          id: moveId,
+          label: `move to ${entity.name}`,
+          kind: "move",
+          anchor: entity.pos,
+          target: entity.standAt,
+          interaction: { type: "move", entityId: entity.id },
+          parentId: "player",
+        });
+      }
+      add({
+        id: `open-cabinet:${entity.id}`,
+        label: "open the drawer",
+        kind: "use",
+        anchor: entity.pos,
+        target: entity.standAt,
+        interaction: { type: "open-cabinet", entityId: entity.id },
+        parentId,
+      });
+    }
   }
 
   for (const entity of level.entities) {
@@ -193,23 +361,7 @@ export function deriveDecisionGraph(level: Level, state: GameState): DecisionGra
     const door = level.doors.find((candidate) => candidate.id === entity.doorId);
     if (!door) continue;
 
-    if (state.doors[door.id]?.open) {
-      const otherRoom = door.roomA === state.player.roomId ? door.roomB : door.roomA;
-      if (state.roomsSeen[otherRoom]) continue;
-      const room = level.rooms.find((candidate) => candidate.id === otherRoom);
-      if (!room) continue;
-      const target = otherRoom === door.roomB ? door.throughB : door.throughA;
-      add({
-        id: `enter:${door.id}`,
-        label: `enter ${room.name.toLowerCase()}`,
-        kind: "move",
-        anchor: door.pos,
-        target,
-        interaction: { type: "move", entityId: entity.id },
-        parentId: "player",
-      });
-      continue;
-    }
+    if (state.doors[door.id]?.open) continue;
 
     const moveId = `move:${entity.id}`;
     const parentId = at(entity) ? "player" : moveId;
@@ -248,6 +400,22 @@ export function deriveDecisionGraph(level: Level, state: GameState): DecisionGra
         parentId,
       });
     }
+  }
+
+  const travelRooms = discoveredTravelRooms(level, state);
+  for (const room of level.rooms) {
+    if (room.id === state.player.roomId || !travelRooms.has(room.id)) continue;
+    const center = roomCenter(level, room.id);
+    const seen = Boolean(state.roomsSeen[room.id]);
+    add({
+      id: `${seen ? "room" : "enter"}:${room.id}`,
+      label: `${seen ? "move to" : "enter"} ${room.name.toLowerCase()}`,
+      kind: "move",
+      anchor: center,
+      target: center,
+      interaction: { type: "move" },
+      parentId: "player",
+    });
   }
 
   for (const itemId of state.inventory) {

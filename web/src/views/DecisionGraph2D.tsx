@@ -7,13 +7,13 @@ import { tldrawAssets } from "../tldrawAssets";
 
 export type DecisionGraph2DProps = {
   graph: DecisionGraph;
-  selectedId: string | null;
+  selectedIds: string[];
   onSelect: (nodeId: string) => void;
 };
 
 type HitPoint = { x: number; y: number; radius: number };
 
-export function DecisionGraph2D({ graph, selectedId, onSelect }: DecisionGraph2DProps) {
+export function DecisionGraph2D({ graph, selectedIds, onSelect }: DecisionGraph2DProps) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [hits, setHits] = useState<Record<string, HitPoint>>({});
   const shapeIds = useRef<Record<string, TLShapeId>>({});
@@ -106,8 +106,8 @@ export function DecisionGraph2D({ graph, selectedId, onSelect }: DecisionGraph2D
     if (points.length > 0) {
       const minX = Math.min(...points.map((point) => point.x)) - 175;
       const maxX = Math.max(...points.map((point) => point.x)) + 175;
-      const minY = Math.min(...points.map((point) => point.y)) - 70;
-      const maxY = Math.max(...points.map((point) => point.y)) + 70;
+      const minY = Math.min(...points.map((point) => point.y)) - 120;
+      const maxY = Math.max(...points.map((point) => point.y)) + 150;
       const frame = requestAnimationFrame(() => {
         editor.zoomToBounds({ x: minX, y: minY, w: maxX - minX, h: maxY - minY }, { inset: 30 });
       });
@@ -117,12 +117,8 @@ export function DecisionGraph2D({ graph, selectedId, onSelect }: DecisionGraph2D
 
   useEffect(() => {
     if (!editor) return;
-    const routeIds = new Set<string>();
-    let cursor = selectedId;
-    while (cursor) {
-      routeIds.add(cursor);
-      cursor = graph.nodes.find((node) => node.id === cursor)?.parentId ?? null;
-    }
+    const routeIds = new Set<string>(selectedIds);
+    const selectedId = selectedIds[selectedIds.length - 1] ?? null;
     try {
       editor.updateInstanceState({ isReadonly: false });
       for (const node of graph.nodes) {
@@ -134,7 +130,7 @@ export function DecisionGraph2D({ graph, selectedId, onSelect }: DecisionGraph2D
           id,
           type: "geo",
           props: {
-            fill: selected || node.kind === "player" ? "fill" : inRoute ? "semi" : "none",
+            fill: inRoute || node.kind === "player" ? "fill" : "none",
             size: selected ? "m" : "s",
             color: inRoute || node.kind === "player" ? "light-blue" : node.kind === "inventory" ? "grey" : "blue",
           },
@@ -143,7 +139,7 @@ export function DecisionGraph2D({ graph, selectedId, onSelect }: DecisionGraph2D
     } finally {
       editor.updateInstanceState({ isReadonly: true });
     }
-  }, [editor, graph, selectedId]);
+  }, [editor, graph, selectedIds]);
 
   useEffect(() => {
     if (!editor) return;
@@ -180,10 +176,11 @@ export function DecisionGraph2D({ graph, selectedId, onSelect }: DecisionGraph2D
             <button
               key={node.id}
               type="button"
-              className={`decision-hit ${node.id === selectedId ? "selected" : ""} ${
-                node.kind === "player" ? "player" : ""
-              }`}
+              className={`decision-hit ${node.id === selectedIds[selectedIds.length - 1] ? "selected" : ""} ${
+                selectedIds.includes(node.id) ? "in-route" : ""
+              } ${node.kind === "player" ? "player" : ""}`}
               aria-label={`Decision: ${node.label}`}
+              aria-pressed={selectedIds.includes(node.id)}
               data-decision-id={node.id}
               style={{
                 left: hit.x,
